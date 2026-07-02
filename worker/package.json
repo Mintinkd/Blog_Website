@@ -1,5 +1,5 @@
 {
-  "name": "smart-learn-assistant-blog-worker",
+  "name": "blog_website-worker",
   "version": "1.0.0",
   "private": true,
   "scripts": {

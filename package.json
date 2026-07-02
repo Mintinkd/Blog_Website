@@ -1,5 +1,5 @@
 {
-  "name": "smart-learn-assistant-blog",
+  "name": "blog_website",
   "type": "module",
   "version": "1.0.0",
   "private": true,
@@ -10,9 +10,9 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^4.16.0",
-    "@astrojs/vue": "^4.5.0",
-    "@astrojs/sitemap": "^3.2.0",
+    "astro": "^5.7.0",
+    "@astrojs/vue": "^5.0.0",
+    "@astrojs/sitemap": "^3.3.0",
     "@astrojs/cloudflare": "^12.0.0",
     "@astrojs/rss": "^4.0.0",
     "vue": "^3.5.0",

@@ -1,5 +1,5 @@
 -- Blog Site D1 Database Schema
--- Project: smart_learn_assistant
+-- Project: blog_website
 
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,8 +124,8 @@ CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
       NEW.title,
       NEW.content,
       COALESCE(c.name, ''),
-      COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '');
-  FROM categories c WHERE c.id = NEW.category_id;
+      COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '')
+    FROM categories c WHERE c.id = NEW.category_id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
@@ -142,8 +142,8 @@ CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
       NEW.title,
       NEW.content,
       COALESCE(c.name, ''),
-      COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '');
-  FROM categories c WHERE c.id = NEW.category_id;
+      COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '')
+    FROM categories c WHERE c.id = NEW.category_id;
 END;
 
 -- Initial Data: Default Category
