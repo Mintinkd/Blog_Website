@@ -50,28 +50,45 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
   const pathname = url.pathname.slice(apiPrefix.length) || '/';
   const method = request.method;
 
-  const corsResponse = corsMiddleware(request);
-  if (corsResponse) return corsResponse;
-
-  const rateLimitResponse = await rateLimitMiddleware(request, env, ctx);
-  if (rateLimitResponse) return rateLimitResponse;
-
-  const matched = await matchRoute(method, pathname);
-  if (!matched) {
-    return Response.json({ code: 404, message: 'API not found', data: null }, { status: 404 });
-  }
-
-  if (matched.requireAuth) {
-    const { authMiddleware } = await import('./middleware/auth');
-    const authResult = await authMiddleware(request, env);
-    if (authResult) return authResult;
-  }
-
   try {
-    return await matched.handler(request, env, ctx, matched.params);
+    const corsResponse = corsMiddleware(request);
+    if (corsResponse) return corsResponse;
+
+    const rateLimitResponse = await rateLimitMiddleware(request, env, ctx);
+    if (rateLimitResponse) return rateLimitResponse;
+
+    if (pathname === '/health') {
+      const dbTest = await env.DB.prepare('SELECT COUNT(*) as count FROM site_config').first();
+      const kvTest = await env.MEDIA.get('_health_check');
+      return Response.json({
+        status: 'ok',
+        db: dbTest ? 'connected' : 'error',
+        kv: 'connected',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const matched = await matchRoute(method, pathname);
+    if (!matched) {
+      return Response.json({ code: 404, message: 'API not found', data: null }, { status: 404 });
+    }
+
+    if (matched.requireAuth) {
+      const { authMiddleware } = await import('./middleware/auth');
+      const authResult = await authMiddleware(request, env);
+      if (authResult) return authResult;
+    }
+
+    try {
+      return await matched.handler(request, env, ctx, matched.params);
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error('Handler error:', errMsg, error);
+      return Response.json({ code: 500, message: errMsg, data: null }, { status: 500 });
+    }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('Handler error:', errMsg, error);
+    console.error('Router error:', errMsg, error);
     return Response.json({ code: 500, message: errMsg, data: null }, { status: 500 });
   }
 }
