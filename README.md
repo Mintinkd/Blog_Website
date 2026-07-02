@@ -67,7 +67,8 @@
 │   └── utils/
 │       ├── api.ts               # API请求工具
 │       ├── markdown.ts          # Markdown渲染
-│       └── theme.ts             # 主题切换
+│       ├── theme.ts             # 主题切换
+│       └── siteConfig.ts        # 站点配置读取与应用
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（D1/KV绑定）
 │   ├── schema.sql               # 数据库Schema
@@ -191,8 +192,23 @@ D1 (SQLite) 共 8 张表：
 - **文章管理** — 新建/编辑/删除，Markdown编辑器
 - **分类管理** — 增删改
 - **标签管理** — 增删
-- **关于页面** — Markdown编辑关于页内容
-- **站点配置** — 标题、描述等
+- **关于页面** — Markdown编辑关于页内容，保存后前台 `/about` 页面实时更新
+- **站点配置** — 标题、副标题、描述、关键词等
+
+## 站点配置动态化
+
+前台页面在加载时会自动从 `/api/v1/config` 读取站点配置并动态应用：
+
+| 配置项 | 前台应用位置 |
+|--------|-------------|
+| `site_title` | 导航栏Logo、页面标题、页脚版权 |
+| `site_subtitle` | 首页Hero区域副标题 |
+| `site_description` | 首页Hero描述、meta description、OG描述 |
+| `site_keywords` | meta keywords |
+| `about_content` | `/about` 页面内容 |
+
+- 页面级 description 优先级高于站点级（不会被覆盖）
+- 首页 Hero 区域的默认文案在无配置时显示，有配置后自动替换
 
 ## 本地开发
 

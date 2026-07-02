@@ -3,11 +3,12 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 ---
 
-<BaseLayout title="首页" description="记录技术与生活，分享成长与思考">
+<BaseLayout title="首页">
   <section class="hero">
     <div class="hero-inner">
-      <h1 class="hero-title">探索 · 记录 · 分享</h1>
-      <p class="hero-subtitle">关于技术、生活与思考的个人空间</p>
+      <h1 class="hero-title" id="hero-site-title">探索 · 记录 · 分享</h1>
+      <p class="hero-subtitle" id="hero-site-subtitle">关于技术、生活与思考的个人空间</p>
+      <p class="hero-desc" id="hero-site-desc"></p>
       <div class="hero-actions">
         <a href="/articles" class="hero-btn primary">浏览文章</a>
         <a href="/about" class="hero-btn secondary">了解更多</a>
@@ -51,7 +52,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-size: 1.15rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
+    margin-bottom: 0.5rem;
+  }
+
+  .hero-desc {
+    font-size: 0.95rem;
+    color: var(--color-text-tertiary);
+    line-height: 1.6;
     margin-bottom: 2rem;
+  }
+
+  .hero-desc:empty {
+    display: none;
   }
 
   .hero-actions {

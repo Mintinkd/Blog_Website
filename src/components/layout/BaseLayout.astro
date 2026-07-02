@@ -11,13 +11,12 @@ export interface Props {
 
 const {
   title,
-  description = '记录技术与生活的个人博客',
-  keywords = ['博客', '技术', '开发', '分享'],
+  description = '',
+  keywords = [],
   ogImage,
   canonicalUrl,
 } = Astro.props;
 
-const siteTitle = title === '首页' ? title : `${title} | Blog`;
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
 ---
 
@@ -27,13 +26,13 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
-    <title>{siteTitle}</title>
-    <meta name="description" content={description} />
-    <meta name="keywords" content={keywords.join(',')} />
+    <title data-site-title>{title}</title>
+    <meta name="description" content={description} data-page-set={description ? 'true' : ''} />
+    {keywords.length > 0 && <meta name="keywords" content={keywords.join(',')} />}
     <link rel="canonical" href={fullCanonicalUrl} />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content={siteTitle} />
-    <meta property="og:description" content={description} />
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
     <meta property="og:url" content={fullCanonicalUrl} />
     {ogImage && <meta property="og:image" content={ogImage} />}
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -45,14 +44,13 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
         else document.documentElement.setAttribute('data-theme', 'light');
       })();
     </script>
-
   </head>
   <body>
     <header class="site-header">
       <nav class="header-nav container">
         <a href="/" class="site-logo">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-          <span>Blog</span>
+          <span id="site-logo-text">Blog</span>
         </a>
         <div class="nav-links">
           <a href="/">首页</a>
@@ -82,7 +80,7 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <p>&copy; {new Date().getFullYear()} Blog</p>
+        <p id="footer-text">&copy; {new Date().getFullYear()} Blog</p>
         <a href="/rss.xml">RSS</a>
       </div>
     </footer>
@@ -94,6 +92,50 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('theme', next);
       });
+
+      (async function() {
+        try {
+          const res = await fetch('/api/v1/config');
+          const data = await res.json();
+          if (data.code !== 0 || !data.data) return;
+          const cfg = data.data;
+
+          const logoText = document.getElementById('site-logo-text');
+          if (logoText && cfg.site_title) logoText.textContent = cfg.site_title;
+
+          const footerText = document.getElementById('footer-text');
+          if (footerText && cfg.site_title) footerText.textContent = `\u00A9 ${new Date().getFullYear()} ${cfg.site_title}`;
+
+          const titleEl = document.querySelector('title[data-site-title]');
+          if (titleEl) {
+            const current = titleEl.textContent || '';
+            if (current === '首页' && cfg.site_title) {
+              titleEl.textContent = cfg.site_title;
+            } else if (cfg.site_title) {
+              titleEl.textContent = current.replace('Blog', cfg.site_title);
+            }
+          }
+
+          const metaDesc = document.querySelector('meta[name="description"]');
+          if (metaDesc && !metaDesc.getAttribute('data-page-set') && cfg.site_description) {
+            metaDesc.setAttribute('content', cfg.site_description);
+          }
+
+          const ogDesc = document.querySelector('meta[property="og:description"]');
+          if (ogDesc && !metaDesc?.getAttribute('data-page-set') && cfg.site_description) {
+            ogDesc.setAttribute('content', cfg.site_description);
+          }
+
+          const heroTitle = document.getElementById('hero-site-title');
+          if (heroTitle && cfg.site_title) heroTitle.textContent = cfg.site_title;
+
+          const heroSubtitle = document.getElementById('hero-site-subtitle');
+          if (heroSubtitle && cfg.site_subtitle) heroSubtitle.textContent = cfg.site_subtitle;
+
+          const heroDesc = document.getElementById('hero-site-desc');
+          if (heroDesc && cfg.site_description) heroDesc.textContent = cfg.site_description;
+        } catch {}
+      })();
     </script>
   </body>
 </html>
