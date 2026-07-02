@@ -70,8 +70,9 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
   try {
     return await matched.handler(request, env, ctx, matched.params);
   } catch (error) {
-    console.error('Handler error:', error);
-    return Response.json({ code: 500, message: 'Internal Server Error', data: null }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Handler error:', errMsg, error);
+    return Response.json({ code: 500, message: errMsg, data: null }, { status: 500 });
   }
 }
 
