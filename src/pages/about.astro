@@ -4,22 +4,62 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <BaseLayout title="关于" description="关于博主">
   <section class="about-page">
-    <h1 class="page-title">关于</h1>
+    <div class="page-header">
+      <h1 class="page-title">关于</h1>
+      <p class="page-desc">了解这个博客和它的作者</p>
+    </div>
     <div id="about-content">
-      <p class="loading-text">加载中...</p>
+      <div class="loading-placeholder">
+        <div class="loading-spinner"></div>
+        <p>加载中...</p>
+      </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .page-title {
-    font-size: 1.8rem;
-    font-weight: 700;
-    margin-bottom: 1.5rem;
-    color: var(--color-text-primary);
+  .page-header {
+    margin-bottom: 2rem;
   }
-  .loading-text {
+
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.35rem;
+  }
+
+  .page-desc {
+    font-size: 0.9rem;
     color: var(--color-text-tertiary);
+  }
+
+  .loading-placeholder {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 3rem 0;
+  }
+
+  .loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    margin: 0 auto 0.75rem;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  :global(.about-page .prose) {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
   }
 </style>
 
@@ -38,13 +78,21 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           const { renderMarkdown } = await import('../utils/markdown.ts');
           container.innerHTML = `<div class="prose">${renderMarkdown(aboutContent)}</div>`;
         } else {
-          container.innerHTML = '<p>博主尚未编写介绍</p>';
+          container.innerHTML = '<div class="about-empty"><p>博主尚未编写介绍</p></div>';
         }
       }
     } catch (e) {
-      container.innerHTML = '<p>加载失败</p>';
+      container.innerHTML = '<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">加载失败</p>';
     }
   }
 
   loadAbout();
 </script>
+
+<style is:global>
+  .about-empty {
+    text-align: center;
+    padding: 3rem 0;
+    color: var(--color-text-tertiary);
+  }
+</style>

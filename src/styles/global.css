@@ -1,4 +1,5 @@
 @import "./variables.css";
+@import "./prose.css";
 
 *,
 *::before,
@@ -12,21 +13,23 @@ html {
   font-size: 16px;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   font-family: var(--font-sans);
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
-  line-height: 1.6;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  line-height: 1.7;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
   min-height: 100vh;
 }
 
 a {
   color: var(--color-accent);
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color var(--transition-fast);
 }
 
 a:hover {
@@ -56,18 +59,18 @@ select {
 .page-layout {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.5rem;
+  gap: 2rem;
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 0 1rem;
-  padding-top: calc(var(--header-height) + 1.5rem);
+  padding: 0 1.5rem;
+  padding-top: calc(var(--header-height) + 2rem);
 }
 
 @media (min-width: 768px) {
   .page-layout {
-    grid-template-columns: 1fr 280px;
-    padding: 0 1.5rem;
-    padding-top: calc(var(--header-height) + 2rem);
+    grid-template-columns: 1fr 260px;
+    padding: 0 2rem;
+    padding-top: calc(var(--header-height) + 3rem);
   }
 }
 
@@ -75,7 +78,7 @@ select {
   .page-layout {
     grid-template-columns: 1fr var(--sidebar-width);
     padding: 0 2rem;
-    padding-top: calc(var(--header-height) + 2rem);
+    padding-top: calc(var(--header-height) + 3rem);
   }
 }
 
@@ -96,16 +99,10 @@ select {
 .container {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
 }
 
 @media (min-width: 768px) {
-  .container {
-    padding: 0 1.5rem;
-  }
-}
-
-@media (min-width: 1200px) {
   .container {
     padding: 0 2rem;
   }
@@ -121,4 +118,26 @@ select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: #ffffff;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
 }

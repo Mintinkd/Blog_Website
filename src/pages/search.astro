@@ -5,16 +5,35 @@ import SearchBox from '../islands/SearchBox.vue';
 
 <BaseLayout title="搜索" description="搜索文章">
   <section class="search-page">
-    <h1 class="page-title">搜索</h1>
-    <SearchBox client:load />
+    <div class="page-header">
+      <h1 class="page-title">搜索</h1>
+      <p class="page-desc">搜索你感兴趣的内容</p>
+    </div>
+    <div class="search-container">
+      <SearchBox client:load />
+    </div>
   </section>
 </BaseLayout>
 
 <style>
+  .page-header {
+    margin-bottom: 2rem;
+  }
+
   .page-title {
-    font-size: 1.8rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    margin-bottom: 1.5rem;
     color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.35rem;
+  }
+
+  .page-desc {
+    font-size: 0.9rem;
+    color: var(--color-text-tertiary);
+  }
+
+  .search-container {
+    max-width: 640px;
   }
 </style>

@@ -15,102 +15,123 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
 ---
 
 <article class="article-card">
-  <div class="article-card-body">
-    <h2 class="article-card-title">
-      <a href={`/articles/${slug}`}>{title}</a>
-    </h2>
-    <p class="article-card-summary">{summary}</p>
-    <div class="article-card-meta">
-      {published_at && (
-        <span class="meta-date">{new Date(published_at).toLocaleDateString('zh-CN')}</span>
-      )}
-      {category && (
-        <a href={`/categories/${category.slug}`} class="meta-category">{category.name}</a>
-      )}
-      <span class="meta-views">{view_count} 次阅读</span>
-      <span class="meta-likes">{like_count} 赞</span>
-    </div>
-    {tags && tags.length > 0 && (
-      <div class="article-card-tags">
-        {tags.map((tag) => (
-          <a href={`/tags/${tag.slug}`} class="tag">{tag.name}</a>
-        ))}
+  <a href={`/articles/${slug}`} class="card-link">
+    <div class="card-body">
+      <div class="card-meta">
+        {category && (
+          <span class="card-category">{category.name}</span>
+        )}
+        {published_at && (
+          <span class="card-date">
+            {new Date(published_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </span>
+        )}
       </div>
-    )}
-  </div>
+      <h3 class="card-title">{title}</h3>
+      {summary && <p class="card-summary">{summary}</p>}
+      <div class="card-footer">
+        <div class="card-tags">
+          {tags && tags.slice(0, 3).map((tag) => (
+            <span class="card-tag">{tag.name}</span>
+          ))}
+        </div>
+        <span class="card-stats">
+          {view_count} 阅读 · {like_count} 赞
+        </span>
+      </div>
+    </div>
+  </a>
 </article>
 
 <style>
   .article-card {
-    background-color: var(--color-bg-primary);
+    background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    transition: box-shadow 0.2s, border-color 0.2s;
+    overflow: hidden;
+    transition: all var(--transition-normal);
   }
 
   .article-card:hover {
-    box-shadow: var(--shadow-card-hover);
     border-color: var(--color-border);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
   }
 
-  .article-card-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    line-height: 1.4;
+  .card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
   }
 
-  .article-card-title a {
-    color: var(--color-text-primary);
+  .card-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
   }
 
-  .article-card-title a:hover {
-    color: var(--color-accent);
-  }
-
-  .article-card-summary {
-    color: var(--color-text-secondary);
-    font-size: 0.95rem;
-    line-height: 1.6;
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     margin-bottom: 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .card-category {
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+
+  .card-date {
+    color: var(--color-text-tertiary);
+  }
+
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.01em;
+  }
+
+  .card-summary {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 1rem;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
-  .article-card-meta {
+  .card-footer {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    color: var(--color-text-tertiary);
-    font-size: 0.85rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: auto;
   }
 
-  .meta-category {
-    color: var(--color-accent);
-  }
-
-  .article-card-tags {
+  .card-tags {
     display: flex;
+    gap: 0.35rem;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.75rem;
   }
 
-  .tag {
-    padding: 0.15rem 0.6rem;
-    background-color: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
+  .card-tag {
+    padding: 0.1rem 0.5rem;
+    background-color: var(--color-tag-bg);
+    color: var(--color-tag-text);
     border-radius: var(--radius-sm);
-    font-size: 0.8rem;
-    transition: all 0.2s;
+    font-size: 0.75rem;
   }
 
-  .tag:hover {
-    background-color: var(--color-accent-light);
-    color: var(--color-accent);
+  .card-stats {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
   }
 </style>

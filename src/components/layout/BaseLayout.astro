@@ -1,4 +1,6 @@
 ---
+import '../../styles/global.css';
+
 export interface Props {
   title: string;
   description?: string;
@@ -9,13 +11,13 @@ export interface Props {
 
 const {
   title,
-  description = '个人博客 - 记录技术与生活',
-  keywords = ['博客', '技术', '开发'],
+  description = '记录技术与生活的个人博客',
+  keywords = ['博客', '技术', '开发', '分享'],
   ogImage,
   canonicalUrl,
 } = Astro.props;
 
-const siteTitle = `${title} | Smart Learn Assistant`;
+const siteTitle = title === '首页' ? title : `${title} | Blog`;
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
 ---
 
@@ -25,42 +27,33 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
-
     <title>{siteTitle}</title>
     <meta name="description" content={description} />
     <meta name="keywords" content={keywords.join(',')} />
     <link rel="canonical" href={fullCanonicalUrl} />
-
     <meta property="og:type" content="website" />
     <meta property="og:title" content={siteTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={fullCanonicalUrl} />
     {ogImage && <meta property="og:image" content={ogImage} />}
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={siteTitle} />
-    <meta name="twitter:description" content={description} />
-
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-
     <script is:inline>
       (function() {
-        const theme = localStorage.getItem('theme');
-        if (theme) {
-          document.documentElement.setAttribute('data-theme', theme);
-        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
+        const t = localStorage.getItem('theme');
+        if (t) document.documentElement.setAttribute('data-theme', t);
+        else if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.setAttribute('data-theme', 'light');
       })();
     </script>
 
-    <link rel="stylesheet" href="/src/styles/global.css" />
   </head>
   <body>
     <header class="site-header">
       <nav class="header-nav container">
-        <a href="/" class="site-logo">Smart Learn</a>
+        <a href="/" class="site-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Blog</span>
+        </a>
         <div class="nav-links">
           <a href="/">首页</a>
           <a href="/articles">文章</a>
@@ -68,12 +61,11 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
           <a href="/about">关于</a>
         </div>
         <div class="nav-actions">
-          <div id="theme-toggle-mount"></div>
-          <a href="/search" class="search-link" aria-label="搜索">
+          <a href="/search" class="nav-icon" aria-label="搜索">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </a>
-          <button class="mobile-menu-btn" aria-label="菜单">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <button class="nav-icon" id="theme-toggle-btn" aria-label="切换主题">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
           </button>
         </div>
       </nav>
@@ -89,14 +81,20 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
     </main>
 
     <footer class="site-footer">
-      <div class="container footer-content">
-        <p>&copy; {new Date().getFullYear()} Smart Learn Assistant. All rights reserved.</p>
-        <div class="footer-links">
-          <a href="/rss.xml">RSS</a>
-          <a href="/sitemap-index.xml">Sitemap</a>
-        </div>
+      <div class="container footer-inner">
+        <p>&copy; {new Date().getFullYear()} Blog</p>
+        <a href="/rss.xml">RSS</a>
       </div>
     </footer>
+
+    <script>
+      document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = cur === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    </script>
   </body>
 </html>
 
@@ -107,105 +105,91 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
     left: 0;
     right: 0;
     height: var(--header-height);
-    background-color: var(--color-bg-primary);
-    border-bottom: 1px solid var(--color-border);
+    background: rgba(250, 250, 250, 0.8);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--color-border-light);
     z-index: 100;
-    backdrop-filter: blur(8px);
-    background-color: rgba(255, 255, 255, 0.9);
   }
-
   [data-theme="dark"] .site-header {
-    background-color: rgba(26, 26, 26, 0.9);
+    background: rgba(10, 10, 10, 0.8);
   }
-
   .header-nav {
     display: flex;
     align-items: center;
     justify-content: space-between;
     height: 100%;
   }
-
   .site-logo {
-    font-size: 1.25rem;
-    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     color: var(--color-text-primary);
-    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
   }
-
   .site-logo:hover {
     color: var(--color-accent);
   }
-
-  .nav-links {
-    display: flex;
-    gap: 1.5rem;
-  }
-
-  .nav-links a {
-    color: var(--color-text-secondary);
-    font-size: 0.95rem;
-    font-weight: 500;
-    transition: color 0.2s ease;
-  }
-
-  .nav-links a:hover {
+  .site-logo svg {
     color: var(--color-accent);
   }
-
+  .nav-links {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .nav-links a {
+    padding: 0.4rem 0.75rem;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+  }
+  .nav-links a:hover {
+    color: var(--color-text-primary);
+    background: var(--color-accent-subtle);
+  }
   .nav-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.25rem;
   }
-
-  .search-link {
-    color: var(--color-text-secondary);
+  .nav-icon {
     display: flex;
     align-items: center;
-  }
-
-  .search-link:hover {
-    color: var(--color-accent);
-  }
-
-  .mobile-menu-btn {
-    display: none;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
     color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
   }
-
+  .nav-icon:hover {
+    color: var(--color-text-primary);
+    background: var(--color-accent-subtle);
+  }
   @media (max-width: 767px) {
-    .nav-links {
-      display: none;
-    }
-    .mobile-menu-btn {
-      display: flex;
-    }
+    .nav-links { display: none; }
   }
-
   .site-footer {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--color-border-light);
     padding: 2rem 0;
-    margin-top: 4rem;
-    color: var(--color-text-secondary);
-    font-size: 0.875rem;
+    margin-top: 6rem;
   }
-
-  .footer-content {
+  .footer-inner {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    color: var(--color-text-tertiary);
+    font-size: 0.8rem;
   }
-
-  .footer-links {
-    display: flex;
-    gap: 1rem;
+  .footer-inner a {
+    color: var(--color-text-tertiary);
+    font-size: 0.8rem;
   }
-
-  .footer-links a {
-    color: var(--color-text-secondary);
-  }
-
-  .footer-links a:hover {
+  .footer-inner a:hover {
     color: var(--color-accent);
   }
 </style>

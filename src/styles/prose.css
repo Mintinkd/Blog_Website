@@ -12,9 +12,10 @@
 .prose h6 {
   color: var(--color-text-primary);
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.35;
   margin-top: 2em;
-  margin-bottom: 0.8em;
+  margin-bottom: 0.6em;
+  letter-spacing: -0.01em;
 }
 
 .prose h1 {
@@ -22,13 +23,13 @@
 }
 
 .prose h2 {
-  font-size: 1.6rem;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--color-border);
+  font-size: 1.5rem;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .prose h3 {
-  font-size: 1.3rem;
+  font-size: 1.25rem;
 }
 
 .prose h4 {
@@ -36,13 +37,15 @@
 }
 
 .prose p {
-  margin-bottom: 1.2em;
+  margin-bottom: 1.3em;
 }
 
 .prose a {
   color: var(--color-accent);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color var(--transition-fast);
 }
 
 .prose a:hover {
@@ -61,7 +64,7 @@
 .prose ul,
 .prose ol {
   padding-left: 1.5em;
-  margin-bottom: 1.2em;
+  margin-bottom: 1.3em;
 }
 
 .prose ul {
@@ -73,21 +76,23 @@
 }
 
 .prose li {
-  margin-bottom: 0.4em;
+  margin-bottom: 0.35em;
+  line-height: 1.7;
 }
 
 .prose li > ul,
 .prose li > ol {
-  margin-top: 0.4em;
+  margin-top: 0.35em;
   margin-bottom: 0;
 }
 
 .prose blockquote {
-  border-left: 4px solid var(--color-quote-border);
+  border-left: 3px solid var(--color-accent);
   background-color: var(--color-quote-bg);
   padding: 0.8em 1.2em;
   margin: 1.5em 0;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--color-text-secondary);
 }
 
 .prose blockquote p:last-child {
@@ -96,18 +101,18 @@
 
 .prose code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.88em;
   background-color: var(--color-code-bg);
   color: var(--color-code-text);
   padding: 0.15em 0.4em;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
 }
 
 .prose pre {
   background-color: var(--color-code-bg);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  padding: 1em 1.2em;
+  padding: 1.1em 1.3em;
   overflow-x: auto;
   margin: 1.5em 0;
   line-height: 1.6;
@@ -116,7 +121,7 @@
 .prose pre code {
   background: none;
   padding: 0;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   border-radius: 0;
 }
 
@@ -124,7 +129,7 @@
   width: 100%;
   border-collapse: collapse;
   margin: 1.5em 0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .prose th,
@@ -135,30 +140,30 @@
 }
 
 .prose th {
-  background-color: var(--color-bg-secondary);
+  background-color: var(--color-bg-tertiary);
   font-weight: 600;
 }
 
 .prose tr:nth-child(even) {
-  background-color: var(--color-bg-secondary);
+  background-color: var(--color-bg-tertiary);
 }
 
 .prose img {
   border-radius: var(--radius-md);
   margin: 1.5em auto;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-md);
 }
 
 .prose hr {
   border: none;
-  border-top: 1px solid var(--color-border);
-  margin: 2em 0;
+  border-top: 1px solid var(--color-border-light);
+  margin: 2.5em 0;
 }
 
 .prose .footnotes {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--color-text-secondary);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-light);
   padding-top: 1em;
-  margin-top: 2em;
+  margin-top: 2.5em;
 }
