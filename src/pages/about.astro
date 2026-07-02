@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+---
+
+<BaseLayout title="关于" description="关于博主">
+  <section class="about-page">
+    <h1 class="page-title">关于</h1>
+    <div id="about-content">
+      <p class="loading-text">加载中...</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--color-text-primary);
+  }
+  .loading-text {
+    color: var(--color-text-tertiary);
+  }
+</style>
+
+<script>
+  async function loadAbout() {
+    const container = document.getElementById('about-content');
+    if (!container) return;
+
+    try {
+      const response = await fetch('/api/v1/config');
+      const data = await response.json();
+
+      if (data.code === 0 && data.data) {
+        const aboutContent = data.data.about_content;
+        if (aboutContent) {
+          const { renderMarkdown } = await import('../utils/markdown.ts');
+          container.innerHTML = `<div class="prose">${renderMarkdown(aboutContent)}</div>`;
+        } else {
+          container.innerHTML = '<p>博主尚未编写介绍</p>';
+        }
+      }
+    } catch (e) {
+      container.innerHTML = '<p>加载失败</p>';
+    }
+  }
+
+  loadAbout();
+</script>

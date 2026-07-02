@@ -1,0 +1,20 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import SearchBox from '../islands/SearchBox.vue';
+---
+
+<BaseLayout title="搜索" description="搜索文章">
+  <section class="search-page">
+    <h1 class="page-title">搜索</h1>
+    <SearchBox client:load />
+  </section>
+</BaseLayout>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--color-text-primary);
+  }
+</style>

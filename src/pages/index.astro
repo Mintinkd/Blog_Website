@@ -1,0 +1,98 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import ArticleCard from '../components/article/ArticleCard.astro';
+import Pagination from '../components/common/Pagination.astro';
+
+const page = 1;
+const page_size = 10;
+---
+
+<BaseLayout title="首页" description="个人博客 - 记录技术与生活">
+  <section class="hero">
+    <h1 class="hero-title">Smart Learn Assistant</h1>
+    <p class="hero-subtitle">记录技术与生活，分享成长与思考</p>
+  </section>
+
+  <section class="article-section">
+    <div id="article-list" data-page={page} data-page-size={page_size}>
+      <p class="loading-text">加载文章中...</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    text-align: center;
+    padding: 3rem 0 2rem;
+  }
+
+  .hero-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 0.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1.1rem;
+    color: var(--color-text-secondary);
+  }
+
+  .article-section {
+    margin-top: 2rem;
+  }
+
+  .loading-text {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 2rem;
+  }
+</style>
+
+<script>
+  async function loadArticles() {
+    const container = document.getElementById('article-list');
+    if (!container) return;
+
+    try {
+      const page = parseInt(container.dataset.page || '1', 10);
+      const pageSize = parseInt(container.dataset.pageSize || '10', 10);
+
+      const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published`);
+      const data = await response.json();
+
+      if (data.code === 0 && data.data) {
+        const { items, total, total_pages } = data.data;
+
+        if (items.length === 0) {
+          container.innerHTML = '<p class="empty-text">暂无文章</p>';
+          return;
+        }
+
+        container.innerHTML = items.map((article: any) => `
+          <article class="article-card">
+            <div class="article-card-body">
+              <h2 class="article-card-title">
+                <a href="/articles/${article.slug}">${article.title}</a>
+              </h2>
+              <p class="article-card-summary">${article.summary || ''}</p>
+              <div class="article-card-meta">
+                <span class="meta-date">${article.published_at ? new Date(article.published_at).toLocaleDateString('zh-CN') : ''}</span>
+                ${article.category ? `<a href="/categories/${article.category.slug}" class="meta-category">${article.category.name}</a>` : ''}
+                <span class="meta-views">${article.view_count} 次阅读</span>
+                <span class="meta-likes">${article.like_count} 赞</span>
+              </div>
+              <div class="article-card-tags">
+                ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="tag">${tag.name}</a>`).join('')}
+              </div>
+            </div>
+          </article>
+        `).join('');
+      }
+    } catch (e) {
+      container.innerHTML = '<p class="error-text">加载失败，请刷新重试</p>';
+    }
+  }
+
+  loadArticles();
+</script>

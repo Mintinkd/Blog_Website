@@ -1,0 +1,32 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+
+export async function getStaticPaths() {
+  return [];
+}
+
+const { slug } = Astro.params;
+---
+
+<BaseLayout title={`分类: ${slug}`} description="">
+  <section class="category-page">
+    <h1 class="page-title" id="category-title">分类: {slug}</h1>
+    <div id="article-list" data-category-slug={slug} data-page="1" data-page-size="10">
+      <p class="loading-text">加载文章中...</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--color-text-primary);
+  }
+  .loading-text {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 2rem;
+  }
+</style>

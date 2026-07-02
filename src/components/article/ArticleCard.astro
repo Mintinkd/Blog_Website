@@ -1,0 +1,116 @@
+---
+interface Props {
+  id: number;
+  title: string;
+  slug: string;
+  summary: string;
+  published_at: string | null;
+  category?: { name: string; slug: string };
+  tags?: Array<{ name: string; slug: string }>;
+  view_count: number;
+  like_count: number;
+}
+
+const { title, slug, summary, published_at, category, tags, view_count, like_count } = Astro.props;
+---
+
+<article class="article-card">
+  <div class="article-card-body">
+    <h2 class="article-card-title">
+      <a href={`/articles/${slug}`}>{title}</a>
+    </h2>
+    <p class="article-card-summary">{summary}</p>
+    <div class="article-card-meta">
+      {published_at && (
+        <span class="meta-date">{new Date(published_at).toLocaleDateString('zh-CN')}</span>
+      )}
+      {category && (
+        <a href={`/categories/${category.slug}`} class="meta-category">{category.name}</a>
+      )}
+      <span class="meta-views">{view_count} 次阅读</span>
+      <span class="meta-likes">{like_count} 赞</span>
+    </div>
+    {tags && tags.length > 0 && (
+      <div class="article-card-tags">
+        {tags.map((tag) => (
+          <a href={`/tags/${tag.slug}`} class="tag">{tag.name}</a>
+        ))}
+      </div>
+    )}
+  </div>
+</article>
+
+<style>
+  .article-card {
+    background-color: var(--color-bg-primary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+
+  .article-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--color-border);
+  }
+
+  .article-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+  }
+
+  .article-card-title a {
+    color: var(--color-text-primary);
+  }
+
+  .article-card-title a:hover {
+    color: var(--color-accent);
+  }
+
+  .article-card-summary {
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .article-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    color: var(--color-text-tertiary);
+    font-size: 0.85rem;
+  }
+
+  .meta-category {
+    color: var(--color-accent);
+  }
+
+  .article-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+  }
+
+  .tag {
+    padding: 0.15rem 0.6rem;
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    transition: all 0.2s;
+  }
+
+  .tag:hover {
+    background-color: var(--color-accent-light);
+    color: var(--color-accent);
+  }
+</style>

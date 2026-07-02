@@ -1,0 +1,140 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+---
+
+<BaseLayout title="归档" description="按时间归档的所有文章">
+  <section class="archives-page">
+    <h1 class="page-title">归档</h1>
+    <div id="archives-list">
+      <p class="loading-text">加载归档中...</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--color-text-primary);
+  }
+  .loading-text {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 2rem;
+  }
+
+  :global(.archive-year) {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 2px solid var(--color-accent);
+    padding-bottom: 0.3rem;
+    display: inline-block;
+  }
+
+  :global(.archive-month) {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  :global(.archive-list) {
+    list-style: none;
+    padding-left: 1rem;
+    border-left: 2px solid var(--color-border);
+  }
+
+  :global(.archive-list li) {
+    padding: 0.3rem 0;
+    position: relative;
+    padding-left: 1rem;
+  }
+
+  :global(.archive-list li::before) {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0.6rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--color-accent);
+  }
+
+  :global(.archive-list a) {
+    color: var(--color-text-primary);
+  }
+
+  :global(.archive-list a:hover) {
+    color: var(--color-accent);
+  }
+
+  :global(.archive-date) {
+    color: var(--color-text-tertiary);
+    font-size: 0.85rem;
+    margin-right: 0.5rem;
+  }
+</style>
+
+<script>
+  async function loadArchives() {
+    const container = document.getElementById('archives-list');
+    if (!container) return;
+
+    try {
+      const response = await fetch('/api/v1/articles?page_size=1000&status=published');
+      const data = await response.json();
+
+      if (data.code === 0 && data.data) {
+        const articles = data.data.items;
+
+        if (articles.length === 0) {
+          container.innerHTML = '<p class="empty-text">暂无文章</p>';
+          return;
+        }
+
+        const grouped: Record<string, Record<string, any[]>> = {};
+        for (const article of articles) {
+          const date = article.published_at || article.created_at;
+          const d = new Date(date);
+          const year = d.getFullYear().toString();
+          const month = (d.getMonth() + 1).toString().padStart(2, '0');
+
+          if (!grouped[year]) grouped[year] = {};
+          if (!grouped[year][month]) grouped[year][month] = [];
+          grouped[year][month].push(article);
+        }
+
+        let html = '';
+        const years = Object.keys(grouped).sort((a, b) => Number(b) - Number(a));
+
+        for (const year of years) {
+          html += `<h2 class="archive-year">${year}</h2>`;
+          const months = Object.keys(grouped[year]).sort((a, b) => Number(b) - Number(a));
+
+          for (const month of months) {
+            html += `<h3 class="archive-month">${month}月</h3>`;
+            html += '<ul class="archive-list">';
+            for (const article of grouped[year][month]) {
+              const date = new Date(article.published_at || article.created_at);
+              const dateStr = `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+              html += `<li><span class="archive-date">${dateStr}</span><a href="/articles/${article.slug}">${article.title}</a></li>`;
+            }
+            html += '</ul>';
+          }
+        }
+
+        container.innerHTML = html;
+      }
+    } catch (e) {
+      container.innerHTML = '<p class="error-text">加载失败</p>';
+    }
+  }
+
+  loadArchives();
+</script>

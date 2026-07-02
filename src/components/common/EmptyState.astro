@@ -1,0 +1,28 @@
+---
+interface Props {
+  message?: string;
+}
+
+const { message = '暂无内容' } = Astro.props;
+---
+
+<div class="empty-state">
+  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+    <polyline points="13 2 13 9 20 9"></polyline>
+  </svg>
+  <p class="empty-message">{message}</p>
+</div>
+
+<style>
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--color-text-tertiary);
+  }
+
+  .empty-message {
+    margin-top: 1rem;
+    font-size: 1rem;
+  }
+</style>

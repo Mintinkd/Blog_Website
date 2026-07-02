@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+---
+
+<BaseLayout title="文章列表" description="所有文章列表">
+  <section class="articles-page">
+    <h1 class="page-title">所有文章</h1>
+    <div id="article-list" data-page="1" data-page-size="10">
+      <p class="loading-text">加载文章中...</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--color-text-primary);
+  }
+  .loading-text {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 2rem;
+  }
+</style>

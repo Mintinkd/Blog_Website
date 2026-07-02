@@ -1,0 +1,14 @@
+---
+import FriendLinkList from '../islands/FriendLinkList.vue';
+---
+
+<aside class="sidebar-content">
+  <FriendLinkList client:load />
+</aside>
+
+<style>
+  .sidebar-content {
+    position: sticky;
+    top: calc(var(--header-height) + 2rem);
+  }
+</style>
