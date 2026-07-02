@@ -1,6 +1,6 @@
 export const onRequest: PagesFunction<{}> = async (context) => {
   const url = new URL(context.request.url);
-  const workerUrl = `https://blog_website.${context.env.ACCOUNT_ID || 'your-subdomain'}.workers.dev${url.pathname}${url.search}`;
+  const workerUrl = `https://blog_website.${context.env.ACCOUNT_ID || 'zen-13467'}.workers.dev${url.pathname}${url.search}`;
 
   const newRequest = new Request(workerUrl, {
     method: context.request.method,
