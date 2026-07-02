@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+---
+
+<BaseLayout title="后台管理" description="博客管理后台">
+  <div id="admin-app-mount"></div>
+</BaseLayout>
+
+<script>
+  import { createApp } from 'vue';
+  import ElementPlus from 'element-plus';
+  import 'element-plus/dist/index.css';
+
+  const mount = document.getElementById('admin-app-mount');
+  if (mount) {
+    const { default: AdminApp } = await import('../../admin/App.vue');
+    const app = createApp(AdminApp);
+    app.use(ElementPlus);
+    app.mount(mount);
+  }
+</script>

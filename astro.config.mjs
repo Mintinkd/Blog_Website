@@ -4,9 +4,8 @@ import sitemap from '@astrojs/sitemap';
 import cloudflare from '@astrojs/cloudflare';
 
 export default defineConfig({
-  site: 'https://blog.example.com',
+  site: 'https://blog_website.pages.dev',
   output: 'static',
-  adapter: cloudflare(),
   integrations: [
     vue(),
     sitemap(),
