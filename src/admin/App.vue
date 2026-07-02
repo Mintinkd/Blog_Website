@@ -42,6 +42,10 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
             标签管理
           </button>
+          <button :class="['nav-item', { active: currentTab === 'about' }]" @click="currentTab = 'about'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            关于页面
+          </button>
           <button :class="['nav-item', { active: currentTab === 'config' }]" @click="currentTab = 'config'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             站点配置
@@ -142,13 +146,29 @@
           </div>
         </div>
 
+        <div v-if="currentTab === 'about'" class="admin-panel">
+          <div class="panel-header">
+            <h2>关于页面</h2>
+            <a href="/about" target="_blank" class="btn-secondary" style="font-size:0.8rem;padding:0.35rem 0.75rem;text-decoration:none;">预览页面 →</a>
+          </div>
+          <div v-if="configLoading" class="loading">加载中...</div>
+          <div v-else class="config-form">
+            <p style="font-size:0.85rem;color:var(--color-text-tertiary);margin-bottom:1rem;">使用 Markdown 语法编写关于页面的内容，保存后前台 /about 页面将自动更新</p>
+            <div class="form-group">
+              <label>关于页内容 (Markdown)</label>
+              <textarea v-model="aboutContent" rows="20" class="editor-textarea"></textarea>
+            </div>
+            <button class="btn-primary" @click="saveAbout" :disabled="aboutSaving">{{ aboutSaving ? '保存中...' : '保存' }}</button>
+            <p v-if="aboutMsg" class="msg">{{ aboutMsg }}</p>
+          </div>
+        </div>
+
         <div v-if="currentTab === 'config'" class="admin-panel">
           <div class="panel-header"><h2>站点配置</h2></div>
           <div v-if="configLoading" class="loading">加载中...</div>
           <div v-else class="config-form">
             <div class="form-group"><label>站点标题</label><input v-model="configForm.site_title" /></div>
             <div class="form-group"><label>站点描述</label><textarea v-model="configForm.site_description" rows="2"></textarea></div>
-            <div class="form-group"><label>关于页内容 (Markdown)</label><textarea v-model="configForm.about_content" rows="10"></textarea></div>
             <button class="btn-primary" @click="saveConfig">保存配置</button>
             <p v-if="configMsg" class="msg">{{ configMsg }}</p>
           </div>
@@ -220,9 +240,13 @@ const tags = ref<any[]>([]);
 const showTagForm = ref(false);
 const tagForm = ref({ name: '', slug: '' });
 
-const configForm = ref({ site_title: '', site_description: '', about_content: '' });
+const configForm = ref({ site_title: '', site_description: '' });
 const configLoading = ref(false);
 const configMsg = ref('');
+
+const aboutContent = ref('');
+const aboutSaving = ref(false);
+const aboutMsg = ref('');
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` };
@@ -293,8 +317,8 @@ async function loadConfig() {
       configForm.value = {
         site_title: data.data.site_title || '',
         site_description: data.data.site_description || '',
-        about_content: data.data.about_content || '',
       };
+      aboutContent.value = data.data.about_content || '';
     }
   } finally {
     configLoading.value = false;
@@ -389,6 +413,18 @@ async function saveConfig() {
   else configMsg.value = data.message || '保存失败';
 }
 
+async function saveAbout() {
+  aboutSaving.value = true;
+  aboutMsg.value = '';
+  try {
+    const data = await api('PUT', '/config', { about_content: aboutContent.value });
+    if (data.code === 0) aboutMsg.value = '保存成功';
+    else aboutMsg.value = data.message || '保存失败';
+  } finally {
+    aboutSaving.value = false;
+  }
+}
+
 watch(isLoggedIn, (v) => {
   if (v) {
     loadArticles();
@@ -406,7 +442,7 @@ onMounted(() => {
 });
 
 watch(currentTab, (tab) => {
-  if (tab === 'config') loadConfig();
+  if (tab === 'config' || tab === 'about') loadConfig();
 });
 </script>
 
