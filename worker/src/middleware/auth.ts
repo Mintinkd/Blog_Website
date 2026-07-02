@@ -95,10 +95,19 @@ export async function authMiddleware(request: Request, env: Env): Promise<Respon
   }
 
   const token = authHeader.slice(7);
-  const payload = await verifyToken(token, env.jwt_secret);
+  const jwtSecret = await getJwtSecretFromDb(env);
+  const payload = await verifyToken(token, jwtSecret);
   if (!payload) {
     return unauthorized('Invalid or expired token');
   }
 
   return null;
+}
+
+async function getJwtSecretFromDb(env: Env): Promise<string> {
+  const row = await env.DB.prepare("SELECT value FROM site_config WHERE key = 'jwt_secret'").first<{ value: string }>();
+  if (!row || !row.value) {
+    throw new Error('JWT secret not configured');
+  }
+  return row.value;
 }

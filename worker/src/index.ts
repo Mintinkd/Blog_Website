@@ -2,7 +2,7 @@ export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
   API_PREFIX: string;
-  jwt_secret: string;
+
 }
 
 export default {
