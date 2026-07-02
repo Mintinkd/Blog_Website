@@ -33,7 +33,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           nodeVersion: '22'
-          command: pages deploy dist --project-name=blog_website
+          command: pages deploy dist --project-name=blog-website-page
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
