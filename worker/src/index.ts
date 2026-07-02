@@ -1,8 +1,9 @@
+import { router } from './router';
+
 export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
   API_PREFIX: string;
-
 }
 
 export default {
@@ -11,7 +12,6 @@ export default {
     const apiPrefix = env.API_PREFIX || '/api/v1';
 
     if (url.pathname.startsWith(apiPrefix)) {
-      const { router } = await import('./router');
       return router(request, env, ctx);
     }
 
