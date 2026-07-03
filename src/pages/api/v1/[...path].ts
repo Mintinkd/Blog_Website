@@ -1,6 +1,6 @@
 export const prerender = false;
 
-const WORKER_ORIGIN = 'https://blog_website.zen-13467.workers.dev';
+const WORKER_ORIGIN = 'https://blog-api.zen-13467.workers.dev';
 
 export async function ALL({ request, url }: { request: Request; url: URL }) {
   if (request.method === 'OPTIONS') {

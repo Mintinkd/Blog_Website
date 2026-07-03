@@ -1,5 +1,5 @@
 {
-  "name": "blog_website",
+  "name": "blog-api",
   "main": "src/index.ts",
   "compatibility_date": "2024-09-23",
   "d1_databases": [

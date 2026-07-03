@@ -3,7 +3,7 @@ import type { APIContext } from 'astro';
 
 export const prerender = false;
 
-const WORKER_ORIGIN = 'https://blog_website.zen-13467.workers.dev';
+const WORKER_ORIGIN = 'https://blog-api.zen-13467.workers.dev';
 
 export async function GET(context: APIContext) {
   const siteUrl = context.site?.toString() || 'https://blog-website.pages.dev';
