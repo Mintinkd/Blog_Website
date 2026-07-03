@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS articles (
   content_html TEXT NOT NULL DEFAULT '',
   summary TEXT DEFAULT '',
   cover_image TEXT DEFAULT '',
-  category_id INTEGER NOT NULL,
+  category_id INTEGER,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
   view_count INTEGER NOT NULL DEFAULT 0,
   like_count INTEGER NOT NULL DEFAULT 0,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS articles (
   published_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS article_tags (
@@ -129,13 +129,13 @@ CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
 -- FTS5 Sync Triggers
 CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
   INSERT INTO articles_fts(rowid, title, content, category_name, tag_names)
-    SELECT
+    VALUES (
       NEW.id,
       NEW.title,
       NEW.content,
-      COALESCE(c.name, ''),
+      COALESCE((SELECT name FROM categories WHERE id = NEW.category_id), ''),
       COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '')
-    FROM categories c WHERE c.id = NEW.category_id;
+    );
 END;
 
 CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
@@ -147,20 +147,20 @@ CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
   INSERT INTO articles_fts(articles_fts, rowid, title, content, category_name, tag_names)
     VALUES('delete', OLD.id, OLD.title, OLD.content, '', '');
   INSERT INTO articles_fts(rowid, title, content, category_name, tag_names)
-    SELECT
+    VALUES (
       NEW.id,
       NEW.title,
       NEW.content,
-      COALESCE(c.name, ''),
+      COALESCE((SELECT name FROM categories WHERE id = NEW.category_id), ''),
       COALESCE((SELECT group_concat(t.name, ',') FROM article_tags at JOIN tags t ON at.tag_id = t.id WHERE at.article_id = NEW.id), '')
-    FROM categories c WHERE c.id = NEW.category_id;
+    );
 END;
 
 -- Initial Data: Default Category
 INSERT OR IGNORE INTO categories (name, slug, description) VALUES ('未分类', 'uncategorized', '默认分类');
 
 -- Initial Data: Site Configuration
-INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_title', 'Smart Learn Assistant', 1);
+INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_title', 'My Blog', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_subtitle', '记录技术与生活', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_description', '个人独立博客，分享技术心得与生活感悟', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_keywords', '博客,技术,开发', 1);

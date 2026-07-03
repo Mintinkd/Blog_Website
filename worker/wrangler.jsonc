@@ -13,6 +13,10 @@
     {
       "binding": "MEDIA",
       "id": "c4f354b6c61e43e798a679fb6733edd8"
+    },
+    {
+      "binding": "VIEW_CACHE",
+      "id": "4a001536365e49e195409380ac3d872e"
     }
   ],
   "vars": {
