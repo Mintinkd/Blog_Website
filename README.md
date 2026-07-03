@@ -291,17 +291,28 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 1. **D1 数据库** — 名为 `blog-db`
 2. **KV 命名空间** — `MEDIA`（媒体存储）+ `VIEW_CACHE`（阅读量缓存）
 3. **Pages 项目** — 名为 `blog-website-page`
-4. **Worker** — 名为 `blog_website`
+4. **Worker** — 名为 `blog-api`
+
+> **注意**：Worker 名称必须为 `blog-api`，不能与 Pages 项目同名，否则 Git 集成自动部署时会覆盖 API Worker。
 
 ### 自动部署
 
-> **重要**：如果 Cloudflare Pages 项目启用了 Git 自动部署，请在 Settings → Builds & deployments 中关闭 Automatic deployments，避免与 GitHub Actions 冲突覆盖 API Worker。
+> **重要**：请在 Cloudflare Dashboard 中关闭所有 Pages 项目的 Git 自动部署（Settings → Builds & deployments → 关闭 Automatic deployments），统一由 GitHub Actions 管理部署，避免覆盖 API Worker。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
 1. 安装依赖 → 构建Astro站点
-2. 部署 `dist` 到 Cloudflare Pages
-3. 部署 Worker 到 Cloudflare Workers
+2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
+3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
+
+### 部署架构
+
+| 项目 | 类型 | URL | 说明 |
+|------|------|-----|------|
+| `blog-website-page` | Pages | `blog-website-page.pages.dev` | 前端站点（Astro SSR + 静态） |
+| `blog-api` | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV） |
+
+前端通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker。
 
 ### 手动部署
 
@@ -317,7 +328,7 @@ npx wrangler deploy
 
 ## 自定义域名
 
-在 Cloudflare Pages 项目设置中绑定自定义域名，Worker 同样需要在 Workers 设置中添加自定义域名或路由。
+在 Cloudflare Pages 项目设置中绑定自定义域名。API Worker 需要在 Workers 设置中单独添加自定义域名或路由。
 
 ## 多语言 (i18n)
 
