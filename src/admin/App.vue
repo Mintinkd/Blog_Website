@@ -46,6 +46,14 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
             {{ t('admin.about_page') }}
           </button>
+          <button :class="['nav-item', { active: currentTab === 'comments' }]" @click="currentTab = 'comments'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            {{ t('admin.comments') }}
+          </button>
+          <button :class="['nav-item', { active: currentTab === 'media' }]" @click="currentTab = 'media'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            {{ t('admin.media') }}
+          </button>
           <button :class="['nav-item', { active: currentTab === 'config' }]" @click="currentTab = 'config'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             {{ t('admin.site_config') }}
@@ -178,6 +186,59 @@
           </div>
         </div>
 
+        <div v-if="currentTab === 'comments'" class="admin-panel">
+          <div class="panel-header">
+            <h2>{{ t('admin.comments') }}</h2>
+            <div style="display:flex;gap:0.5rem;">
+              <button :class="['btn-secondary', { active: commentFilter === '' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = ''; loadComments()">{{ t('admin.all') }}</button>
+              <button :class="['btn-secondary', { active: commentFilter === 'pending' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = 'pending'; loadComments()">{{ t('admin.pending') }}</button>
+              <button :class="['btn-secondary', { active: commentFilter === 'approved' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = 'approved'; loadComments()">{{ t('admin.approved') }}</button>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>{{ t('admin.nickname') }}</th><th>{{ t('admin.content') }}</th><th>{{ t('admin.articles') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="c in comments" :key="c.id">
+                <td>{{ c.nickname }}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.content }}</td>
+                <td><a :href="`/articles/${c.article_slug || ''}`" target="_blank" style="font-size:0.8rem;">{{ c.article_title }}</a></td>
+                <td><span :class="['status-badge', c.status]">{{ c.status === 'pending' ? t('admin.pending') : c.status === 'approved' ? t('admin.approved') : t('admin.rejected') }}</span></td>
+                <td>{{ formatDate(c.created_at) }}</td>
+                <td class="actions">
+                  <button v-if="c.status === 'pending'" @click="approveComment(c.id)" style="color:var(--color-success);">{{ t('admin.approve') }}</button>
+                  <button v-if="c.status === 'pending'" @click="rejectComment(c.id)" style="color:var(--color-warning);">{{ t('admin.reject') }}</button>
+                  <button @click="deleteComment(c.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                </td>
+              </tr>
+              <tr v-if="comments.length === 0"><td colspan="6" class="empty">{{ t('admin.no_comments') }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="currentTab === 'media'" class="admin-panel">
+          <div class="panel-header">
+            <h2>{{ t('admin.media') }}</h2>
+            <label class="btn-primary" style="cursor:pointer;">
+              {{ t('admin.upload') }}
+              <input type="file" accept="image/*" @change="uploadMedia" style="display:none;" />
+            </label>
+          </div>
+          <div v-if="mediaLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-else class="media-grid">
+            <div v-for="m in mediaList" :key="m.id" class="media-item">
+              <img :src="m.url" :alt="m.original_name" class="media-thumb" />
+              <div class="media-info">
+                <span class="media-name">{{ m.original_name }}</span>
+                <div class="media-actions-row">
+                  <button class="btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;" @click="copyMediaUrl(m.url)">{{ t('admin.copy_url') }}</button>
+                  <button class="btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;" @click="deleteMedia(m.id)">{{ t('admin.delete') }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p v-if="mediaList.length === 0 && !mediaLoading" class="empty">{{ t('admin.no_media') }}</p>
+        </div>
+
         <div v-if="currentTab === 'users'" class="admin-panel">
           <div class="panel-header">
             <h2>{{ t('admin.users') }}</h2>
@@ -298,6 +359,12 @@ const users = ref<any[]>([]);
 const showUserForm = ref(false);
 const userForm = ref({ username: '', password: '', display_name: '', role: 'admin' });
 const editingUserId = ref<number | null>(null);
+
+const comments = ref<any[]>([]);
+const commentFilter = ref('');
+
+const mediaList = ref<any[]>([]);
+const mediaLoading = ref(false);
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` };
@@ -518,12 +585,85 @@ async function deleteUser(id: number) {
   else alert(data.message || t('admin.delete_failed'));
 }
 
+async function loadComments() {
+  const status = commentFilter.value ? `?status=${commentFilter.value}` : '';
+  const data = await api('GET', `/comments${status}`);
+  if (data.code === 0) comments.value = data.data || [];
+}
+
+async function approveComment(id: number) {
+  const data = await api('PUT', `/comments/${id}/approve`);
+  if (data.code === 0) await loadComments();
+  else alert(data.message || t('admin.save_failed'));
+}
+
+async function rejectComment(id: number) {
+  const data = await api('PUT', `/comments/${id}/reject`);
+  if (data.code === 0) await loadComments();
+  else alert(data.message || t('admin.save_failed'));
+}
+
+async function deleteComment(id: number) {
+  if (!confirm(t('admin.delete_confirm'))) return;
+  const data = await api('DELETE', `/comments/${id}`);
+  if (data.code === 0) await loadComments();
+  else alert(data.message || t('admin.delete_failed'));
+}
+
+async function loadMedia() {
+  mediaLoading.value = true;
+  try {
+    const data = await api('GET', '/media');
+    if (data.code === 0) mediaList.value = data.data?.items || [];
+  } finally {
+    mediaLoading.value = false;
+  }
+}
+
+async function uploadMedia(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/v1/media/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token.value}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.code === 0) await loadMedia();
+    else alert(data.message || t('admin.upload_failed'));
+  } catch {
+    alert(t('admin.upload_failed'));
+  }
+  input.value = '';
+}
+
+async function deleteMedia(id: number) {
+  if (!confirm(t('admin.delete_confirm'))) return;
+  const data = await api('DELETE', `/media/${id}`);
+  if (data.code === 0) await loadMedia();
+  else alert(data.message || t('admin.delete_failed'));
+}
+
+function copyMediaUrl(url: string) {
+  const fullUrl = new URL(url, window.location.origin).href;
+  navigator.clipboard.writeText(fullUrl);
+  alert(t('admin.copied'));
+}
+
 watch(isLoggedIn, (v) => {
   if (v) {
     loadArticles();
     loadCategories();
     loadTags();
     loadUsers();
+    loadComments();
+    loadMedia();
   }
 });
 
@@ -533,12 +673,16 @@ onMounted(() => {
     loadCategories();
     loadTags();
     loadUsers();
+    loadComments();
+    loadMedia();
   }
 });
 
 watch(currentTab, (tab) => {
   if (tab === 'config' || tab === 'about') loadConfig();
   if (tab === 'users') loadUsers();
+  if (tab === 'comments') loadComments();
+  if (tab === 'media') loadMedia();
 });
 </script>
 
@@ -946,6 +1090,60 @@ watch(currentTab, (tab) => {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: var(--color-success);
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.media-item {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.media-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+}
+
+.media-info {
+  padding: 0.5rem;
+}
+
+.media-name {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.35rem;
+}
+
+.media-actions-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.status-badge.pending {
+  background: rgba(255, 159, 10, 0.1);
+  color: var(--color-warning);
+}
+
+.status-badge.approved {
+  background: rgba(52, 199, 89, 0.1);
+  color: var(--color-success);
+}
+
+.status-badge.rejected {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--color-error);
 }
 
 @media (max-width: 767px) {

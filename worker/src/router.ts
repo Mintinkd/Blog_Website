@@ -8,7 +8,7 @@ import { handleListTags, handleCreateTag, handleDeleteTag } from './handlers/tag
 import { handleListComments, handleSubmitComment, handleListAllComments, handleApproveComment, handleRejectComment, handleDeleteComment } from './handlers/comment';
 import { handleSearch } from './handlers/search';
 import { handleToggleLike, handleLikeStatus } from './handlers/like';
-import { handleUploadMedia, handleListMedia, handleDeleteMedia } from './handlers/media';
+import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia } from './handlers/media';
 import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
 import { handleExport, handleImport } from './handlers/admin';
@@ -102,6 +102,7 @@ addRoute('GET', '/articles/:article_id/like-status', async (req, env, _ctx, para
 addRoute('POST', '/media/upload', async (req, env) => handleUploadMedia(req, env), true);
 addRoute('GET', '/media', async (req, env) => handleListMedia(req, env), true);
 addRoute('DELETE', '/media/:id', async (req, env, _ctx, params) => handleDeleteMedia(req, env, params), true);
+addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeMedia(req, env, params));
 
 addRoute('GET', '/config', async (req, env) => handleGetPublicConfig(req, env));
 addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env), true);

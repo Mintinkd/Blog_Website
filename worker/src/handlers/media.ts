@@ -87,3 +87,32 @@ export async function handleDeleteMedia(request: Request, env: Env, params: Reco
 
   return successResponse(null, 'Media deleted');
 }
+
+export async function handleServeMedia(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+  const key = params['0'] || params.key || '';
+  if (!key) return notFound('Media not found');
+
+  const value = await env.MEDIA.get(key, { type: 'arrayBuffer' });
+  if (!value) return notFound('Media not found');
+
+  const metadata = await env.MEDIA.getWithMetadata(key);
+  const meta = metadata.metadata as { mime_type?: string; original_name?: string } | null;
+
+  const mimeType = meta?.mime_type || guessMimeType(key);
+  const headers = new Headers({
+    'Content-Type': mimeType,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  });
+
+  return new Response(value, { headers });
+}
+
+function guessMimeType(key: string): string {
+  const ext = key.split('.').pop()?.toLowerCase() || '';
+  const map: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+    pdf: 'application/pdf',
+  };
+  return map[ext] || 'application/octet-stream';
+}

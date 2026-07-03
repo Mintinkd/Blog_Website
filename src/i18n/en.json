@@ -116,5 +116,19 @@
   "page.no_articles_category": "No articles in this category",
   "page.no_articles_tag": "No articles with this tag",
   "about.no_content": "The author hasn't written an introduction yet",
-  "article.check_link": "Please check if the link is correct"
+  "article.check_link": "Please check if the link is correct",
+  "admin.comments": "Comments",
+  "admin.media": "Media",
+  "admin.all": "All",
+  "admin.pending": "Pending",
+  "admin.approved": "Approved",
+  "admin.rejected": "Rejected",
+  "admin.approve": "Approve",
+  "admin.reject": "Reject",
+  "admin.no_comments": "No comments",
+  "admin.upload": "Upload",
+  "admin.upload_failed": "Upload failed",
+  "admin.copy_url": "Copy URL",
+  "admin.copied": "Copied",
+  "admin.no_media": "No media"
 }

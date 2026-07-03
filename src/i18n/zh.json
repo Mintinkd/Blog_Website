@@ -116,5 +116,19 @@
   "page.no_articles_category": "该分类暂无文章",
   "page.no_articles_tag": "该标签暂无文章",
   "about.no_content": "博主尚未编写介绍",
-  "article.check_link": "请检查链接是否正确"
+  "article.check_link": "请检查链接是否正确",
+  "admin.comments": "评论管理",
+  "admin.media": "图片管理",
+  "admin.all": "全部",
+  "admin.pending": "待审核",
+  "admin.approved": "已通过",
+  "admin.rejected": "已拒绝",
+  "admin.approve": "通过",
+  "admin.reject": "拒绝",
+  "admin.no_comments": "暂无评论",
+  "admin.upload": "上传图片",
+  "admin.upload_failed": "上传失败",
+  "admin.copy_url": "复制链接",
+  "admin.copied": "已复制",
+  "admin.no_media": "暂无图片"
 }
