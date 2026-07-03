@@ -8,8 +8,13 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Trigger backup via API
         env:
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
@@ -43,3 +48,20 @@ jobs:
           name: blog-backup-${{ github.run_number }}
           path: backup.json
           retention-days: 30
+
+      - name: Commit backup to repo
+        run: |
+          mkdir -p backups
+          DATE=$(date +%Y-%m-%d)
+          cp backup.json "backups/backup-${DATE}.json"
+
+          # Keep only last 30 daily backups in the directory
+          cd backups
+          ls -t backup-*.json | tail -n +31 | xargs -r rm --
+          cd ..
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups/
+          git diff --cached --quiet || git commit -m "backup: ${DATE}"
+          git push
