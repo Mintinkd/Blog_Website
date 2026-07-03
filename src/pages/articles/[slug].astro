@@ -44,6 +44,23 @@ const { slug } = Astro.params;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
+  import { createApp } from 'vue';
+
+  async function mountVueComponents(articleId: number, likeCount: number) {
+    const likeMount = document.getElementById('like-button-mount');
+    if (likeMount) {
+      const { default: LikeButton } = await import('../../islands/LikeButton.vue');
+      const app = createApp(LikeButton, { articleId, initialCount: likeCount });
+      app.mount(likeMount);
+    }
+
+    const commentMount = document.getElementById('comment-section-mount');
+    if (commentMount) {
+      const { default: CommentSection } = await import('../../islands/CommentSection.vue');
+      const app = createApp(CommentSection, { articleId });
+      app.mount(commentMount);
+    }
+  }
 
   async function loadArticle() {
     const container = document.getElementById('article-detail');
@@ -94,8 +111,10 @@ const { slug } = Astro.params;
           <div class="article-actions">
             <div id="like-button-mount" data-article-id="${article.id}"></div>
           </div>
-          <div id="comment-section-mount" data-article-id="${article.id}"></div>
+          <div id="comment-section-mount"></div>
         `;
+
+        mountVueComponents(article.id, article.like_count || 0);
       } else {
         container.innerHTML = `<div class="article-not-found"><h2>${t('article.not_found')}</h2><p>${t('article.check_link')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;
       }

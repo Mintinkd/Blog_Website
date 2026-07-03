@@ -3,6 +3,7 @@ import { router } from './router';
 export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
+  VIEW_CACHE: KVNamespace;
   API_PREFIX: string;
 }
 

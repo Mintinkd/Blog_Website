@@ -26,7 +26,8 @@ export async function handleGetArticle(request: Request, env: Env, params: Recor
     return notFound('Article not found');
   }
 
-  ctx_waitUntil(env, incrementViewCount(env, article.id));
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || undefined;
+  incrementViewCount(env, article.id, ip);
 
   return successResponse(article);
 }
@@ -93,6 +94,3 @@ export async function handleDeleteArticle(request: Request, env: Env, params: Re
   return successResponse(null, 'Article deleted');
 }
 
-function ctx_waitUntil(env: Env, promise: Promise<unknown>): void {
-  void promise;
-}

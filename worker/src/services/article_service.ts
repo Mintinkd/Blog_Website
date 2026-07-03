@@ -192,7 +192,16 @@ export async function deleteArticle(env: Env, id: number): Promise<boolean> {
   return result.meta.changes > 0;
 }
 
-export async function incrementViewCount(env: Env, id: number): Promise<void> {
+export async function incrementViewCount(env: Env, id: number, ip?: string): Promise<void> {
+  if (ip) {
+    const key = `view:${id}:${ip}`;
+    try {
+      const kv = env.VIEW_CACHE || env.MEDIA;
+      const cached = await kv.get(key);
+      if (cached) return;
+      await kv.put(key, '1', { expirationTtl: 3600 });
+    } catch {}
+  }
   await env.DB.prepare('UPDATE articles SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
 }
 
