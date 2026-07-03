@@ -130,5 +130,8 @@
   "admin.upload_failed": "Upload failed",
   "admin.copy_url": "Copy URL",
   "admin.copied": "Copied",
-  "admin.no_media": "No media"
+  "admin.no_media": "No media",
+  "admin.edit_mode": "Edit",
+  "admin.split_mode": "Split",
+  "admin.preview_mode": "Preview"
 }

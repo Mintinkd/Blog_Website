@@ -303,7 +303,20 @@
                 </div>
               </div>
               <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
-              <div class="form-group"><label>{{ t('admin.content') }} (Markdown)</label><textarea v-model="articleForm.content" rows="20" class="editor-textarea"></textarea></div>
+              <div class="form-group">
+                <div class="content-label-row">
+                  <label>{{ t('admin.content') }} (Markdown)</label>
+                  <div class="preview-toggle">
+                    <button :class="['toggle-btn', { active: editorMode === 'edit' }]" @click="editorMode = 'edit'">{{ t('admin.edit_mode') }}</button>
+                    <button :class="['toggle-btn', { active: editorMode === 'split' }]" @click="editorMode = 'split'">{{ t('admin.split_mode') }}</button>
+                    <button :class="['toggle-btn', { active: editorMode === 'preview' }]" @click="editorMode = 'preview'">{{ t('admin.preview_mode') }}</button>
+                  </div>
+                </div>
+                <div :class="['editor-content-area', editorMode]">
+                  <textarea v-if="editorMode !== 'preview'" v-model="articleForm.content" rows="20" class="editor-textarea" @input="updatePreview"></textarea>
+                  <div v-if="editorMode !== 'edit'" class="editor-preview prose" v-html="previewHtml"></div>
+                </div>
+              </div>
             </div>
             <div class="editor-footer">
               <button class="btn-secondary" @click="showArticleEditor = false">{{ t('admin.cancel') }}</button>
@@ -319,6 +332,31 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
+import { marked } from 'marked';
+import hljs from 'highlight.js';
+import DOMPurify from 'dompurify';
+
+marked.setOptions({
+  highlight(code: string, lang: string) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+});
+
+function updatePreview() {
+  if (!articleForm.value.content) {
+    previewHtml.value = '';
+    return;
+  }
+  try {
+    const raw = marked.parse(articleForm.value.content) as string;
+    previewHtml.value = DOMPurify.sanitize(raw);
+  } catch {
+    previewHtml.value = '';
+  }
+}
 
 const API = '/api/v1';
 const currentLocale = ref(initLocale());
@@ -337,6 +375,8 @@ const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
 const articleForm = ref({ title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft' });
 const articleSaving = ref(false);
+const editorMode = ref<'edit' | 'split' | 'preview'>('edit');
+const previewHtml = ref('');
 
 const categories = ref<any[]>([]);
 const showCategoryForm = ref(false);
@@ -458,6 +498,7 @@ async function editArticle(a: any) {
     const detail = await api('GET', `/articles/${a.slug}`);
     if (detail.code === 0 && detail.data) {
       articleForm.value.content = detail.data.content || '';
+      updatePreview();
     }
   } catch {}
 }
@@ -1076,6 +1117,88 @@ watch(currentTab, (tab) => {
   font-size: 0.85rem;
   line-height: 1.6;
   min-height: 400px;
+}
+
+.content-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.3rem;
+}
+
+.content-label-row label {
+  margin-bottom: 0;
+}
+
+.preview-toggle {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.toggle-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toggle-btn:hover {
+  color: var(--color-text-secondary);
+  border-color: var(--color-accent);
+}
+
+.toggle-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.editor-content-area {
+  display: flex;
+  gap: 1rem;
+  min-height: 400px;
+}
+
+.editor-content-area .editor-textarea {
+  flex: 1;
+  min-height: 400px;
+  resize: vertical;
+}
+
+.editor-content-area.split .editor-textarea {
+  flex: 1;
+  min-height: 400px;
+}
+
+.editor-content-area.split .editor-preview {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.editor-content-area.edit .editor-preview {
+  display: none;
+}
+
+.editor-content-area.preview .editor-textarea {
+  display: none;
+}
+
+.editor-content-area.preview .editor-preview {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.editor-preview {
+  padding: 1rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  font-size: 0.9rem;
+  line-height: 1.7;
 }
 
 .editor-footer {

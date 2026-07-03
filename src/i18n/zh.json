@@ -130,5 +130,8 @@
   "admin.upload_failed": "上传失败",
   "admin.copy_url": "复制链接",
   "admin.copied": "已复制",
-  "admin.no_media": "暂无图片"
+  "admin.no_media": "暂无图片",
+  "admin.edit_mode": "编辑",
+  "admin.split_mode": "分屏",
+  "admin.preview_mode": "预览"
 }
