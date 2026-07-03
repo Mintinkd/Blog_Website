@@ -11,15 +11,26 @@ jobs:
 
     steps:
       - name: Trigger backup via API
+        env:
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          SITE_URL: ${{ secrets.SITE_URL }}
         run: |
-          RESPONSE=$(curl -s -w "%{http_code}" \
-            -X GET \
-            -H "Authorization: Bearer ${{ secrets.ADMIN_API_TOKEN }}" \
-            "${{ secrets.SITE_URL }}/api/v1/admin/export" \
-            -o backup.json)
+          if [ -z "$ADMIN_API_TOKEN" ] || [ -z "$SITE_URL" ]; then
+            echo "Error: ADMIN_API_TOKEN or SITE_URL secret is not configured"
+            echo "Please add these secrets in GitHub repo Settings > Secrets and variables > Actions"
+            exit 1
+          fi
 
-          if [ "$RESPONSE" -ne 200 ]; then
-            echo "Backup failed with HTTP status $RESPONSE"
+          HTTP_CODE=$(curl -s -o backup.json -w "%{http_code}" \
+            -X GET \
+            -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            "${SITE_URL}/api/v1/admin/export")
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Backup failed with HTTP status $HTTP_CODE"
+            echo "Response:"
+            cat backup.json 2>/dev/null || echo "No response body"
             exit 1
           fi
 
