@@ -60,6 +60,9 @@
 │   │   ├── search.astro         # 搜索
 │   │   ├── admin/index.astro    # 后台管理入口
 │   │   └── 404.astro
+│   ├── i18n/                     # 多语言翻译
+│   │   ├── zh.json               # 中文
+│   │   └── en.json               # 英文
 │   ├── styles/
 │   │   ├── variables.css        # 设计令牌（颜色、字体、阴影等）
 │   │   ├── global.css           # 全局样式
@@ -68,7 +71,8 @@
 │       ├── api.ts               # API请求工具
 │       ├── markdown.ts          # Markdown渲染
 │       ├── theme.ts             # 主题切换
-│       └── siteConfig.ts        # 站点配置读取与应用
+│       ├── siteConfig.ts        # 站点配置读取与应用
+│       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（D1/KV绑定）
 │   ├── schema.sql               # 数据库Schema
@@ -194,7 +198,7 @@ D1 (SQLite) 共 9 张表：
 访问 `/admin` 进入管理后台，功能包括：
 
 - **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息
-- **文章管理** — 新建/编辑/删除，Markdown编辑器，支持草稿和已发布状态
+- **文章管理** — 新建/编辑/删除，Markdown编辑器，支持草稿和已发布状态，Slug支持中文
 - **分类管理** — 增删改
 - **标签管理** — 增删
 - **关于页面** — Markdown编辑关于页内容，保存后前台 `/about` 页面实时更新
@@ -310,6 +314,17 @@ npx wrangler deploy
 ## 自定义域名
 
 在 Cloudflare Pages 项目设置中绑定自定义域名，Worker 同样需要在 Workers 设置中添加自定义域名或路由。
+
+## 多语言 (i18n)
+
+支持中文/英文切换，基于自定义轻量 i18n 方案：
+
+- **翻译文件** — `src/i18n/zh.json` / `src/i18n/en.json`
+- **工具模块** — `src/utils/i18n.ts`（`initLocale`, `setLocale`, `getLocale`, `t` 函数）
+- **语言检测** — 优先读取 `localStorage` 中的 `locale`，其次根据浏览器语言自动选择
+- **切换方式** — 导航栏地球图标按钮，切换后所有页面内容实时更新
+- **前台页面** — 使用 `data-i18n` 属性标记静态文本，JS 动态内容使用 `t()` 函数
+- **后台管理** — Vue 组件中直接调用 `t()` 函数
 
 ## 主题
 

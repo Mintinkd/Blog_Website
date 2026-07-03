@@ -3,12 +3,11 @@ import { Article, ArticleListItem, ArticleDetail, CreateArticleRequest, UpdateAr
 
 function generateSlug(title: string): string {
   return title
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
+    .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
-    .trim()
-    .slice(0, 80);
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .slice(0, 120);
 }
 
 interface ListArticlesOptions {

@@ -5,13 +5,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 <BaseLayout title="归档" description="按时间归档的所有文章">
   <section class="archives-page">
     <div class="page-header">
-      <h1 class="page-title">归档</h1>
-      <p class="page-desc">按时间线浏览所有文章</p>
+      <h1 class="page-title" data-i18n="page.archives">归档</h1>
+      <p class="page-desc" data-i18n="page.archives_desc">按时间线浏览所有文章</p>
     </div>
     <div id="archives-list">
       <div class="loading-placeholder">
         <div class="loading-spinner"></div>
-        <p>加载归档中...</p>
+        <p data-i18n="common.loading">加载归档中...</p>
       </div>
     </div>
   </section>
@@ -57,9 +57,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 </style>
 
 <script>
+  import { t, getLocale } from '../utils/i18n.ts';
+
   async function loadArchives() {
     const container = document.getElementById('archives-list');
     if (!container) return;
+
+    const locale = getLocale();
 
     try {
       const response = await fetch('/api/v1/articles?page_size=1000&status=published');
@@ -69,7 +73,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         const articles = data.data.items;
 
         if (articles.length === 0) {
-          container.innerHTML = '<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">暂无文章</p>';
+          container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('article.no_articles')}</p>`;
           return;
         }
 
@@ -91,12 +95,12 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         for (const year of years) {
           const yearCount = Object.values(grouped[year]).reduce((sum, m) => sum + m.length, 0);
           html += `<div class="archive-year-group">`;
-          html += `<h2 class="archive-year">${year}<span class="archive-year-count">${yearCount} 篇</span></h2>`;
+          html += `<h2 class="archive-year">${year}<span class="archive-year-count">${yearCount} ${locale === 'zh' ? '篇' : 'articles'}</span></h2>`;
           const months = Object.keys(grouped[year]).sort((a, b) => Number(b) - Number(a));
 
           for (const month of months) {
             html += `<div class="archive-month-group">`;
-            html += `<h3 class="archive-month">${month}月</h3>`;
+            html += `<h3 class="archive-month">${t(`month.${month}`)}</h3>`;
             html += '<ul class="archive-list">';
             for (const article of grouped[year][month]) {
               const date = new Date(article.published_at || article.created_at);
@@ -112,11 +116,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         container.innerHTML = html;
       }
     } catch (e) {
-      container.innerHTML = '<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">加载失败</p>';
+      container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
     }
   }
 
   loadArchives();
+
+  document.addEventListener('locale-changed', () => loadArchives());
 </script>
 
 <style is:global>

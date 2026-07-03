@@ -8,16 +8,16 @@
         </div>
         <form @submit.prevent="handleLogin" class="login-form">
           <div class="form-group">
-            <label>用户名</label>
-            <input v-model="loginForm.username" type="text" placeholder="请输入用户名" required />
+            <label>{{ t('admin.username') }}</label>
+            <input v-model="loginForm.username" type="text" :placeholder="t('admin.username')" required />
           </div>
           <div class="form-group">
-            <label>密码</label>
-            <input v-model="loginForm.password" type="password" placeholder="请输入密码" required />
+            <label>{{ t('admin.password') }}</label>
+            <input v-model="loginForm.password" type="password" :placeholder="t('admin.password')" required />
           </div>
           <p v-if="loginError" class="error-msg">{{ loginError }}</p>
           <button type="submit" class="login-btn" :disabled="loginLoading">
-            {{ loginLoading ? '登录中...' : '登录' }}
+            {{ loginLoading ? t('admin.login_loading') : t('admin.login') }}
           </button>
         </form>
       </div>
@@ -32,91 +32,91 @@
         <nav class="sidebar-nav">
           <button :class="['nav-item', { active: currentTab === 'articles' }]" @click="currentTab = 'articles'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            文章管理
+            {{ t('admin.articles') }}
           </button>
           <button :class="['nav-item', { active: currentTab === 'categories' }]" @click="currentTab = 'categories'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            分类管理
+            {{ t('admin.categories') }}
           </button>
           <button :class="['nav-item', { active: currentTab === 'tags' }]" @click="currentTab = 'tags'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
-            标签管理
+            {{ t('admin.tags') }}
           </button>
           <button :class="['nav-item', { active: currentTab === 'about' }]" @click="currentTab = 'about'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            关于页面
+            {{ t('admin.about_page') }}
           </button>
           <button :class="['nav-item', { active: currentTab === 'config' }]" @click="currentTab = 'config'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            站点配置
+            {{ t('admin.site_config') }}
           </button>
           <button :class="['nav-item', { active: currentTab === 'users' }]" @click="currentTab = 'users'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            账户管理
+            {{ t('admin.users') }}
           </button>
         </nav>
         <div class="sidebar-footer">
-          <a href="/" class="nav-item">← 返回前台</a>
-          <button class="nav-item" @click="handleLogout">退出登录</button>
+          <a href="/" class="nav-item">{{ t('admin.back_site') }}</a>
+          <button class="nav-item" @click="handleLogout">{{ t('admin.logout') }}</button>
         </div>
       </aside>
 
       <main class="admin-main">
         <div v-if="currentTab === 'articles'" class="admin-panel">
           <div class="panel-header">
-            <h2>文章管理</h2>
-            <button class="btn-primary" @click="showArticleEditor = true; editingArticle = null">+ 新建文章</button>
+            <h2>{{ t('admin.articles') }}</h2>
+            <button class="btn-primary" @click="showArticleEditor = true; editingArticle = null">{{ t('admin.new_article') }}</button>
           </div>
-          <div v-if="articlesLoading" class="loading">加载中...</div>
+          <div v-if="articlesLoading" class="loading">{{ t('common.loading') }}</div>
           <table v-else class="data-table">
             <thead>
-              <tr><th>标题</th><th>状态</th><th>分类</th><th>阅读</th><th>创建时间</th><th>操作</th></tr>
+              <tr><th>{{ t('admin.title') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.category') }}</th><th>{{ t('article.views') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="a in articles" :key="a.id">
                 <td><a :href="`/articles/${a.slug}`" target="_blank">{{ a.title }}</a></td>
-                <td><span :class="['status-badge', a.status]">{{ a.status === 'published' ? '已发布' : '草稿' }}</span></td>
+                <td><span :class="['status-badge', a.status]">{{ a.status === 'published' ? t('article.published') : t('article.draft') }}</span></td>
                 <td>{{ a.category?.name || '-' }}</td>
                 <td>{{ a.view_count }}</td>
                 <td>{{ formatDate(a.created_at) }}</td>
                 <td class="actions">
-                  <button @click="editArticle(a)">编辑</button>
-                  <button @click="deleteArticle(a.id)" class="btn-danger">删除</button>
+                  <button @click="editArticle(a)">{{ t('admin.edit') }}</button>
+                  <button @click="deleteArticle(a.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
-              <tr v-if="articles.length === 0"><td colspan="6" class="empty">暂无文章</td></tr>
+              <tr v-if="articles.length === 0"><td colspan="6" class="empty">{{ t('article.no_articles') }}</td></tr>
             </tbody>
           </table>
         </div>
 
         <div v-if="currentTab === 'categories'" class="admin-panel">
           <div class="panel-header">
-            <h2>分类管理</h2>
-            <button class="btn-primary" @click="showCategoryForm = true; categoryForm = { name: '', slug: '', description: '' }">+ 新建分类</button>
+            <h2>{{ t('admin.categories') }}</h2>
+            <button class="btn-primary" @click="showCategoryForm = true; categoryForm = { name: '', slug: '', description: '' }">{{ t('admin.new_category') }}</button>
           </div>
           <table class="data-table">
-            <thead><tr><th>名称</th><th>Slug</th><th>文章数</th><th>操作</th></tr></thead>
+            <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.article_count') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
             <tbody>
               <tr v-for="c in categories" :key="c.id">
                 <td>{{ c.name }}</td>
                 <td>{{ c.slug }}</td>
                 <td>{{ c.article_count || 0 }}</td>
                 <td class="actions">
-                  <button @click="categoryForm = { name: c.name, slug: c.slug, description: c.description || '' }; editingCategoryId = c.id; showCategoryForm = true">编辑</button>
-                  <button @click="deleteCategory(c.id)" class="btn-danger">删除</button>
+                  <button @click="categoryForm = { name: c.name, slug: c.slug, description: c.description || '' }; editingCategoryId = c.id; showCategoryForm = true">{{ t('admin.edit') }}</button>
+                  <button @click="deleteCategory(c.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
             </tbody>
           </table>
           <div v-if="showCategoryForm" class="modal-overlay" @click.self="showCategoryForm = false">
             <div class="modal">
-              <h3>{{ editingCategoryId ? '编辑分类' : '新建分类' }}</h3>
-              <div class="form-group"><label>名称</label><input v-model="categoryForm.name" /></div>
-              <div class="form-group"><label>Slug</label><input v-model="categoryForm.slug" /></div>
-              <div class="form-group"><label>描述</label><textarea v-model="categoryForm.description" rows="3"></textarea></div>
+              <h3>{{ editingCategoryId ? t('admin.edit') + t('admin.categories') : t('admin.new_category') }}</h3>
+              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="categoryForm.name" /></div>
+              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="categoryForm.slug" /></div>
+              <div class="form-group"><label>{{ t('admin.description') }}</label><textarea v-model="categoryForm.description" rows="3"></textarea></div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showCategoryForm = false">取消</button>
-                <button class="btn-primary" @click="saveCategory">保存</button>
+                <button class="btn-secondary" @click="showCategoryForm = false">{{ t('admin.cancel') }}</button>
+                <button class="btn-primary" @click="saveCategory">{{ t('admin.save') }}</button>
               </div>
             </div>
           </div>
@@ -124,27 +124,27 @@
 
         <div v-if="currentTab === 'tags'" class="admin-panel">
           <div class="panel-header">
-            <h2>标签管理</h2>
-            <button class="btn-primary" @click="showTagForm = true; tagForm = { name: '', slug: '' }">+ 新建标签</button>
+            <h2>{{ t('admin.tags') }}</h2>
+            <button class="btn-primary" @click="showTagForm = true; tagForm = { name: '', slug: '' }">{{ t('admin.new_tag') }}</button>
           </div>
           <table class="data-table">
-            <thead><tr><th>名称</th><th>Slug</th><th>操作</th></tr></thead>
+            <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
             <tbody>
               <tr v-for="t in tags" :key="t.id">
                 <td>{{ t.name }}</td>
                 <td>{{ t.slug }}</td>
-                <td class="actions"><button @click="deleteTag(t.id)" class="btn-danger">删除</button></td>
+                <td class="actions"><button @click="deleteTag(t.id)" class="btn-danger">{{ t('admin.delete') }}</button></td>
               </tr>
             </tbody>
           </table>
           <div v-if="showTagForm" class="modal-overlay" @click.self="showTagForm = false">
             <div class="modal">
-              <h3>新建标签</h3>
-              <div class="form-group"><label>名称</label><input v-model="tagForm.name" /></div>
-              <div class="form-group"><label>Slug</label><input v-model="tagForm.slug" /></div>
+              <h3>{{ t('admin.new_tag') }}</h3>
+              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="tagForm.name" /></div>
+              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="tagForm.slug" /></div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showTagForm = false">取消</button>
-                <button class="btn-primary" @click="saveTag">保存</button>
+                <button class="btn-secondary" @click="showTagForm = false">{{ t('admin.cancel') }}</button>
+                <button class="btn-primary" @click="saveTag">{{ t('admin.save') }}</button>
               </div>
             </div>
           </div>
@@ -152,67 +152,67 @@
 
         <div v-if="currentTab === 'about'" class="admin-panel">
           <div class="panel-header">
-            <h2>关于页面</h2>
-            <a href="/about" target="_blank" class="btn-secondary" style="font-size:0.8rem;padding:0.35rem 0.75rem;text-decoration:none;">预览页面 →</a>
+            <h2>{{ t('admin.about_page') }}</h2>
+            <a href="/about" target="_blank" class="btn-secondary" style="font-size:0.8rem;padding:0.35rem 0.75rem;text-decoration:none;">{{ t('admin.preview_page') }}</a>
           </div>
-          <div v-if="configLoading" class="loading">加载中...</div>
+          <div v-if="configLoading" class="loading">{{ t('common.loading') }}</div>
           <div v-else class="config-form">
-            <p style="font-size:0.85rem;color:var(--color-text-tertiary);margin-bottom:1rem;">使用 Markdown 语法编写关于页面的内容，保存后前台 /about 页面将自动更新</p>
+            <p style="font-size:0.85rem;color:var(--color-text-tertiary);margin-bottom:1rem;">{{ t('admin.about_hint') }}</p>
             <div class="form-group">
               <label>关于页内容 (Markdown)</label>
               <textarea v-model="aboutContent" rows="20" class="editor-textarea"></textarea>
             </div>
-            <button class="btn-primary" @click="saveAbout" :disabled="aboutSaving">{{ aboutSaving ? '保存中...' : '保存' }}</button>
+            <button class="btn-primary" @click="saveAbout" :disabled="aboutSaving">{{ aboutSaving ? t('admin.save_loading') : t('admin.save') }}</button>
             <p v-if="aboutMsg" class="msg">{{ aboutMsg }}</p>
           </div>
         </div>
 
         <div v-if="currentTab === 'config'" class="admin-panel">
-          <div class="panel-header"><h2>站点配置</h2></div>
-          <div v-if="configLoading" class="loading">加载中...</div>
+          <div class="panel-header"><h2>{{ t('admin.site_config') }}</h2></div>
+          <div v-if="configLoading" class="loading">{{ t('common.loading') }}</div>
           <div v-else class="config-form">
-            <div class="form-group"><label>站点标题</label><input v-model="configForm.site_title" /></div>
-            <div class="form-group"><label>站点描述</label><textarea v-model="configForm.site_description" rows="2"></textarea></div>
-            <button class="btn-primary" @click="saveConfig">保存配置</button>
+            <div class="form-group"><label>{{ t('admin.site_title') }}</label><input v-model="configForm.site_title" /></div>
+            <div class="form-group"><label>{{ t('admin.site_description') }}</label><textarea v-model="configForm.site_description" rows="2"></textarea></div>
+            <button class="btn-primary" @click="saveConfig">{{ t('admin.save') }}</button>
             <p v-if="configMsg" class="msg">{{ configMsg }}</p>
           </div>
         </div>
 
         <div v-if="currentTab === 'users'" class="admin-panel">
           <div class="panel-header">
-            <h2>账户管理</h2>
-            <button class="btn-primary" @click="showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">+ 新建账户</button>
+            <h2>{{ t('admin.users') }}</h2>
+            <button class="btn-primary" @click="showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">{{ t('admin.new_user') }}</button>
           </div>
           <table class="data-table">
-            <thead><tr><th>用户名</th><th>显示名</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead>
+            <thead><tr><th>{{ t('admin.username') }}</th><th>{{ t('admin.display_name') }}</th><th>{{ t('admin.role') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
                 <td>{{ u.username }}</td>
                 <td>{{ u.display_name || '-' }}</td>
-                <td><span :class="['status-badge', u.role]">{{ u.role === 'admin' ? '管理员' : '编辑者' }}</span></td>
+                <td><span :class="['status-badge', u.role]">{{ u.role === 'admin' ? t('admin.role_admin') : t('admin.role_editor') }}</span></td>
                 <td>{{ formatDate(u.created_at) }}</td>
                 <td class="actions">
-                  <button @click="editingUserId = u.id; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">编辑</button>
-                  <button @click="deleteUser(u.id)" class="btn-danger">删除</button>
+                  <button @click="editingUserId = u.id; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">{{ t('admin.edit') }}</button>
+                  <button @click="deleteUser(u.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
             </tbody>
           </table>
           <div v-if="showUserForm" class="modal-overlay" @click.self="showUserForm = false">
             <div class="modal">
-              <h3>{{ editingUserId ? '编辑账户' : '新建账户' }}</h3>
-              <div class="form-group"><label>用户名</label><input v-model="userForm.username" :disabled="!!editingUserId" /></div>
-              <div class="form-group"><label>密码{{ editingUserId ? '（留空不修改）' : '' }}</label><input v-model="userForm.password" type="password" :required="!editingUserId" /></div>
-              <div class="form-group"><label>显示名</label><input v-model="userForm.display_name" /></div>
-              <div class="form-group"><label>角色</label>
+              <h3>{{ editingUserId ? t('admin.edit') + t('admin.users') : t('admin.new_user') }}</h3>
+              <div class="form-group"><label>{{ t('admin.username') }}</label><input v-model="userForm.username" :disabled="!!editingUserId" /></div>
+              <div class="form-group"><label>{{ t('admin.password') }}{{ editingUserId ? t('admin.password_hint') : '' }}</label><input v-model="userForm.password" type="password" :required="!editingUserId" /></div>
+              <div class="form-group"><label>{{ t('admin.display_name') }}</label><input v-model="userForm.display_name" /></div>
+              <div class="form-group"><label>{{ t('admin.role') }}</label>
                 <select v-model="userForm.role">
-                  <option value="admin">管理员</option>
-                  <option value="editor">编辑者</option>
+                  <option value="admin">{{ t('admin.role_admin') }}</option>
+                  <option value="editor">{{ t('admin.role_editor') }}</option>
                 </select>
               </div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showUserForm = false">取消</button>
-                <button class="btn-primary" @click="saveUser">保存</button>
+                <button class="btn-secondary" @click="showUserForm = false">{{ t('admin.cancel') }}</button>
+                <button class="btn-primary" @click="saveUser">{{ t('admin.save') }}</button>
               </div>
             </div>
           </div>
@@ -221,32 +221,32 @@
         <div v-if="showArticleEditor" class="article-editor-overlay">
           <div class="article-editor">
             <div class="editor-header">
-              <h3>{{ editingArticle ? '编辑文章' : '新建文章' }}</h3>
+              <h3>{{ editingArticle ? t('admin.edit') + t('admin.articles') : t('admin.new_article') }}</h3>
               <button @click="showArticleEditor = false" class="close-btn">&times;</button>
             </div>
             <div class="editor-body">
-              <div class="form-group"><label>标题</label><input v-model="articleForm.title" /></div>
-              <div class="form-group"><label>Slug</label><input v-model="articleForm.slug" /></div>
+              <div class="form-group"><label>{{ t('admin.title') }}</label><input v-model="articleForm.title" /></div>
+              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="articleForm.slug" /></div>
               <div class="form-row">
-                <div class="form-group"><label>分类</label>
+                <div class="form-group"><label>{{ t('admin.category') }}</label>
                   <select v-model="articleForm.category_id">
-                    <option value="">无分类</option>
+                    <option value="">{{ t('admin.no_category') }}</option>
                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                   </select>
                 </div>
-                <div class="form-group"><label>状态</label>
+                <div class="form-group"><label>{{ t('admin.status') }}</label>
                   <select v-model="articleForm.status">
-                    <option value="draft">草稿</option>
-                    <option value="published">发布</option>
+                    <option value="draft">{{ t('article.draft') }}</option>
+                    <option value="published">{{ t('article.published') }}</option>
                   </select>
                 </div>
               </div>
-              <div class="form-group"><label>摘要</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
-              <div class="form-group"><label>内容 (Markdown)</label><textarea v-model="articleForm.content" rows="20" class="editor-textarea"></textarea></div>
+              <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
+              <div class="form-group"><label>{{ t('admin.content') }} (Markdown)</label><textarea v-model="articleForm.content" rows="20" class="editor-textarea"></textarea></div>
             </div>
             <div class="editor-footer">
-              <button class="btn-secondary" @click="showArticleEditor = false">取消</button>
-              <button class="btn-primary" @click="saveArticle" :disabled="articleSaving">{{ articleSaving ? '保存中...' : '保存' }}</button>
+              <button class="btn-secondary" @click="showArticleEditor = false">{{ t('admin.cancel') }}</button>
+              <button class="btn-primary" @click="saveArticle" :disabled="articleSaving">{{ articleSaving ? t('admin.save_loading') : t('admin.save') }}</button>
             </div>
           </div>
         </div>
@@ -257,8 +257,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
+import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
 
 const API = '/api/v1';
+const currentLocale = ref(initLocale());
 
 const token = ref(localStorage.getItem('admin_token') || '');
 const isLoggedIn = ref(!!token.value);
@@ -318,10 +320,10 @@ async function handleLogin() {
       localStorage.setItem('admin_token', data.data.token);
       isLoggedIn.value = true;
     } else {
-      loginError.value = data.message || '登录失败';
+      loginError.value = data.message || t('admin.login_error');
     }
   } catch (e) {
-    loginError.value = '网络错误';
+    loginError.value = t('admin.login_error');
   } finally {
     loginLoading.value = false;
   }
@@ -335,7 +337,7 @@ function handleLogout() {
 
 function formatDate(d: string) {
   if (!d) return '-';
-  return new Date(d).toLocaleDateString('zh-CN');
+  return new Date(d).toLocaleDateString(getLocale() === 'zh' ? 'zh-CN' : 'en-US');
 }
 
 async function loadArticles() {
@@ -407,7 +409,7 @@ async function saveArticle() {
       showArticleEditor.value = false;
       await loadArticles();
     } else {
-      alert(data.message || '保存失败');
+      alert(data.message || t('admin.save_failed'));
     }
   } finally {
     articleSaving.value = false;
@@ -415,10 +417,10 @@ async function saveArticle() {
 }
 
 async function deleteArticle(id: number) {
-  if (!confirm('确定删除此文章？')) return;
+  if (!confirm(t('admin.delete_confirm'))) return;
   const data = await api('DELETE', `/articles/${id}`);
   if (data.code === 0) await loadArticles();
-  else alert(data.message || '删除失败');
+  else alert(data.message || t('admin.delete_failed'));
 }
 
 async function saveCategory() {
@@ -433,15 +435,15 @@ async function saveCategory() {
     editingCategoryId.value = null;
     await loadCategories();
   } else {
-    alert(data.message || '保存失败');
+    alert(data.message || t('admin.save_failed'));
   }
 }
 
 async function deleteCategory(id: number) {
-  if (!confirm('确定删除此分类？')) return;
+  if (!confirm(t('admin.delete_confirm'))) return;
   const data = await api('DELETE', `/categories/${id}`);
   if (data.code === 0) await loadCategories();
-  else alert(data.message || '删除失败');
+  else alert(data.message || t('admin.delete_failed'));
 }
 
 async function saveTag() {
@@ -450,22 +452,22 @@ async function saveTag() {
     showTagForm.value = false;
     await loadTags();
   } else {
-    alert(data.message || '保存失败');
+    alert(data.message || t('admin.save_failed'));
   }
 }
 
 async function deleteTag(id: number) {
-  if (!confirm('确定删除此标签？')) return;
+  if (!confirm(t('admin.delete_confirm'))) return;
   const data = await api('DELETE', `/tags/${id}`);
   if (data.code === 0) await loadTags();
-  else alert(data.message || '删除失败');
+  else alert(data.message || t('admin.delete_failed'));
 }
 
 async function saveConfig() {
   configMsg.value = '';
   const data = await api('PUT', '/config', configForm.value);
-  if (data.code === 0) configMsg.value = '保存成功';
-  else configMsg.value = data.message || '保存失败';
+  if (data.code === 0) configMsg.value = t('admin.save_success');
+  else configMsg.value = data.message || t('admin.save_failed');
 }
 
 async function saveAbout() {
@@ -473,8 +475,8 @@ async function saveAbout() {
   aboutMsg.value = '';
   try {
     const data = await api('PUT', '/config', { about_content: aboutContent.value });
-    if (data.code === 0) aboutMsg.value = '保存成功';
-    else aboutMsg.value = data.message || '保存失败';
+    if (data.code === 0) aboutMsg.value = t('admin.save_success');
+    else aboutMsg.value = data.message || t('admin.save_failed');
   } finally {
     aboutSaving.value = false;
   }
@@ -493,7 +495,7 @@ async function saveUser() {
     data = await api('PUT', `/users/${editingUserId.value}`, body);
   } else {
     if (!userForm.value.username || !userForm.value.password) {
-      alert('用户名和密码不能为空');
+      alert(t('admin.username_password_required'));
       return;
     }
     data = await api('POST', '/users', userForm.value);
@@ -503,15 +505,15 @@ async function saveUser() {
     editingUserId.value = null;
     await loadUsers();
   } else {
-    alert(data.message || '保存失败');
+    alert(data.message || t('admin.save_failed'));
   }
 }
 
 async function deleteUser(id: number) {
-  if (!confirm('确定删除此账户？')) return;
+  if (!confirm(t('admin.delete_confirm'))) return;
   const data = await api('DELETE', `/users/${id}`);
   if (data.code === 0) await loadUsers();
-  else alert(data.message || '删除失败');
+  else alert(data.message || t('admin.delete_failed'));
 }
 
 watch(isLoggedIn, (v) => {

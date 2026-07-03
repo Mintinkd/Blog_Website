@@ -11,8 +11,8 @@ const { slug } = Astro.params;
 <BaseLayout title={`分类: ${slug}`} description="">
   <section class="category-page">
     <div class="page-header">
-      <h1 class="page-title">分类: {slug}</h1>
-      <a href="/articles" class="page-back">← 所有文章</a>
+      <h1 class="page-title" data-i18n="page.category" data-i18n-params='{"name":""}'>分类: {slug}</h1>
+      <a href="/articles" class="page-back" data-i18n="page.all_articles">← 所有文章</a>
     </div>
     <div id="article-list" data-category-slug={slug} data-page="1" data-page-size="10">
       <div class="article-list-inner"></div>
@@ -54,6 +54,8 @@ const { slug } = Astro.params;
 </style>
 
 <script>
+  import { t, getLocale } from '../../utils/i18n.ts';
+
   async function loadArticles(page = 1) {
     const container = document.querySelector('.article-list-inner');
     if (!container) return;
@@ -62,6 +64,8 @@ const { slug } = Astro.params;
 
     const categorySlug = wrapper.dataset.categorySlug;
     const pageSize = 10;
+    const locale = getLocale();
+    const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
       const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published&category=${categorySlug}`);
@@ -71,7 +75,7 @@ const { slug } = Astro.params;
         const { items, total_pages } = data.data;
 
         if (items.length === 0) {
-          container.innerHTML = '<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">该分类暂无文章</p>';
+          container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('page.no_articles_category')}</p>`;
           return;
         }
 
@@ -80,7 +84,7 @@ const { slug } = Astro.params;
             <a href="/articles/${article.slug}" class="list-card-link">
               <div class="list-card-body">
                 <div class="list-card-meta">
-                  <span class="list-card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
+                  <span class="list-card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
                 <h3 class="list-card-title">${article.title}</h3>
                 ${article.summary ? `<p class="list-card-summary">${article.summary}</p>` : ''}
@@ -88,7 +92,7 @@ const { slug } = Astro.params;
                   <div class="list-card-tags">
                     ${(article.tags || []).slice(0, 3).map((tag: any) => `<span class="list-card-tag">${tag.name}</span>`).join('')}
                   </div>
-                  <span class="list-card-stats">${article.view_count || 0} 阅读</span>
+                  <span class="list-card-stats">${article.view_count || 0} ${t('article.read')}</span>
                 </div>
               </div>
             </a>
@@ -98,9 +102,9 @@ const { slug } = Astro.params;
         const paginationMount = document.getElementById('pagination-mount');
         if (paginationMount && total_pages > 1) {
           let pagHtml = '<div class="pagination">';
-          if (page > 1) pagHtml += `<button class="pag-btn" data-page="${page - 1}">← 上一页</button>`;
+          if (page > 1) pagHtml += `<button class="pag-btn" data-page="${page - 1}">${t('page.prev')}</button>`;
           pagHtml += `<span class="pag-info">${page} / ${total_pages}</span>`;
-          if (page < total_pages) pagHtml += `<button class="pag-btn" data-page="${page + 1}">下一页 →</button>`;
+          if (page < total_pages) pagHtml += `<button class="pag-btn" data-page="${page + 1}">${t('page.next')}</button>`;
           pagHtml += '</div>';
           paginationMount.innerHTML = pagHtml;
 
@@ -114,11 +118,13 @@ const { slug } = Astro.params;
         }
       }
     } catch (e) {
-      container.innerHTML = '<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">加载失败</p>';
+      container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
     }
   }
 
   loadArticles();
+
+  document.addEventListener('locale-changed', () => loadArticles());
 </script>
 
 <style is:global>

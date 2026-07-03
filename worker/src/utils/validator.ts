@@ -59,7 +59,7 @@ export function validate(data: Record<string, unknown>, rules: ValidationRule[])
 }
 
 export function isValidSlug(slug: string): boolean {
-  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+  return /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u.test(slug);
 }
 
 export function isValidUrl(url: string): boolean {

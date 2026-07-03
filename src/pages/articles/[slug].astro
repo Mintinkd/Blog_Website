@@ -12,7 +12,7 @@ const { slug } = Astro.params;
   <article class="article-detail" id="article-detail" data-slug={slug}>
     <div class="article-loading">
       <div class="loading-spinner"></div>
-      <p>加载文章中...</p>
+      <p data-i18n="article.loading">加载文章中...</p>
     </div>
   </article>
 </BaseLayout>
@@ -45,12 +45,17 @@ const { slug } = Astro.params;
 </style>
 
 <script>
+  import { t, getLocale } from '../../utils/i18n.ts';
+
   async function loadArticle() {
     const container = document.getElementById('article-detail');
     if (!container) return;
 
     const slug = container.dataset.slug;
     if (!slug) return;
+
+    const locale = getLocale();
+    const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
       const response = await fetch(`/api/v1/articles/${slug}`);
@@ -68,17 +73,17 @@ const { slug } = Astro.params;
           <header class="article-header">
             <div class="article-meta-top">
               ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category">${article.category.name}</a>` : ''}
-              <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
+              <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
             </div>
             <h1 class="article-title">${article.title}</h1>
             ${article.summary ? `<p class="article-summary">${article.summary}</p>` : ''}
             <div class="article-meta-bottom">
-              <span class="meta-item">${article.view_count} 次阅读</span>
-              <span class="meta-item">${article.like_count} 赞</span>
-              <span class="meta-item">${article.reading_time || 5} 分钟</span>
+              <span class="meta-item">${article.view_count} ${t('article.views')}</span>
+              <span class="meta-item">${article.like_count} ${t('article.likes')}</span>
+              <span class="meta-item">${article.reading_time || 5} ${t('article.minutes_read')}</span>
             </div>
             <div class="article-tags">
-              ${(article.tags || []).map((t: any) => `<a href="/tags/${t.slug}" class="article-tag">${t.name}</a>`).join('')}
+              ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="article-tag">${tag.name}</a>`).join('')}
             </div>
           </header>
           <div class="article-content prose">${article.content_html || article.content}</div>
@@ -88,14 +93,16 @@ const { slug } = Astro.params;
           <div id="comment-section-mount" data-article-id="${article.id}"></div>
         `;
       } else {
-        container.innerHTML = '<div class="article-not-found"><h2>文章未找到</h2><p>请检查链接是否正确</p><a href="/" class="back-link">返回首页</a></div>';
+        container.innerHTML = `<div class="article-not-found"><h2>${t('article.not_found')}</h2><p>${t('article.check_link')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;
       }
     } catch (e) {
-      container.innerHTML = '<div class="article-not-found"><p>加载失败，请刷新重试</p><a href="/" class="back-link">返回首页</a></div>';
+      container.innerHTML = `<div class="article-not-found"><p>${t('article.load_error')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;
     }
   }
 
   loadArticle();
+
+  document.addEventListener('locale-changed', () => loadArticle());
 </script>
 
 <style is:global>

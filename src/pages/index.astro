@@ -6,20 +6,20 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 <BaseLayout title="首页">
   <section class="hero">
     <div class="hero-inner">
-      <h1 class="hero-title" id="hero-site-title">探索 · 记录 · 分享</h1>
-      <p class="hero-subtitle" id="hero-site-subtitle">关于技术、生活与思考的个人空间</p>
+      <h1 class="hero-title" id="hero-site-title" data-i18n="hero.title">探索 · 记录 · 分享</h1>
+      <p class="hero-subtitle" id="hero-site-subtitle" data-i18n="hero.subtitle">关于技术、生活与思考的个人空间</p>
       <p class="hero-desc" id="hero-site-desc"></p>
       <div class="hero-actions">
-        <a href="/articles" class="hero-btn primary">浏览文章</a>
-        <a href="/about" class="hero-btn secondary">了解更多</a>
+        <a href="/articles" class="hero-btn primary" data-i18n="hero.browse">浏览文章</a>
+        <a href="/about" class="hero-btn secondary" data-i18n="hero.learn_more">了解更多</a>
       </div>
     </div>
   </section>
 
   <section class="article-section">
     <div class="section-header">
-      <h2 class="section-title">最新文章</h2>
-      <a href="/articles" class="section-link">查看全部 →</a>
+      <h2 class="section-title" data-i18n="section.latest_articles">最新文章</h2>
+      <a href="/articles" class="section-link" data-i18n="section.view_all">查看全部 →</a>
     </div>
     <div id="article-list" data-page="1" data-page-size="6">
       <div class="article-grid" id="article-grid"></div>
@@ -163,9 +163,14 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 </style>
 
 <script>
+  import { t, getLocale } from '../utils/i18n.ts';
+
   async function loadArticles() {
     const container = document.getElementById('article-grid');
     if (!container) return;
+
+    const locale = getLocale();
+    const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
       const page = 1;
@@ -178,7 +183,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         const { items } = data.data;
 
         if (items.length === 0) {
-          container.innerHTML = '<p class="empty-text" style="grid-column:1/-1;text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">暂无文章，敬请期待</p>';
+          container.innerHTML = `<p class="empty-text" style="grid-column:1/-1;text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('article.no_articles')}</p>`;
           return;
         }
 
@@ -188,7 +193,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
               <div class="card-body">
                 <div class="card-meta">
                   ${article.category ? `<span class="card-category">${article.category.name}</span>` : ''}
-                  <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
+                  <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
                 <h3 class="card-title">${article.title}</h3>
                 <p class="card-summary">${article.summary || ''}</p>
@@ -196,7 +201,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
                   <div class="card-tags">
                     ${(article.tags || []).slice(0, 2).map((tag: any) => `<span class="card-tag">${tag.name}</span>`).join('')}
                   </div>
-                  <span class="card-read">${article.view_count || 0} 阅读</span>
+                  <span class="card-read">${article.view_count || 0} ${t('article.read')}</span>
                 </div>
               </div>
             </a>
@@ -204,11 +209,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         `).join('');
       }
     } catch (e) {
-      container.innerHTML = '<p class="error-text" style="grid-column:1/-1;text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">加载失败，请刷新重试</p>';
+      container.innerHTML = `<p class="error-text" style="grid-column:1/-1;text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('article.load_error')}</p>`;
     }
   }
 
   loadArticles();
+
+  document.addEventListener('locale-changed', () => loadArticles());
 </script>
 
 <style is:global>
