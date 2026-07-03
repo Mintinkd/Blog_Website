@@ -14,7 +14,13 @@ export async function handleGetPublicConfig(request: Request, env: Env): Promise
 
 export async function handleGetAllConfig(request: Request, env: Env): Promise<Response> {
   const configs = await env.DB.prepare('SELECT key, value, is_public, updated_at FROM site_config').all();
-  return successResponse(configs.results);
+
+  const configMap: Record<string, string> = {};
+  for (const row of configs.results) {
+    configMap[row.key as string] = row.value as string;
+  }
+
+  return successResponse(configMap);
 }
 
 export async function handleUpdateConfig(request: Request, env: Env): Promise<Response> {

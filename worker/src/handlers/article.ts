@@ -10,7 +10,7 @@ export async function handleListArticles(request: Request, env: Env, params: Rec
   const page_size = Math.min(50, Math.max(1, parseInt(url.searchParams.get('page_size') || '10', 10)));
   const category_slug = url.searchParams.get('category_slug') || '';
   const tag_slug = url.searchParams.get('tag_slug') || '';
-  const status = url.searchParams.get('status') || 'published';
+  const status = url.searchParams.get('status') || '';
 
   const { listArticles } = await import('../services/article_service');
   const result = await listArticles(env, { page, page_size, category_slug, tag_slug, status });

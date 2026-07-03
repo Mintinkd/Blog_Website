@@ -1,7 +1,7 @@
 import { corsMiddleware } from './middleware/cors';
 import { rateLimitMiddleware } from './middleware/rate_limit';
 import { authMiddleware } from './middleware/auth';
-import { handleLogin, handleRefresh } from './handlers/auth_handler';
+import { handleLogin, handleRefresh, handleListUsers, handleCreateUser, handleUpdateUser, handleDeleteUser } from './handlers/auth_handler';
 import { handleListArticles, handleGetArticle, handleCreateArticle, handleUpdateArticle, handleDeleteArticle } from './handlers/article';
 import { handleListCategories, handleCreateCategory, handleUpdateCategory, handleDeleteCategory } from './handlers/category';
 import { handleListTags, handleCreateTag, handleDeleteTag } from './handlers/tag';
@@ -67,6 +67,10 @@ addRoute('GET', '/health', async (_req, env) => {
 
 addRoute('POST', '/auth/login', async (req, env) => handleLogin(req, env));
 addRoute('POST', '/auth/refresh', async (req, env, ctx, params) => handleRefresh(req, env), true);
+addRoute('GET', '/users', async (req, env) => handleListUsers(req, env), true);
+addRoute('POST', '/users', async (req, env) => handleCreateUser(req, env), true);
+addRoute('PUT', '/users/:id', async (req, env, _ctx, params) => handleUpdateUser(req, env, params), true);
+addRoute('DELETE', '/users/:id', async (req, env, _ctx, params) => handleDeleteUser(req, env, params), true);
 
 addRoute('GET', '/articles', async (req, env, _ctx, params) => handleListArticles(req, env, params));
 addRoute('GET', '/articles/:slug', async (req, env, _ctx, params) => handleGetArticle(req, env, params));

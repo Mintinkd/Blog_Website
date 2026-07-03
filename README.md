@@ -104,10 +104,11 @@
 
 ## 数据库设计
 
-D1 (SQLite) 共 8 张表：
+D1 (SQLite) 共 9 张表：
 
 | 表名 | 说明 |
 |------|------|
+| `users` | 用户账户（管理员/编辑者，SHA-256密码哈希） |
 | `categories` | 文章分类 |
 | `tags` | 标签 |
 | `articles` | 文章（含Markdown原文和HTML渲染结果） |
@@ -129,7 +130,7 @@ D1 (SQLite) 共 8 张表：
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| POST | `/auth/login` | 管理员登录 |
+| POST | `/auth/login` | 登录（返回JWT token和用户信息） |
 | GET | `/articles` | 文章列表（支持分页、分类、标签过滤） |
 | GET | `/articles/:slug` | 文章详情 |
 | GET | `/categories` | 分类列表 |
@@ -161,6 +162,10 @@ D1 (SQLite) 共 8 张表：
 | POST | `/media/upload` | 上传媒体 |
 | GET | `/media` | 媒体列表 |
 | DELETE | `/media/:id` | 删除媒体 |
+| GET | `/users` | 用户列表 |
+| POST | `/users` | 创建用户 |
+| PUT | `/users/:id` | 更新用户（密码、显示名、角色） |
+| DELETE | `/users/:id` | 删除用户（至少保留一个） |
 | GET | `/config/all` | 全部配置 |
 | PUT | `/config` | 更新配置 |
 | GET | `/friend-links/all` | 全部友链 |
@@ -188,12 +193,13 @@ D1 (SQLite) 共 8 张表：
 
 访问 `/admin` 进入管理后台，功能包括：
 
-- **登录认证** — JWT Token，存储在 localStorage
-- **文章管理** — 新建/编辑/删除，Markdown编辑器
+- **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息
+- **文章管理** — 新建/编辑/删除，Markdown编辑器，支持草稿和已发布状态
 - **分类管理** — 增删改
 - **标签管理** — 增删
 - **关于页面** — Markdown编辑关于页内容，保存后前台 `/about` 页面实时更新
 - **站点配置** — 标题、副标题、描述、关键词等
+- **账户管理** — 多用户支持（管理员/编辑者角色），增删改，密码修改
 
 ## 站点配置动态化
 
@@ -250,20 +256,16 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 > **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
 
-### 首次设置管理员
+### 首次设置
 
-数据库初始化后，需要在 `site_config` 表中设置管理员账户和JWT密钥：
+数据库初始化后，需要配置 JWT 密钥。默认管理员账户已自动创建（用户名: `admin`，密码: `changeme`），**请首次登录后立即修改密码**。
 
 ```bash
 # 设置JWT密钥（自行生成一个随机字符串）
 npx wrangler d1 execute blog-db --remote --command="UPDATE site_config SET value='你的随机密钥' WHERE key='jwt_secret'"
-
-# 设置管理员用户名
-npx wrangler d1 execute blog-db --remote --command="UPDATE site_config SET value='admin' WHERE key='admin_username'"
-
-# 设置管理员密码（需要bcrypt哈希）
-npx wrangler d1 execute blog-db --remote --command="UPDATE site_config SET value='bcrypt哈希值' WHERE key='admin_password_hash'"
 ```
+
+> 旧版使用 `site_config` 中的 `admin_username` / `admin_password_hash` 已废弃，新版使用 `users` 表管理账户。
 
 ## 部署
 

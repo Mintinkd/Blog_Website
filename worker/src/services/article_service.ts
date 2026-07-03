@@ -23,16 +23,21 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
   const { page, page_size, category_slug, tag_slug, status = 'published' } = options;
   const offset = (page - 1) * page_size;
 
-  let whereClause = 'WHERE a.status = ?';
-  const params: unknown[] = [status];
+  let whereClause = '';
+  const params: unknown[] = [];
+
+  if (status && status !== 'all') {
+    whereClause = 'WHERE a.status = ?';
+    params.push(status);
+  }
 
   if (category_slug) {
-    whereClause += ' AND c.slug = ?';
+    whereClause += whereClause ? ' AND c.slug = ?' : 'WHERE c.slug = ?';
     params.push(category_slug);
   }
 
   if (tag_slug) {
-    whereClause += ' AND EXISTS (SELECT 1 FROM article_tags at2 JOIN tags t2 ON at2.tag_id = t2.id WHERE at2.article_id = a.id AND t2.slug = ?)';
+    whereClause += whereClause ? ' AND EXISTS (SELECT 1 FROM article_tags at2 JOIN tags t2 ON at2.tag_id = t2.id WHERE at2.article_id = a.id AND t2.slug = ?)' : 'WHERE EXISTS (SELECT 1 FROM article_tags at2 JOIN tags t2 ON at2.tag_id = t2.id WHERE at2.article_id = a.id AND t2.slug = ?)';
     params.push(tag_slug);
   }
 

@@ -50,6 +50,10 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             站点配置
           </button>
+          <button :class="['nav-item', { active: currentTab === 'users' }]" @click="currentTab = 'users'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            账户管理
+          </button>
         </nav>
         <div class="sidebar-footer">
           <a href="/" class="nav-item">← 返回前台</a>
@@ -174,6 +178,46 @@
           </div>
         </div>
 
+        <div v-if="currentTab === 'users'" class="admin-panel">
+          <div class="panel-header">
+            <h2>账户管理</h2>
+            <button class="btn-primary" @click="showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">+ 新建账户</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>用户名</th><th>显示名</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="u in users" :key="u.id">
+                <td>{{ u.username }}</td>
+                <td>{{ u.display_name || '-' }}</td>
+                <td><span :class="['status-badge', u.role]">{{ u.role === 'admin' ? '管理员' : '编辑者' }}</span></td>
+                <td>{{ formatDate(u.created_at) }}</td>
+                <td class="actions">
+                  <button @click="editingUserId = u.id; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">编辑</button>
+                  <button @click="deleteUser(u.id)" class="btn-danger">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="showUserForm" class="modal-overlay" @click.self="showUserForm = false">
+            <div class="modal">
+              <h3>{{ editingUserId ? '编辑账户' : '新建账户' }}</h3>
+              <div class="form-group"><label>用户名</label><input v-model="userForm.username" :disabled="!!editingUserId" /></div>
+              <div class="form-group"><label>密码{{ editingUserId ? '（留空不修改）' : '' }}</label><input v-model="userForm.password" type="password" :required="!editingUserId" /></div>
+              <div class="form-group"><label>显示名</label><input v-model="userForm.display_name" /></div>
+              <div class="form-group"><label>角色</label>
+                <select v-model="userForm.role">
+                  <option value="admin">管理员</option>
+                  <option value="editor">编辑者</option>
+                </select>
+              </div>
+              <div class="modal-actions">
+                <button class="btn-secondary" @click="showUserForm = false">取消</button>
+                <button class="btn-primary" @click="saveUser">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="showArticleEditor" class="article-editor-overlay">
           <div class="article-editor">
             <div class="editor-header">
@@ -248,6 +292,11 @@ const aboutContent = ref('');
 const aboutSaving = ref(false);
 const aboutMsg = ref('');
 
+const users = ref<any[]>([]);
+const showUserForm = ref(false);
+const userForm = ref({ username: '', password: '', display_name: '', role: 'admin' });
+const editingUserId = ref<number | null>(null);
+
 function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` };
 }
@@ -292,7 +341,7 @@ function formatDate(d: string) {
 async function loadArticles() {
   articlesLoading.value = true;
   try {
-    const data = await api('GET', '/articles?page_size=100');
+    const data = await api('GET', '/articles?page_size=100&status=all');
     if (data.code === 0) articles.value = data.data?.items || [];
   } finally {
     articlesLoading.value = false;
@@ -325,17 +374,23 @@ async function loadConfig() {
   }
 }
 
-function editArticle(a: any) {
+async function editArticle(a: any) {
   editingArticle.value = a;
   articleForm.value = {
     title: a.title,
     slug: a.slug,
     summary: a.summary || '',
-    content: a.content || '',
+    content: '',
     category_id: a.category?.id?.toString() || '',
     status: a.status || 'draft',
   };
   showArticleEditor.value = true;
+  try {
+    const detail = await api('GET', `/articles/${a.slug}`);
+    if (detail.code === 0 && detail.data) {
+      articleForm.value.content = detail.data.content || '';
+    }
+  } catch {}
 }
 
 async function saveArticle() {
@@ -425,11 +480,46 @@ async function saveAbout() {
   }
 }
 
+async function loadUsers() {
+  const data = await api('GET', '/users');
+  if (data.code === 0) users.value = data.data || [];
+}
+
+async function saveUser() {
+  let data;
+  if (editingUserId.value) {
+    const body: any = { display_name: userForm.value.display_name, role: userForm.value.role };
+    if (userForm.value.password) body.password = userForm.value.password;
+    data = await api('PUT', `/users/${editingUserId.value}`, body);
+  } else {
+    if (!userForm.value.username || !userForm.value.password) {
+      alert('用户名和密码不能为空');
+      return;
+    }
+    data = await api('POST', '/users', userForm.value);
+  }
+  if (data.code === 0) {
+    showUserForm.value = false;
+    editingUserId.value = null;
+    await loadUsers();
+  } else {
+    alert(data.message || '保存失败');
+  }
+}
+
+async function deleteUser(id: number) {
+  if (!confirm('确定删除此账户？')) return;
+  const data = await api('DELETE', `/users/${id}`);
+  if (data.code === 0) await loadUsers();
+  else alert(data.message || '删除失败');
+}
+
 watch(isLoggedIn, (v) => {
   if (v) {
     loadArticles();
     loadCategories();
     loadTags();
+    loadUsers();
   }
 });
 
@@ -438,11 +528,13 @@ onMounted(() => {
     loadArticles();
     loadCategories();
     loadTags();
+    loadUsers();
   }
 });
 
 watch(currentTab, (tab) => {
   if (tab === 'config' || tab === 'about') loadConfig();
+  if (tab === 'users') loadUsers();
 });
 </script>
 
@@ -678,6 +770,16 @@ watch(currentTab, (tab) => {
 .status-badge.draft {
   background: var(--color-bg-tertiary);
   color: var(--color-text-tertiary);
+}
+
+.status-badge.admin {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-accent);
+}
+
+.status-badge.editor {
+  background: rgba(255, 159, 10, 0.1);
+  color: var(--color-warning);
 }
 
 .actions {

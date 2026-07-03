@@ -1,6 +1,16 @@
 -- Blog Site D1 Database Schema
 -- Project: blog_website
 
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -159,3 +169,18 @@ INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('about_content
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_username', 'admin', 0);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_password_hash', '', 0);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('jwt_secret', '', 0);
+
+-- Migration: Create users table if not exists (for existing deployments)
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Default admin user (password: changeme, SHA-256 hash)
+-- IMPORTANT: Change this password after first login!
+INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', '管理员', 'admin');
