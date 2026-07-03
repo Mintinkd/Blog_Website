@@ -181,6 +181,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Default admin user (password: changeme, SHA-256 hash)
--- IMPORTANT: Change this password after first login!
+-- Default admin user. If you already have credentials in site_config,
+-- the login API will auto-migrate them to this users table on first login.
+-- If starting fresh, default password is: changeme
+-- IMPORTANT: Change password after first login!
 INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', '管理员', 'admin');

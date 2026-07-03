@@ -25,29 +25,48 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
     return error(ErrorCodes.VALIDATION_FAILED, 'Username and password are required');
   }
 
+  const hashHex = await hashPassword(String(password));
+
+  // 1. Try users table first
   const user = await env.DB.prepare('SELECT id, username, password_hash, display_name, role FROM users WHERE username = ?').bind(String(username)).first<{ id: number; username: string; password_hash: string; display_name: string; role: string }>();
 
-  if (!user) {
-    return error(ErrorCodes.UNAUTHORIZED, 'Invalid credentials');
+  if (user) {
+    if (hashHex !== user.password_hash) {
+      return error(ErrorCodes.UNAUTHORIZED, 'Invalid credentials');
+    }
+
+    const jwtSecret = await getJwtSecret(env);
+    const token = await generateToken(user.username, jwtSecret);
+
+    return successResponse({
+      token,
+      user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role },
+    }, 'Login successful');
   }
 
-  const hashHex = await hashPassword(String(password));
-  if (hashHex !== user.password_hash) {
-    return error(ErrorCodes.UNAUTHORIZED, 'Invalid credentials');
+  // 2. Fallback: check site_config (legacy) and auto-migrate to users table
+  const adminUsername = await env.DB.prepare("SELECT value FROM site_config WHERE key = 'admin_username'").first<{ value: string }>();
+  const adminPasswordHash = await env.DB.prepare("SELECT value FROM site_config WHERE key = 'admin_password_hash'").first<{ value: string }>();
+
+  if (adminUsername && adminPasswordHash && String(username) === adminUsername.value && hashHex === adminPasswordHash.value) {
+    // Auto-migrate: create user in users table from legacy site_config
+    const displayName = adminUsername.value;
+    const result = await env.DB.prepare(
+      'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)'
+    ).bind(String(username), hashHex, displayName, 'admin').run();
+
+    const newId = result.meta.last_row_id;
+
+    const jwtSecret = await getJwtSecret(env);
+    const token = await generateToken(String(username), jwtSecret);
+
+    return successResponse({
+      token,
+      user: { id: newId, username: String(username), display_name: displayName, role: 'admin' },
+    }, 'Login successful (migrated from legacy config)');
   }
 
-  const jwtSecret = await getJwtSecret(env);
-  const token = await generateToken(user.username, jwtSecret);
-
-  return successResponse({
-    token,
-    user: {
-      id: user.id,
-      username: user.username,
-      display_name: user.display_name,
-      role: user.role,
-    },
-  }, 'Login successful');
+  return error(ErrorCodes.UNAUTHORIZED, 'Invalid credentials');
 }
 
 export async function handleRefresh(request: Request, env: Env): Promise<Response> {
