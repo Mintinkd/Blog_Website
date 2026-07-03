@@ -8,6 +8,7 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    if: false
     permissions:
       contents: write
 
