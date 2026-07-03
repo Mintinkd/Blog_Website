@@ -1,9 +1,7 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 
-export async function getStaticPaths() {
-  return [];
-}
+export const prerender = false;
 
 const { slug } = Astro.params;
 ---
