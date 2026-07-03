@@ -67,6 +67,12 @@ const { slug } = Astro.params;
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) metaDesc.setAttribute('content', article.summary || article.title);
 
+        let bodyHtml = article.content_html || '';
+        if (!bodyHtml && article.content) {
+          const { renderMarkdown } = await import('../../utils/markdown.ts');
+          bodyHtml = renderMarkdown(article.content);
+        }
+
         container.innerHTML = `
           <header class="article-header">
             <div class="article-meta-top">
@@ -84,7 +90,7 @@ const { slug } = Astro.params;
               ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="article-tag">${tag.name}</a>`).join('')}
             </div>
           </header>
-          <div class="article-content prose">${article.content_html || article.content}</div>
+          <div class="article-content prose">${bodyHtml}</div>
           <div class="article-actions">
             <div id="like-button-mount" data-article-id="${article.id}"></div>
           </div>

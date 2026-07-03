@@ -40,7 +40,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
     params.push(tag_slug);
   }
 
-  const countResult = await env.DB.prepare(`SELECT COUNT(*) as total FROM articles a JOIN categories c ON a.category_id = c.id ${whereClause}`).bind(...params).first<{ total: number }>();
+  const countResult = await env.DB.prepare(`SELECT COUNT(*) as total FROM articles a LEFT JOIN categories c ON a.category_id = c.id ${whereClause}`).bind(...params).first<{ total: number }>();
   const total = countResult?.total || 0;
 
   const articles = await env.DB.prepare(`
@@ -48,7 +48,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
            a.view_count, a.like_count, a.comment_count, a.published_at, a.created_at,
            c.id as category_id, c.name as category_name, c.slug as category_slug
     FROM articles a
-    JOIN categories c ON a.category_id = c.id
+    LEFT JOIN categories c ON a.category_id = c.id
     ${whereClause}
     ORDER BY a.published_at DESC, a.created_at DESC
     LIMIT ? OFFSET ?
@@ -69,7 +69,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
       slug: row.slug as string,
       summary: row.summary as string,
       cover_image: row.cover_image as string,
-      category: { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string },
+      category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : null,
       tags: tags.results.map((t: Record<string, unknown>) => ({ id: t.id as number, name: t.name as string, slug: t.slug as string })),
       status: row.status as 'draft' | 'published',
       view_count: row.view_count as number,
@@ -87,7 +87,7 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
   const row = await env.DB.prepare(`
     SELECT a.*, c.id as category_id, c.name as category_name, c.slug as category_slug
     FROM articles a
-    JOIN categories c ON a.category_id = c.id
+    LEFT JOIN categories c ON a.category_id = c.id
     WHERE a.slug = ?
   `).bind(slug).first();
 

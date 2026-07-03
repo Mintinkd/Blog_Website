@@ -398,7 +398,9 @@ async function editArticle(a: any) {
 async function saveArticle() {
   articleSaving.value = true;
   try {
-    const body = { ...articleForm.value, tag_ids: [] };
+    const body: any = { ...articleForm.value };
+    delete body.tag_ids;
+    if (!body.category_id) body.category_id = null;
     let data;
     if (editingArticle.value) {
       data = await api('PUT', `/articles/${editingArticle.value.id}`, body);

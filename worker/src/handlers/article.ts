@@ -37,7 +37,7 @@ export async function handleCreateArticle(request: Request, env: Env): Promise<R
   const result = validate(body, [
     { field: 'title', required: true, type: 'string', minLength: 1, maxLength: 200 },
     { field: 'content', required: true, type: 'string', minLength: 1 },
-    { field: 'category_id', required: true, type: 'number' },
+
   ]);
 
   if (!result.valid) {
@@ -48,7 +48,7 @@ export async function handleCreateArticle(request: Request, env: Env): Promise<R
   const article = await createArticle(env, {
     title: String(body.title),
     content: String(body.content),
-    category_id: Number(body.category_id),
+    category_id: body.category_id ? Number(body.category_id) : null,
     tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
     status: (body.status === 'published' ? 'published' : 'draft') as 'draft' | 'published',
     summary: body.summary ? String(body.summary) : '',
@@ -66,7 +66,7 @@ export async function handleUpdateArticle(request: Request, env: Env, params: Re
   const article = await updateArticle(env, Number(id), {
     title: body.title ? String(body.title) : undefined,
     content: body.content ? String(body.content) : undefined,
-    category_id: body.category_id ? Number(body.category_id) : undefined,
+    category_id: body.category_id ? Number(body.category_id) : (body.category_id === '' || body.category_id === null ? null : undefined),
     tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
     status: body.status ? (body.status as 'draft' | 'published') : undefined,
     summary: body.summary ? String(body.summary) : undefined,
