@@ -1,0 +1,21 @@
+{
+  "name": "blog_website",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blog-db",
+      "database_id": "5c759ce7-82e0-4205-8d01-fea18db55cd7"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "MEDIA",
+      "id": "c4f354b6c61e43e798a679fb6733edd8"
+    }
+  ],
+  "vars": {
+    "API_PREFIX": "/api/v1"
+  }
+}
