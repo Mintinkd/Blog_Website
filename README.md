@@ -5,7 +5,7 @@
 ## 技术栈
 
 ### 前端
-- **Astro v5** — 静态网站生成器，输出纯静态HTML
+- **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
 - **Element Plus** — 后台管理UI组件库
 - **marked + highlight.js + DOMPurify** — Markdown渲染与代码高亮
@@ -13,7 +13,7 @@
 ### 后端
 - **Cloudflare Workers** — 无服务器API后端
 - **Cloudflare D1** — SQLite数据库（文章、分类、标签、评论等）
-- **Cloudflare KV** — 键值存储（媒体文件临时方案）
+- **Cloudflare KV** — 键值存储（媒体文件 + 阅读量IP缓存）
 - **JWT** — 管理员认证
 
 ### 部署
@@ -25,10 +25,8 @@
 ```
 ├── .github/workflows/
 │   └── deploy.yml              # CI/CD 自动部署
-├── functions/
-│   └── api/v1/[[path]].ts      # Pages Functions API代理 → Worker
 ├── public/
-│   ├── _routes.json            # Pages路由规则
+│   ├── .assetsignore             # Workers+Assets 排除 _worker.js
 │   └── robots.txt
 ├── src/
 │   ├── admin/
@@ -52,9 +50,11 @@
 │   │   ├── index.astro          # 首页
 │   │   ├── articles/
 │   │   │   ├── index.astro      # 文章列表
-│   │   │   └── [slug].astro     # 文章详情
-│   │   ├── categories/[slug].astro
-│   │   ├── tags/[slug].astro
+│   │   │   └── [slug].astro      # 文章详情（SSR）
+│   │   ├── categories/[slug].astro  # 分类（SSR）
+│   │   ├── tags/[slug].astro        # 标签（SSR）
+│   │   ├── api/v1/[...path].ts      # API代理路由（SSR）
+│   │   ├── rss.xml.ts               # RSS订阅源（SSR）
 │   │   ├── archives.astro       # 归档
 │   │   ├── about.astro          # 关于
 │   │   ├── search.astro         # 搜索
@@ -74,7 +74,7 @@
 │       ├── siteConfig.ts        # 站点配置读取与应用
 │       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 ├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.toml            # Worker配置（D1/KV绑定）
+│   ├── wrangler.toml            # Worker配置（旧版）\n│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定）
 │   ├── schema.sql               # 数据库Schema
 │   └── src/
 │       ├── index.ts             # Worker入口
@@ -101,6 +101,7 @@
 │       └── utils/               # 工具函数
 ├── astro.config.mjs
 ├── package.json
+├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── .node-version
 └── .npmrc
@@ -115,7 +116,7 @@ D1 (SQLite) 共 9 张表：
 | `users` | 用户账户（管理员/编辑者，SHA-256密码哈希） |
 | `categories` | 文章分类 |
 | `tags` | 标签 |
-| `articles` | 文章（含Markdown原文和HTML渲染结果） |
+| `articles` | 文章（含Markdown原文和HTML渲染结果，category_id可选） |
 | `article_tags` | 文章-标签多对多关联 |
 | `comments` | 评论（含审核状态） |
 | `article_likes` | 点赞记录（IP去重） |
@@ -127,7 +128,7 @@ D1 (SQLite) 共 9 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`，通过 Pages Functions 代理到 Worker。
+所有接口前缀 `/api/v1`，前端通过 Astro API 路由代理到 Worker。
 
 ### 公开接口
 
@@ -135,7 +136,7 @@ D1 (SQLite) 共 9 张表：
 |------|------|------|
 | GET | `/health` | 健康检查 |
 | POST | `/auth/login` | 登录（返回JWT token和用户信息） |
-| GET | `/articles` | 文章列表（支持分页、分类、标签过滤） |
+| GET | `/articles` | 文章列表（支持分页、分类、标签过滤、status=all） |
 | GET | `/articles/:slug` | 文章详情 |
 | GET | `/categories` | 分类列表 |
 | GET | `/tags` | 标签列表 |
@@ -144,6 +145,7 @@ D1 (SQLite) 共 9 张表：
 | GET | `/search` | 全文搜索 |
 | POST | `/articles/:article_id/like` | 点赞/取消 |
 | GET | `/articles/:article_id/like-status` | 点赞状态 |
+| GET | `/media/serve/*` | 媒体文件访问 |
 | GET | `/friend-links` | 友情链接 |
 | GET | `/config` | 公开站点配置 |
 
@@ -151,6 +153,7 @@ D1 (SQLite) 共 9 张表：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| POST | `/auth/refresh` | 刷新Token |
 | POST | `/articles` | 创建文章 |
 | PUT | `/articles/:id` | 更新文章 |
 | DELETE | `/articles/:id` | 删除文章 |
@@ -181,27 +184,31 @@ D1 (SQLite) 共 9 张表：
 
 ## 前台页面
 
-| 路径 | 说明 |
-|------|------|
-| `/` | 首页（Hero + 最新文章卡片网格） |
-| `/articles` | 文章列表（分页） |
-| `/articles/:slug` | 文章详情（Markdown渲染） |
-| `/categories/:slug` | 分类文章 |
-| `/tags/:slug` | 标签文章 |
-| `/archives` | 时间线归档 |
-| `/about` | 关于页面 |
-| `/search` | 搜索页 |
-| `/admin` | 后台管理 |
+| 路径 | 说明 | 渲染模式 |
+|------|------|----------|
+| `/` | 首页（Hero + 最新文章卡片网格） | 静态 |
+| `/articles` | 文章列表（分页） | 静态 |
+| `/articles/:slug` | 文章详情（Markdown渲染） | SSR |
+| `/categories/:slug` | 分类文章 | SSR |
+| `/tags/:slug` | 标签文章 | SSR |
+| `/api/v1/*` | API代理到Worker | SSR |
+| `/rss.xml` | RSS订阅源 | SSR |
+| `/archives` | 时间线归档 | 静态 |
+| `/about` | 关于页面 | 静态 |
+| `/search` | 搜索页 | 静态 |
+| `/admin` | 后台管理 | 静态 |
 
 ## 后台管理
 
 访问 `/admin` 进入管理后台，功能包括：
 
 - **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息
-- **文章管理** — 新建/编辑/删除，Markdown编辑器，支持草稿和已发布状态，Slug支持中文
+- **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式），Slug支持中文
 - **分类管理** — 增删改
 - **标签管理** — 增删
-- **关于页面** — Markdown编辑关于页内容，保存后前台 `/about` 页面实时更新
+- **评论管理** — 筛选/审核/拒绝/删除
+- **图片管理** — 上传/缩略图预览/复制链接/删除
+- **关于页面** — Markdown编辑，保存后前台实时更新
 - **站点配置** — 标题、副标题、描述、关键词等
 - **账户管理** — 多用户支持（管理员/编辑者角色），增删改，密码修改
 
@@ -262,14 +269,9 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 ### 首次设置
 
-数据库初始化后，需要配置 JWT 密钥。默认管理员账户已自动创建（用户名: `admin`，密码: `changeme`），**请首次登录后立即修改密码**。
+数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，密码: `changeme`），**请首次登录后立即修改密码**。
 
-```bash
-# 设置JWT密钥（自行生成一个随机字符串）
-npx wrangler d1 execute blog-db --remote --command="UPDATE site_config SET value='你的随机密钥' WHERE key='jwt_secret'"
-```
-
-> 旧版使用 `site_config` 中的 `admin_username` / `admin_password_hash` 已废弃，新版使用 `users` 表管理账户。
+JWT 密钥在首次登录时自动生成，无需手动配置。
 
 ## 部署
 
@@ -287,11 +289,13 @@ npx wrangler d1 execute blog-db --remote --command="UPDATE site_config SET value
 需要提前在 Cloudflare Dashboard 中创建：
 
 1. **D1 数据库** — 名为 `blog-db`
-2. **KV 命名空间** — 用于媒体存储
+2. **KV 命名空间** — `MEDIA`（媒体存储）+ `VIEW_CACHE`（阅读量缓存）
 3. **Pages 项目** — 名为 `blog-website-page`
 4. **Worker** — 名为 `blog_website`
 
 ### 自动部署
+
+> **重要**：如果 Cloudflare Pages 项目启用了 Git 自动部署，请在 Settings → Builds & deployments 中关闭 Automatic deployments，避免与 GitHub Actions 冲突覆盖 API Worker。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
