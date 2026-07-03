@@ -31,6 +31,9 @@ function addRoute(method: string, path: string, handler: Handler, requireAuth = 
   const patternStr = path.replace(/:([^/]+)/g, (_, name) => {
     paramNames.push(name);
     return '([^/]+)';
+  }).replace(/\*/g, () => {
+    paramNames.push('0');
+    return '(.+)';
   });
   routes.push({
     method,

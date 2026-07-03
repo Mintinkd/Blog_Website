@@ -935,6 +935,23 @@ watch(currentTab, (tab) => {
   gap: 0.5rem;
 }
 
+.actions button {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.actions button:hover {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 .form-group {
   margin-bottom: 0.75rem;
 }
