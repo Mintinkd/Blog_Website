@@ -471,7 +471,11 @@ async function api(method: string, path: string, body?: any) {
     isLoggedIn.value = false;
   }
   if (data.code === 10004) {
-    alert('权限不足：您没有权限执行此操作');
+    token.value = '';
+    userRole.value = 'editor';
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_role');
+    isLoggedIn.value = false;
   }
   return data;
 }
