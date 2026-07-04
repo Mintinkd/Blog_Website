@@ -193,14 +193,15 @@ export async function deleteArticle(env: Env, id: number): Promise<boolean> {
 }
 
 export async function incrementViewCount(env: Env, id: number, ip?: string): Promise<void> {
-  if (ip) {
+  if (ip && env.VIEW_CACHE) {
     const key = `view:${id}:${ip}`;
     try {
-      const kv = env.VIEW_CACHE || env.MEDIA;
-      const cached = await kv.get(key);
+      const cached = await env.VIEW_CACHE.get(key);
       if (cached) return;
-      await kv.put(key, '1', { expirationTtl: 3600 });
-    } catch {}
+      await env.VIEW_CACHE.put(key, '1', { expirationTtl: 3600 });
+    } catch (e) {
+      console.error('VIEW_CACHE error:', e);
+    }
   }
   await env.DB.prepare('UPDATE articles SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
 }
