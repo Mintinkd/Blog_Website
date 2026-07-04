@@ -192,9 +192,16 @@ export async function deleteArticle(env: Env, id: number): Promise<boolean> {
   return result.meta.changes > 0;
 }
 
-export async function incrementViewCount(env: Env, id: number, ip?: string): Promise<void> {
-
+export async function incrementViewCount(env: Env, id: number, cookieHeader?: string): Promise<boolean> {
+  const cookieName = `view_${id}`;
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(';').map(c => c.trim());
+    if (cookies.some(c => c.startsWith(cookieName + '='))) {
+      return false;
+    }
+  }
   await env.DB.prepare('UPDATE articles SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
+  return true;
 }
 
 export { generateSlug };

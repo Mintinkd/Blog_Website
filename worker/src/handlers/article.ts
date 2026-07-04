@@ -26,10 +26,16 @@ export async function handleGetArticle(request: Request, env: Env, params: Recor
     return notFound('Article not found');
   }
 
-  const ip = request.headers.get('x-real-ip') || request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || undefined;
-  await incrementViewCount(env, article.id, ip);
+  const cookieHeader = request.headers.get('cookie') || undefined;
+  const viewed = await incrementViewCount(env, article.id, cookieHeader);
 
-  return successResponse(article);
+  const response = successResponse(article);
+  if (viewed) {
+    const headers = new Headers(response.headers);
+    headers.append('Set-Cookie', `view_${article.id}=1; Path=/; Max-Age=86400; SameSite=Lax`);
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  }
+  return response;
 }
 
 export async function handleCreateArticle(request: Request, env: Env): Promise<Response> {
