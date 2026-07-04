@@ -180,7 +180,10 @@
           <div v-if="configLoading" class="loading">{{ t('common.loading') }}</div>
           <div v-else class="config-form">
             <div class="form-group"><label>{{ t('admin.site_title') }}</label><input v-model="configForm.site_title" /></div>
+            <div class="form-group"><label>{{ t('admin.site_subtitle') }}</label><input v-model="configForm.site_subtitle" /></div>
             <div class="form-group"><label>{{ t('admin.site_description') }}</label><textarea v-model="configForm.site_description" rows="2"></textarea></div>
+            <div class="form-group"><label>{{ t('admin.site_keywords') }}</label><input v-model="configForm.site_keywords" /></div>
+            <div class="form-group"><label>{{ t('admin.posts_per_page') }}</label><input v-model.number="configForm.posts_per_page" type="number" min="1" max="50" /></div>
             <button class="btn-primary" @click="saveConfig">{{ t('admin.save') }}</button>
             <p v-if="configMsg" class="msg">{{ configMsg }}</p>
           </div>
@@ -387,7 +390,7 @@ const tags = ref<any[]>([]);
 const showTagForm = ref(false);
 const tagForm = ref({ name: '', slug: '' });
 
-const configForm = ref({ site_title: '', site_description: '' });
+const configForm = ref({ site_title: '', site_subtitle: '', site_description: '', site_keywords: '', posts_per_page: 10 });
 const configLoading = ref(false);
 const configMsg = ref('');
 
@@ -414,7 +417,13 @@ async function api(method: string, path: string, body?: any) {
   const opts: RequestInit = { method, headers: authHeaders() };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${API}${path}`, opts);
-  return res.json();
+  const data = await res.json();
+  if (data.code === 10003) {
+    token.value = '';
+    localStorage.removeItem('admin_token');
+    isLoggedIn.value = false;
+  }
+  return data;
 }
 
 async function handleLogin() {
@@ -474,7 +483,10 @@ async function loadConfig() {
     if (data.code === 0 && data.data) {
       configForm.value = {
         site_title: data.data.site_title || '',
+        site_subtitle: data.data.site_subtitle || '',
         site_description: data.data.site_description || '',
+        site_keywords: data.data.site_keywords || '',
+        posts_per_page: parseInt(data.data.posts_per_page) || 10,
       };
       aboutContent.value = data.data.about_content || '';
     }
