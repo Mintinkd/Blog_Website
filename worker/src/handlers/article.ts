@@ -26,7 +26,7 @@ export async function handleGetArticle(request: Request, env: Env, params: Recor
     return notFound('Article not found');
   }
 
-  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || undefined;
+  const ip = request.headers.get('x-real-ip') || request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || undefined;
   incrementViewCount(env, article.id, ip);
 
   return successResponse(article);

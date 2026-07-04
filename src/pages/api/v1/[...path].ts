@@ -20,6 +20,11 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
   const headers = new Headers(request.headers);
   headers.set('Host', new URL(WORKER_ORIGIN).host);
 
+  const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '';
+  if (clientIp) {
+    headers.set('X-Real-IP', clientIp);
+  }
+
   let body: BodyInit | null = null;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     body = await request.arrayBuffer();
