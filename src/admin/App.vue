@@ -30,37 +30,9 @@
           <span>Blog Admin</span>
         </div>
         <nav class="sidebar-nav">
-          <button :class="['nav-item', { active: currentTab === 'articles' }]" @click="currentTab = 'articles'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-            {{ t('admin.articles') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'categories' }]" @click="currentTab = 'categories'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            {{ t('admin.categories') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'tags' }]" @click="currentTab = 'tags'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
-            {{ t('admin.tags') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'about' }]" @click="currentTab = 'about'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            {{ t('admin.about_page') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'comments' }]" @click="currentTab = 'comments'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            {{ t('admin.comments') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'media' }]" @click="currentTab = 'media'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-            {{ t('admin.media') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'config' }]" @click="currentTab = 'config'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            {{ t('admin.site_config') }}
-          </button>
-          <button :class="['nav-item', { active: currentTab === 'users' }]" @click="currentTab = 'users'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            {{ t('admin.users') }}
+          <button v-for="item in visibleNavItems" :key="item.key" :class="['nav-item', { active: currentTab === item.key }]" @click="switchTab(item.key)">
+            <span v-html="item.icon"></span>
+            {{ item.label }}
           </button>
         </nav>
         <div class="sidebar-footer">
@@ -282,6 +254,44 @@
           </div>
         </div>
 
+        <div v-if="currentTab === 'friend_links'" class="admin-panel">
+          <div class="panel-header">
+            <h2>{{ t('admin.friend_links') }}</h2>
+            <button class="btn-primary" @click="showFriendLinkForm = true; editingFriendLinkId = null; friendLinkForm = { name: '', url: '', description: '', sort_order: 0, is_active: true }">{{ t('admin.new_friend_link') }}</button>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>{{ t('admin.name') }}</th><th>URL</th><th>{{ t('admin.description') }}</th><th>{{ t('admin.sort_order') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="fl in friendLinks" :key="fl.id">
+                <td>{{ fl.name }}</td>
+                <td><a :href="fl.url" target="_blank" style="font-size:0.8rem;">{{ fl.url }}</a></td>
+                <td>{{ fl.description || '-' }}</td>
+                <td>{{ fl.sort_order }}</td>
+                <td><span :class="['status-badge', fl.is_active ? 'published' : 'draft']">{{ fl.is_active ? t('admin.active') : t('admin.inactive') }}</span></td>
+                <td class="actions">
+                  <button @click="editingFriendLinkId = fl.id; friendLinkForm = { name: fl.name, url: fl.url, description: fl.description || '', sort_order: fl.sort_order, is_active: fl.is_active }; showFriendLinkForm = true">{{ t('admin.edit') }}</button>
+                  <button @click="deleteFriendLink(fl.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                </td>
+              </tr>
+              <tr v-if="friendLinks.length === 0"><td colspan="6" class="empty">{{ t('admin.no_friend_links') }}</td></tr>
+            </tbody>
+          </table>
+          <div v-if="showFriendLinkForm" class="modal-overlay" @click.self="showFriendLinkForm = false">
+            <div class="modal">
+              <h3>{{ editingFriendLinkId ? t('admin.edit') + t('admin.friend_links') : t('admin.new_friend_link') }}</h3>
+              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="friendLinkForm.name" /></div>
+              <div class="form-group"><label>URL</label><input v-model="friendLinkForm.url" /></div>
+              <div class="form-group"><label>{{ t('admin.description') }}</label><input v-model="friendLinkForm.description" /></div>
+              <div class="form-group"><label>{{ t('admin.sort_order') }}</label><input v-model.number="friendLinkForm.sort_order" type="number" /></div>
+              <div class="form-group"><label><input type="checkbox" v-model="friendLinkForm.is_active" /> {{ t('admin.active') }}</label></div>
+              <div class="modal-actions">
+                <button class="btn-secondary" @click="showFriendLinkForm = false">{{ t('admin.cancel') }}</button>
+                <button class="btn-primary" @click="saveFriendLink">{{ t('admin.save') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="showArticleEditor" class="article-editor-overlay">
           <div class="article-editor">
             <div class="editor-header">
@@ -333,7 +343,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
@@ -365,6 +375,7 @@ const API = '/api/v1';
 const currentLocale = ref(initLocale());
 
 const token = ref(localStorage.getItem('admin_token') || '');
+const userRole = ref(localStorage.getItem('admin_role') || 'editor');
 const isLoggedIn = ref(!!token.value);
 const currentTab = ref('articles');
 
@@ -409,6 +420,40 @@ const commentFilter = ref('');
 const mediaList = ref<any[]>([]);
 const mediaLoading = ref(false);
 
+const friendLinks = ref<any[]>([]);
+const showFriendLinkForm = ref(false);
+const friendLinkForm = ref({ name: '', url: '', description: '', sort_order: 0, is_active: true });
+const editingFriendLinkId = ref<number | null>(null);
+
+const navItems = [
+  { key: 'articles', label: () => t('admin.articles'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>' },
+  { key: 'categories', label: () => t('admin.categories'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>' },
+  { key: 'tags', label: () => t('admin.tags'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>' },
+  { key: 'about', label: () => t('admin.about_page'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>' },
+  { key: 'comments', label: () => t('admin.comments'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>' },
+  { key: 'media', label: () => t('admin.media'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>' },
+  { key: 'friend_links', label: () => t('admin.friend_links'), minRole: 'editor', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>' },
+  { key: 'config', label: () => t('admin.site_config'), minRole: 'admin', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' },
+  { key: 'users', label: () => t('admin.users'), minRole: 'admin', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>' },
+];
+
+const adminOnlyTabs = ['config', 'users'];
+
+const visibleNavItems = computed(() => {
+  return navItems.filter(item => {
+    if (item.minRole === 'admin' && userRole.value !== 'admin') return false;
+    return true;
+  });
+});
+
+function switchTab(key: string) {
+  if (adminOnlyTabs.includes(key) && userRole.value !== 'admin') {
+    alert('您没有权限访问此页面');
+    return;
+  }
+  currentTab.value = key;
+}
+
 function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` };
 }
@@ -420,8 +465,13 @@ async function api(method: string, path: string, body?: any) {
   const data = await res.json();
   if (data.code === 10003) {
     token.value = '';
+    userRole.value = 'editor';
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_role');
     isLoggedIn.value = false;
+  }
+  if (data.code === 10004) {
+    alert('权限不足：您没有权限执行此操作');
   }
   return data;
 }
@@ -434,6 +484,9 @@ async function handleLogin() {
     if (data.code === 0 && data.data?.token) {
       token.value = data.data.token;
       localStorage.setItem('admin_token', data.data.token);
+      const role = data.data.user?.role || 'editor';
+      userRole.value = role;
+      localStorage.setItem('admin_role', role);
       isLoggedIn.value = true;
     } else {
       loginError.value = data.message || t('admin.login_error');
@@ -447,7 +500,9 @@ async function handleLogin() {
 
 function handleLogout() {
   token.value = '';
+  userRole.value = 'editor';
   localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_role');
   isLoggedIn.value = false;
 }
 
@@ -709,6 +764,34 @@ function copyMediaUrl(url: string) {
   alert(t('admin.copied'));
 }
 
+async function loadFriendLinks() {
+  const data = await api('GET', '/friend-links/all');
+  if (data.code === 0) friendLinks.value = data.data?.items || data.data || [];
+}
+
+async function saveFriendLink() {
+  let data;
+  if (editingFriendLinkId.value) {
+    data = await api('PUT', `/friend-links/${editingFriendLinkId.value}`, friendLinkForm.value);
+  } else {
+    data = await api('POST', '/friend-links', friendLinkForm.value);
+  }
+  if (data.code === 0) {
+    showFriendLinkForm.value = false;
+    editingFriendLinkId.value = null;
+    await loadFriendLinks();
+  } else {
+    alert(data.message || t('admin.save_failed'));
+  }
+}
+
+async function deleteFriendLink(id: number) {
+  if (!confirm(t('admin.delete_confirm'))) return;
+  const data = await api('DELETE', `/friend-links/${id}`);
+  if (data.code === 0) await loadFriendLinks();
+  else alert(data.message || t('admin.delete_failed'));
+}
+
 watch(isLoggedIn, (v) => {
   if (v) {
     loadArticles();
@@ -717,6 +800,7 @@ watch(isLoggedIn, (v) => {
     loadUsers();
     loadComments();
     loadMedia();
+    loadFriendLinks();
   }
 });
 
@@ -728,6 +812,7 @@ onMounted(() => {
     loadUsers();
     loadComments();
     loadMedia();
+    loadFriendLinks();
   }
 });
 
@@ -736,6 +821,7 @@ watch(currentTab, (tab) => {
   if (tab === 'users') loadUsers();
   if (tab === 'comments') loadComments();
   if (tab === 'media') loadMedia();
+  if (tab === 'friend_links') loadFriendLinks();
 });
 </script>
 

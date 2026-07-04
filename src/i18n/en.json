@@ -136,5 +136,11 @@
   "admin.no_media": "No media",
   "admin.edit_mode": "Edit",
   "admin.split_mode": "Split",
-  "admin.preview_mode": "Preview"
+  "admin.preview_mode": "Preview",
+  "admin.friend_links": "Friend Links",
+  "admin.new_friend_link": "+ New Link",
+  "admin.sort_order": "Sort Order",
+  "admin.active": "Active",
+  "admin.inactive": "Inactive",
+  "admin.no_friend_links": "No friend links"
 }

@@ -1,5 +1,10 @@
 import { Env } from '../index';
-import { unauthorized, ErrorCodes, error } from '../utils/response';
+import { unauthorized, forbidden } from '../utils/response';
+
+export interface AuthResult {
+  username: string;
+  role: 'admin' | 'editor';
+}
 
 interface JwtPayload {
   username: string;
@@ -88,7 +93,16 @@ export async function verifyToken(token: string, secret: string): Promise<JwtPay
   }
 }
 
-export async function authMiddleware(request: Request, env: Env): Promise<Response | null> {
+export async function getUserRole(username: string, env: Env): Promise<string | null> {
+  try {
+    const row = await env.DB.prepare('SELECT role FROM users WHERE username = ?').bind(username).first<{ role: string }>();
+    return row?.role || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function authMiddleware(request: Request, env: Env): Promise<{ user: AuthResult } | Response> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return unauthorized('Missing or invalid authorization header');
@@ -101,7 +115,12 @@ export async function authMiddleware(request: Request, env: Env): Promise<Respon
     return unauthorized('Invalid or expired token');
   }
 
-  return null;
+  const role = await getUserRole(payload.username, env);
+  if (!role) {
+    return forbidden('User role not found');
+  }
+
+  return { user: { username: payload.username, role: role as 'admin' | 'editor' } };
 }
 
 async function getJwtSecretFromDb(env: Env): Promise<string> {

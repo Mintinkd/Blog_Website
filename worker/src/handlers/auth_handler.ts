@@ -143,8 +143,15 @@ export async function handleUpdateUser(request: Request, env: Env, params: Recor
   }
 
   if (body.role !== undefined) {
+    const newRole = body.role === 'editor' ? 'editor' : 'admin';
+    if (newRole === 'editor') {
+      const adminCount = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").first<{ count: number }>();
+      if (adminCount && adminCount.count <= 1) {
+        return error(ErrorCodes.VALIDATION_FAILED, '系统必须至少保留一个管理员');
+      }
+    }
     sets.push('role = ?');
-    values.push(body.role === 'editor' ? 'editor' : 'admin');
+    values.push(newRole);
   }
 
   if (body.password) {
@@ -169,15 +176,19 @@ export async function handleUpdateUser(request: Request, env: Env, params: Recor
 export async function handleDeleteUser(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const { id } = params;
 
-  const countResult = await env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>();
-  if (countResult && countResult.count <= 1) {
-    return error(ErrorCodes.VALIDATION_FAILED, 'Cannot delete the last user');
-  }
-
-  const result = await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(Number(id)).run();
-  if (result.meta.changes === 0) {
+  const user = await env.DB.prepare('SELECT role FROM users WHERE id = ?').bind(Number(id)).first<{ role: string }>();
+  if (!user) {
     return error(ErrorCodes.NOT_FOUND, 'User not found');
   }
+
+  if (user.role === 'admin') {
+    const adminCount = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").first<{ count: number }>();
+    if (adminCount && adminCount.count <= 1) {
+      return error(ErrorCodes.VALIDATION_FAILED, '系统必须至少保留一个管理员');
+    }
+  }
+
+  await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(Number(id)).run();
 
   return successResponse(null, 'User deleted');
 }
