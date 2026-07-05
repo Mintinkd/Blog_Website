@@ -142,5 +142,12 @@
   "admin.sort_order": "Sort Order",
   "admin.active": "Active",
   "admin.inactive": "Inactive",
-  "admin.no_friend_links": "No friend links"
+  "admin.no_friend_links": "No friend links",
+  "admin.author": "Author",
+  "admin.all_authors": "All Authors",
+  "admin.edit_locked": "Article is being edited",
+  "admin.edit_locked_msg": "This article is being edited by {name}",
+  "admin.lock_expires_at": "Lock expires at",
+  "admin.force_takeover": "Force Takeover",
+  "admin.force_takeover_confirm": "This will force release the edit lock. The editor's unsaved changes may be lost. Continue?"
 }

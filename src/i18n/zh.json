@@ -142,5 +142,12 @@
   "admin.sort_order": "排序",
   "admin.active": "启用",
   "admin.inactive": "停用",
-  "admin.no_friend_links": "暂无友情链接"
+  "admin.no_friend_links": "暂无友情链接",
+  "admin.author": "作者",
+  "admin.all_authors": "全部作者",
+  "admin.edit_locked": "文章正在编辑中",
+  "admin.edit_locked_msg": "该文章正在被{name}编辑",
+  "admin.lock_expires_at": "锁定过期时间",
+  "admin.force_takeover": "强制接管",
+  "admin.force_takeover_confirm": "将强制释放编辑锁，该编辑者未保存的内容可能丢失，确认继续？"
 }

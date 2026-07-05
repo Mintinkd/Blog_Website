@@ -45,16 +45,23 @@
         <div v-if="currentTab === 'articles'" class="admin-panel">
           <div class="panel-header">
             <h2>{{ t('admin.articles') }}</h2>
-            <button class="btn-primary" @click="showArticleEditor = true; editingArticle = null">{{ t('admin.new_article') }}</button>
+            <div style="display:flex;gap:0.5rem;align-items:center;">
+              <select v-if="userRole === 'admin'" v-model="authorFilter" @change="loadArticles()" style="padding:0.4rem 0.6rem;font-size:0.85rem;">
+                <option value="">{{ t('admin.all_authors') }}</option>
+                <option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</option>
+              </select>
+              <button class="btn-primary" @click="showArticleEditor = true; editingArticle = null">{{ t('admin.new_article') }}</button>
+            </div>
           </div>
           <div v-if="articlesLoading" class="loading">{{ t('common.loading') }}</div>
           <table v-else class="data-table">
             <thead>
-              <tr><th>{{ t('admin.title') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.category') }}</th><th>{{ t('article.views') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr>
+              <tr><th>{{ t('admin.title') }}</th><th>{{ t('admin.author') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.category') }}</th><th>{{ t('article.views') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr>
             </thead>
             <tbody>
               <tr v-for="a in articles" :key="a.id">
                 <td><a :href="`/articles/${a.slug}`" target="_blank">{{ a.title }}</a></td>
+                <td>{{ a.author_name || '-' }}</td>
                 <td><span :class="['status-badge', a.status]">{{ a.status === 'published' ? t('article.published') : t('article.draft') }}</span></td>
                 <td>{{ a.category?.name || '-' }}</td>
                 <td>{{ a.view_count }}</td>
@@ -64,7 +71,7 @@
                   <button @click="deleteArticle(a.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
-              <tr v-if="articles.length === 0"><td colspan="6" class="empty">{{ t('article.no_articles') }}</td></tr>
+              <tr v-if="articles.length === 0"><td colspan="7" class="empty">{{ t('article.no_articles') }}</td></tr>
             </tbody>
           </table>
         </div>
@@ -292,11 +299,23 @@
           </div>
         </div>
 
+        <div v-if="showLockConflict" class="modal-overlay" @click.self="showLockConflict = false">
+          <div class="modal">
+            <h3>{{ t('admin.edit_locked') }}</h3>
+            <p>{{ t('admin.edit_locked_msg', { name: lockConflict?.holder_name || '?' }) }}</p>
+            <p v-if="lockConflict?.expires_at" style="font-size:0.85rem;color:#888;">{{ t('admin.lock_expires_at') }}: {{ new Date(lockConflict.expires_at).toLocaleString() }}</p>
+            <div class="modal-actions">
+              <button class="btn-secondary" @click="showLockConflict = false">{{ t('admin.cancel') }}</button>
+              <button v-if="userRole === 'admin'" class="btn-danger" @click="forceTakeover">{{ t('admin.force_takeover') }}</button>
+            </div>
+          </div>
+        </div>
+
         <div v-if="showArticleEditor" class="article-editor-overlay">
           <div class="article-editor">
             <div class="editor-header">
               <h3>{{ editingArticle ? t('admin.edit') + t('admin.articles') : t('admin.new_article') }}</h3>
-              <button @click="showArticleEditor = false" class="close-btn">&times;</button>
+              <button @click="releaseEditLock(); showArticleEditor = false" class="close-btn">&times;</button>
             </div>
             <div class="editor-body">
               <div class="form-group"><label>{{ t('admin.title') }}</label><input v-model="articleForm.title" /></div>
@@ -385,6 +404,7 @@ const loginLoading = ref(false);
 
 const articles = ref<any[]>([]);
 const articlesLoading = ref(false);
+const authorFilter = ref('');
 const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
 const articleForm = ref({ title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft' });
@@ -525,7 +545,9 @@ function formatDate(d: string) {
 async function loadArticles() {
   articlesLoading.value = true;
   try {
-    const data = await api('GET', '/articles?page_size=100&status=all');
+    let url = '/articles?page_size=100&status=all';
+    if (authorFilter.value) url += `&author_id=${authorFilter.value}`;
+    const data = await api('GET', url);
     if (data.code === 0) articles.value = data.data?.items || [];
   } finally {
     articlesLoading.value = false;
@@ -561,7 +583,23 @@ async function loadConfig() {
   }
 }
 
+const lockConflict = ref<any>(null);
+const showLockConflict = ref(false);
+const lockConflictArticleId = ref<number | null>(null);
+
 async function editArticle(a: any) {
+  const lockRes = await api('POST', `/articles/${a.id}/edit-lock`);
+  if (lockRes.code !== 0 && lockRes.code !== 10006) {
+    alert(lockRes.message || t('admin.save_failed'));
+    return;
+  }
+  if (lockRes.code === 10006) {
+    lockConflict.value = lockRes.data;
+    lockConflictArticleId.value = a.id;
+    showLockConflict.value = true;
+    return;
+  }
+
   editingArticle.value = a;
   articleForm.value = {
     title: a.title,
@@ -581,6 +619,25 @@ async function editArticle(a: any) {
   } catch {}
 }
 
+async function forceTakeover() {
+  if (!lockConflictArticleId.value) return;
+  if (!confirm(t('admin.force_takeover_confirm'))) return;
+  const res = await api('POST', `/articles/${lockConflictArticleId.value}/edit-lock/force`);
+  if (res.code === 0) {
+    showLockConflict.value = false;
+    const a = articles.value.find((x: any) => x.id === lockConflictArticleId.value);
+    if (a) await editArticle(a);
+  } else {
+    alert(res.message || t('admin.save_failed'));
+  }
+}
+
+async function releaseEditLock() {
+  if (editingArticle.value?.id) {
+    await api('DELETE', `/articles/${editingArticle.value.id}/edit-lock`);
+  }
+}
+
 async function saveArticle() {
   articleSaving.value = true;
   try {
@@ -594,6 +651,7 @@ async function saveArticle() {
       data = await api('POST', '/articles', body);
     }
     if (data.code === 0) {
+      if (editingArticle.value) await releaseEditLock();
       showArticleEditor.value = false;
       await loadArticles();
     } else {
