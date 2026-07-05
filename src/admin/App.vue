@@ -235,7 +235,7 @@
                 <td><span :class="['status-badge', u.role]">{{ u.role === 'admin' ? t('admin.role_admin') : t('admin.role_editor') }}</span></td>
                 <td>{{ formatDate(u.created_at) }}</td>
                 <td class="actions">
-                  <button @click="editingUserId = u.id; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">{{ t('admin.edit') }}</button>
+                  <button @click="editingUserId = u.id; originalUserRole = u.role; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">{{ t('admin.edit') }}</button>
                   <button @click="deleteUser(u.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
@@ -434,6 +434,7 @@ const users = ref<any[]>([]);
 const showUserForm = ref(false);
 const userForm = ref({ username: '', password: '', display_name: '', role: 'admin' });
 const editingUserId = ref<number | null>(null);
+const originalUserRole = ref<string>('');
 
 const comments = ref<any[]>([]);
 const commentFilter = ref('');
@@ -743,7 +744,8 @@ async function loadUsers() {
 async function saveUser() {
   let data;
   if (editingUserId.value) {
-    const body: any = { display_name: userForm.value.display_name, role: userForm.value.role };
+    const body: any = { display_name: userForm.value.display_name };
+    if (userForm.value.role !== originalUserRole.value) body.role = userForm.value.role;
     if (userForm.value.password) body.password = userForm.value.password;
     data = await api('PUT', `/users/${editingUserId.value}`, body);
   } else {
