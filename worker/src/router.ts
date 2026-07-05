@@ -89,11 +89,11 @@ addRoute('DELETE', '/articles/:id', async (req, env, _ctx, params) => handleDele
 addRoute('GET', '/categories', async (req, env) => handleListCategories(req, env));
 addRoute('POST', '/categories', async (req, env) => handleCreateCategory(req, env), true);
 addRoute('PUT', '/categories/:id', async (req, env, _ctx, params) => handleUpdateCategory(req, env, params), true);
-addRoute('DELETE', '/categories/:id', async (req, env, _ctx, params) => handleDeleteCategory(req, env, params), true);
+addRoute('DELETE', '/categories/:id', async (req, env, _ctx, params) => handleDeleteCategory(req, env, params), true, true);
 
 addRoute('GET', '/tags', async (req, env) => handleListTags(req, env));
 addRoute('POST', '/tags', async (req, env) => handleCreateTag(req, env), true);
-addRoute('DELETE', '/tags/:id', async (req, env, _ctx, params) => handleDeleteTag(req, env, params), true);
+addRoute('DELETE', '/tags/:id', async (req, env, _ctx, params) => handleDeleteTag(req, env, params), true, true);
 
 addRoute('GET', '/articles/:article_id/comments', async (req, env, _ctx, params) => handleListComments(req, env, params));
 addRoute('POST', '/articles/:article_id/comments', async (req, env, ctx, params) => handleSubmitComment(req, env, ctx, params));

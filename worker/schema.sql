@@ -191,3 +191,7 @@ INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES
 ALTER TABLE articles ADD COLUMN author_id INTEGER REFERENCES users(id);
 CREATE INDEX IF NOT EXISTS idx_articles_author_id ON articles(author_id);
 UPDATE articles SET author_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE author_id IS NULL;
+
+-- Migration: Add uploaded_by to media_assets
+ALTER TABLE media_assets ADD COLUMN uploaded_by INTEGER REFERENCES users(id);
+UPDATE media_assets SET uploaded_by = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE uploaded_by IS NULL;

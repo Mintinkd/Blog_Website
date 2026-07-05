@@ -1,6 +1,7 @@
 import { Env } from '../index';
-import { successResponse, error, ErrorCodes, notFound } from '../utils/response';
+import { successResponse, error, ErrorCodes, notFound, forbidden } from '../utils/response';
 import { validate, isValidUrl } from '../utils/validator';
+import type { AuthResult } from '../middleware/auth';
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
@@ -9,7 +10,7 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-export async function handleUploadMedia(request: Request, env: Env): Promise<Response> {
+export async function handleUploadMedia(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
 
@@ -37,10 +38,16 @@ export async function handleUploadMedia(request: Request, env: Env): Promise<Res
     metadata: { original_name: file.name, mime_type: file.type },
   });
 
+  let uploaded_by: number | null = null;
+  if (authResult) {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    uploaded_by = user?.id || null;
+  }
+
   const result = await env.DB.prepare(`
-    INSERT INTO media_assets (filename, original_name, mime_type, file_size, kv_key, storage_type, alt_text)
-    VALUES (?, ?, ?, ?, ?, 'kv', ?)
-  `).bind(`${uuid}.${ext}`, file.name, file.type, file.size, kv_key, '').run();
+    INSERT INTO media_assets (filename, original_name, mime_type, file_size, kv_key, storage_type, alt_text, uploaded_by)
+    VALUES (?, ?, ?, ?, ?, 'kv', ?, ?)
+  `).bind(`${uuid}.${ext}`, file.name, file.type, file.size, kv_key, '', uploaded_by).run();
 
   const media_id = result.meta.last_row_id;
   const url = `/api/v1/media/serve/${kv_key}`;
@@ -54,16 +61,27 @@ export async function handleUploadMedia(request: Request, env: Env): Promise<Res
   }, 'File uploaded');
 }
 
-export async function handleListMedia(request: Request, env: Env): Promise<Response> {
+export async function handleListMedia(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   const page_size = Math.min(50, Math.max(1, parseInt(url.searchParams.get('page_size') || '20', 10)));
 
-  const media = await env.DB.prepare(`
-    SELECT * FROM media_assets ORDER BY created_at DESC LIMIT ? OFFSET ?
-  `).bind(page_size, (page - 1) * page_size).all();
+  let whereClause = '';
+  const queryParams: unknown[] = [];
 
-  const countResult = await env.DB.prepare('SELECT COUNT(*) as total FROM media_assets').first<{ total: number }>();
+  if (authResult && authResult.role === 'editor') {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    if (user) {
+      whereClause = 'WHERE uploaded_by = ?';
+      queryParams.push(user.id);
+    }
+  }
+
+  const media = await env.DB.prepare(`
+    SELECT * FROM media_assets ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?
+  `).bind(...queryParams, page_size, (page - 1) * page_size).all();
+
+  const countResult = await env.DB.prepare(`SELECT COUNT(*) as total FROM media_assets ${whereClause}`).bind(...queryParams).first<{ total: number }>();
 
   return successResponse({
     items: media.results.map((m: Record<string, unknown>) => ({
