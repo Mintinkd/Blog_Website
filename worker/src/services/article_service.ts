@@ -161,7 +161,7 @@ export async function createArticle(env: Env, data: CreateArticleRequest, auth_r
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     data.title, slug, data.content, '', data.summary || '', data.cover_image || '',
-    data.category_id, data.status || 'draft', published_at, author_id
+    data.category_id || 1, data.status || 'draft', published_at, author_id
   ).run();
 
   const article_id = result.meta.last_row_id;
