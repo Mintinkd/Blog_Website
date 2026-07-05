@@ -482,11 +482,7 @@ async function api(method: string, path: string, body?: any) {
     isLoggedIn.value = false;
   }
   if (data.code === 10004) {
-    token.value = '';
-    userRole.value = 'editor';
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_role');
-    isLoggedIn.value = false;
+    console.warn('Permission denied:', data.message);
   }
   return data;
 }
@@ -807,29 +803,26 @@ async function deleteFriendLink(id: number) {
   else alert(data.message || t('admin.delete_failed'));
 }
 
-watch(isLoggedIn, (v) => {
-  if (v) {
-    loadArticles();
-    loadCategories();
-    loadTags();
+function loadInitialData() {
+  loadArticles();
+  loadCategories();
+  loadTags();
+  loadComments();
+  loadMedia();
+  loadFriendLinks();
+  if (userRole.value === 'admin') {
     loadUsers();
-    loadComments();
-    loadMedia();
-    loadFriendLinks();
   }
+}
+
+watch(isLoggedIn, (v) => {
+  if (v) loadInitialData();
 });
 
 onMounted(() => {
-  if (isLoggedIn.value) {
-    loadArticles();
-    loadCategories();
-    loadTags();
-    loadUsers();
-    loadComments();
-    loadMedia();
-    loadFriendLinks();
-  }
+  if (isLoggedIn.value) loadInitialData();
 });
+
 
 watch(currentTab, (tab) => {
   if (tab === 'config' || tab === 'about') loadConfig();
