@@ -82,22 +82,22 @@ addRoute('DELETE', '/users/:id', async (req, env, _ctx, params) => handleDeleteU
 
 addRoute('GET', '/articles', async (req, env, _ctx, params) => handleListArticles(req, env, params));
 addRoute('GET', '/articles/:slug', async (req, env, _ctx, params) => handleGetArticle(req, env, params));
-addRoute('POST', '/articles', async (req, env) => handleCreateArticle(req, env), true);
-addRoute('PUT', '/articles/:id', async (req, env, _ctx, params) => handleUpdateArticle(req, env, params), true);
-addRoute('DELETE', '/articles/:id', async (req, env, _ctx, params) => handleDeleteArticle(req, env, params), true);
+addRoute('POST', '/articles', async (req, env, _ctx, params, auth) => handleCreateArticle(req, env, params, auth), true);
+addRoute('PUT', '/articles/:id', async (req, env, _ctx, params, auth) => handleUpdateArticle(req, env, params, auth), true);
+addRoute('DELETE', '/articles/:id', async (req, env, _ctx, params, auth) => handleDeleteArticle(req, env, params, auth), true);
 
 addRoute('GET', '/categories', async (req, env) => handleListCategories(req, env));
-addRoute('POST', '/categories', async (req, env) => handleCreateCategory(req, env), true);
-addRoute('PUT', '/categories/:id', async (req, env, _ctx, params) => handleUpdateCategory(req, env, params), true);
+addRoute('POST', '/categories', async (req, env, _ctx, params, auth) => handleCreateCategory(req, env, params, auth), true);
+addRoute('PUT', '/categories/:id', async (req, env, _ctx, params, auth) => handleUpdateCategory(req, env, params, auth), true);
 addRoute('DELETE', '/categories/:id', async (req, env, _ctx, params) => handleDeleteCategory(req, env, params), true, true);
 
 addRoute('GET', '/tags', async (req, env) => handleListTags(req, env));
-addRoute('POST', '/tags', async (req, env) => handleCreateTag(req, env), true);
+addRoute('POST', '/tags', async (req, env, _ctx, params, auth) => handleCreateTag(req, env, _ctx, params, auth), true);
 addRoute('DELETE', '/tags/:id', async (req, env, _ctx, params) => handleDeleteTag(req, env, params), true, true);
 
 addRoute('GET', '/articles/:article_id/comments', async (req, env, _ctx, params) => handleListComments(req, env, params));
 addRoute('POST', '/articles/:article_id/comments', async (req, env, ctx, params) => handleSubmitComment(req, env, ctx, params));
-addRoute('GET', '/comments', async (req, env) => handleListAllComments(req, env), true);
+addRoute('GET', '/comments', async (req, env, _ctx, params, auth) => handleListAllComments(req, env, _ctx, params, auth), true);
 addRoute('PUT', '/comments/:id/approve', async (req, env, _ctx, params) => handleApproveComment(req, env, params), true);
 addRoute('PUT', '/comments/:id/reject', async (req, env, _ctx, params) => handleRejectComment(req, env, params), true);
 addRoute('DELETE', '/comments/:id', async (req, env, _ctx, params) => handleDeleteComment(req, env, params), true);
@@ -107,8 +107,8 @@ addRoute('GET', '/search', async (req, env) => handleSearch(req, env));
 addRoute('POST', '/articles/:article_id/like', async (req, env, ctx, params) => handleToggleLike(req, env, ctx, params));
 addRoute('GET', '/articles/:article_id/like-status', async (req, env, _ctx, params) => handleLikeStatus(req, env, params));
 
-addRoute('POST', '/media/upload', async (req, env) => handleUploadMedia(req, env), true);
-addRoute('GET', '/media', async (req, env) => handleListMedia(req, env), true);
+addRoute('POST', '/media/upload', async (req, env, _ctx, params, auth) => handleUploadMedia(req, env, _ctx, params, auth), true);
+addRoute('GET', '/media', async (req, env, _ctx, params, auth) => handleListMedia(req, env, _ctx, params, auth), true);
 addRoute('DELETE', '/media/:id', async (req, env, _ctx, params) => handleDeleteMedia(req, env, params), true);
 addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeMedia(req, env, params));
 
