@@ -91,7 +91,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
       slug: row.slug as string,
       summary: row.summary as string,
       cover_image: row.cover_image as string,
-      category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : null,
+      category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : { id: 1, name: '未分类', slug: 'uncategorized' },
       tags: tags.results.map((t: Record<string, unknown>) => ({ id: t.id as number, name: t.name as string, slug: t.slug as string })),
       status: row.status as 'draft' | 'published',
       view_count: row.view_count as number,
@@ -133,7 +133,7 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
     content_html: row.content_html as string,
     summary: row.summary as string,
     cover_image: row.cover_image as string,
-    category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : null,
+    category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : { id: 1, name: '未分类', slug: 'uncategorized' },
     tags: tags.results.map((t: Record<string, unknown>) => ({ id: t.id as number, name: t.name as string, slug: t.slug as string })),
     status: row.status as 'draft' | 'published',
     view_count: row.view_count as number,
@@ -199,7 +199,7 @@ export async function updateArticle(env: Env, id: number, data: UpdateArticleReq
   if (data.content !== undefined) { sets.push('content = ?'); values.push(data.content); }
   if (data.summary !== undefined) { sets.push('summary = ?'); values.push(data.summary); }
   if (data.cover_image !== undefined) { sets.push('cover_image = ?'); values.push(data.cover_image); }
-  if (data.category_id !== undefined) { sets.push('category_id = ?'); values.push(data.category_id); }
+  if (data.category_id !== undefined) { sets.push('category_id = ?'); values.push(data.category_id || 1); }
   if (data.status !== undefined) {
     sets.push('status = ?');
     values.push(data.status);
