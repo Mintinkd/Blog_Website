@@ -117,10 +117,10 @@
           <table class="data-table">
             <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
             <tbody>
-              <tr v-for="t in tags" :key="t.id">
-                <td>{{ t.name }}</td>
-                <td>{{ t.slug }}</td>
-                <td class="actions"><button v-if="userRole === 'admin'" @click="deleteTag(t.id)" class="btn-danger">{{ t('admin.delete') }}</button></td>
+              <tr v-for="tag in tags" :key="tag.id">
+                <td>{{ tag.name }}</td>
+                <td>{{ tag.slug }}</td>
+                <td class="actions"><button v-if="userRole === 'admin'" @click="deleteTag(tag.id)" class="btn-danger">{{ t('admin.delete') }}</button></td>
               </tr>
             </tbody>
           </table>
