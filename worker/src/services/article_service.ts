@@ -11,6 +11,13 @@ function generateSlug(title: string): string {
     .slice(0, 120);
 }
 
+function calculateReadingTime(text: string): number {
+  const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  const englishWords = text.replace(/[\u4e00-\u9fff\u3400-\u4dbf]/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+  const minutes = chineseChars / 300 + englishWords / 200;
+  return Math.max(1, Math.ceil(minutes));
+}
+
 interface ListArticlesOptions {
   page: number;
   page_size: number;
@@ -63,7 +70,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
   const total = countResult?.total || 0;
 
   const articles = await env.DB.prepare(`
-    SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status,
+    SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status, a.content,
            a.view_count, a.like_count, a.comment_count, a.published_at, a.created_at,
            a.author_id,
            c.id as category_id, c.name as category_name, c.slug as category_slug,
@@ -101,6 +108,7 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
       author_name: row.author_name as string | null,
       published_at: row.published_at as string | null,
       created_at: row.created_at as string,
+      reading_time: calculateReadingTime((row.content as string) || ''),
     });
   }
 
@@ -143,6 +151,7 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
     author_name: row.author_name as string | null,
     published_at: row.published_at as string | null,
     created_at: row.created_at as string,
+    reading_time: calculateReadingTime((row.content as string) || ''),
   };
 }
 

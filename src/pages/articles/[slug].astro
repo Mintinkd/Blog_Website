@@ -101,7 +101,7 @@ const { slug } = Astro.params;
             <div class="article-meta-bottom">
               <span class="meta-item">${article.view_count} ${t('article.views')}</span>
               <span class="meta-item">${article.like_count} ${t('article.likes')}</span>
-              <span class="meta-item">${article.reading_time || 5} ${t('article.minutes_read')}</span>
+              <span class="meta-item">${article.reading_time || 1} ${t('article.minutes_read')}</span>
             </div>
             <div class="article-tags">
               ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="article-tag">${tag.name}</a>`).join('')}

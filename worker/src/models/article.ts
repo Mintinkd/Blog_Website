@@ -33,6 +33,7 @@ export interface ArticleListItem {
   author_name: string | null;
   published_at: string | null;
   created_at: string;
+  reading_time: number;
 }
 
 export interface ArticleDetail extends ArticleListItem {
