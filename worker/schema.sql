@@ -195,3 +195,7 @@ UPDATE articles SET author_id = (SELECT id FROM users WHERE role = 'admin' LIMIT
 -- Migration: Add uploaded_by to media_assets
 ALTER TABLE media_assets ADD COLUMN uploaded_by INTEGER REFERENCES users(id);
 UPDATE media_assets SET uploaded_by = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE uploaded_by IS NULL;
+
+-- Migration: Add created_by to categories and tags
+ALTER TABLE categories ADD COLUMN created_by INTEGER REFERENCES users(id);
+ALTER TABLE tags ADD COLUMN created_by INTEGER REFERENCES users(id);

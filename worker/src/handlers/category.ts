@@ -1,7 +1,8 @@
 import { Env } from '../index';
-import { successResponse, notFound, error, ErrorCodes } from '../utils/response';
+import { successResponse, notFound, error, forbidden, ErrorCodes } from '../utils/response';
 import { validate, isValidSlug } from '../utils/validator';
 import { Category, CreateCategoryRequest, UpdateCategoryRequest } from '../models/category';
+import type { AuthResult } from '../middleware/auth';
 
 export async function handleListCategories(request: Request, env: Env): Promise<Response> {
   const categories = await env.DB.prepare(`
@@ -15,7 +16,7 @@ export async function handleListCategories(request: Request, env: Env): Promise<
   return successResponse(categories.results);
 }
 
-export async function handleCreateCategory(request: Request, env: Env): Promise<Response> {
+export async function handleCreateCategory(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
 
   const result = validate(body, [
@@ -37,20 +38,34 @@ export async function handleCreateCategory(request: Request, env: Env): Promise<
     return error(ErrorCodes.CONFLICT, 'Category with this name or slug already exists');
   }
 
-  const res = await env.DB.prepare('INSERT INTO categories (name, slug, description) VALUES (?, ?, ?)').bind(
-    body.name, slug, body.description || ''
+  let created_by: number | null = null;
+  if (authResult) {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    created_by = user?.id || null;
+  }
+
+  const res = await env.DB.prepare('INSERT INTO categories (name, slug, description, created_by) VALUES (?, ?, ?, ?)').bind(
+    body.name, slug, body.description || '', created_by
   ).run();
 
   const category = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(res.meta.last_row_id).first();
   return successResponse(category, 'Category created');
 }
 
-export async function handleUpdateCategory(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleUpdateCategory(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { id } = params;
-  const body = await request.json() as Record<string, unknown>;
 
-  const existing = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first();
+  const existing = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first<{ id: number; created_by: number | null }>();
   if (!existing) return notFound('Category not found');
+
+  if (authResult && authResult.role !== 'admin') {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    if (user && existing.created_by !== user.id) {
+      return forbidden('您没有权限编辑此分类');
+    }
+  }
+
+  const body = await request.json() as Record<string, unknown>;
 
   const sets: string[] = [];
   const values: unknown[] = [];

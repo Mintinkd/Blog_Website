@@ -89,7 +89,7 @@
                 <td>{{ c.slug }}</td>
                 <td>{{ c.article_count || 0 }}</td>
                 <td class="actions">
-                  <button @click="categoryForm = { name: c.name, slug: c.slug, description: c.description || '' }; editingCategoryId = c.id; showCategoryForm = true">{{ t('admin.edit') }}</button>
+                  <button v-if="userRole === 'admin' || !c.created_by || c.created_by === currentUserId" @click="categoryForm = { name: c.name, slug: c.slug, description: c.description || '' }; editingCategoryId = c.id; showCategoryForm = true">{{ t('admin.edit') }}</button>
                   <button v-if="userRole === 'admin'" @click="deleteCategory(c.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
@@ -395,6 +395,7 @@ const currentLocale = ref(initLocale());
 
 const token = ref(localStorage.getItem('admin_token') || '');
 const userRole = ref(localStorage.getItem('admin_role') || 'editor');
+const currentUserId = ref(Number(localStorage.getItem('admin_user_id')) || 0);
 const isLoggedIn = ref(!!token.value);
 const currentTab = ref('articles');
 
@@ -499,6 +500,7 @@ async function api(method: string, path: string, body?: any) {
     userRole.value = 'editor';
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_role');
+    localStorage.removeItem('admin_user_id');
     isLoggedIn.value = false;
   }
   if (data.code === 10004) {
@@ -516,8 +518,11 @@ async function handleLogin() {
       token.value = data.data.token;
       localStorage.setItem('admin_token', data.data.token);
       const role = data.data.user?.role || 'editor';
+      const userId = data.data.user?.id || 0;
       userRole.value = role;
+      currentUserId.value = userId;
       localStorage.setItem('admin_role', role);
+      localStorage.setItem('admin_user_id', String(userId));
       isLoggedIn.value = true;
     } else {
       loginError.value = data.message || t('admin.login_error');
@@ -532,8 +537,10 @@ async function handleLogin() {
 function handleLogout() {
   token.value = '';
   userRole.value = 'editor';
+  currentUserId.value = 0;
   localStorage.removeItem('admin_token');
   localStorage.removeItem('admin_role');
+  localStorage.removeItem('admin_user_id');
   isLoggedIn.value = false;
 }
 

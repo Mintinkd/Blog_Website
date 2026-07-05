@@ -1,6 +1,7 @@
 import { Env } from '../index';
-import { successResponse, notFound, error, ErrorCodes } from '../utils/response';
+import { successResponse, notFound, error, forbidden, ErrorCodes } from '../utils/response';
 import { validate, isValidSlug } from '../utils/validator';
+import type { AuthResult } from '../middleware/auth';
 
 export async function handleListTags(request: Request, env: Env): Promise<Response> {
   const tags = await env.DB.prepare(`
@@ -15,7 +16,7 @@ export async function handleListTags(request: Request, env: Env): Promise<Respon
   return successResponse(tags.results);
 }
 
-export async function handleCreateTag(request: Request, env: Env): Promise<Response> {
+export async function handleCreateTag(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
 
   const result = validate(body, [
@@ -37,7 +38,13 @@ export async function handleCreateTag(request: Request, env: Env): Promise<Respo
     return error(ErrorCodes.CONFLICT, 'Tag with this name or slug already exists');
   }
 
-  const res = await env.DB.prepare('INSERT INTO tags (name, slug) VALUES (?, ?)').bind(body.name, slug).run();
+  let created_by: number | null = null;
+  if (authResult) {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    created_by = user?.id || null;
+  }
+
+  const res = await env.DB.prepare('INSERT INTO tags (name, slug, created_by) VALUES (?, ?, ?)').bind(body.name, slug, created_by).run();
   const tag = await env.DB.prepare('SELECT * FROM tags WHERE id = ?').bind(res.meta.last_row_id).first();
 
   return successResponse(tag, 'Tag created');
