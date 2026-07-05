@@ -13,8 +13,8 @@
 ### 后端
 - **Cloudflare Workers** — 无服务器API后端
 - **Cloudflare D1** — SQLite数据库（文章、分类、标签、评论等）
-- **Cloudflare KV** — 键值存储（媒体文件 + 阅读量IP缓存）
-- **JWT** — 管理员认证
+- **Cloudflare KV** — 键值存储（媒体文件 + 编辑锁）
+- **JWT** — 管理员/编辑者认证
 
 ### 部署
 - **Cloudflare Pages** — 前端静态托管
@@ -94,9 +94,11 @@
 │       │   ├── config.ts
 │       │   ├── friend_link.ts
 │       │   ├── auth_handler.ts
+│       │   ├── edit_lock.ts
 │       │   └── admin.ts
 │       ├── services/
-│       │   └── article_service.ts
+│       │   ├── article_service.ts
+│       │   └── edit_lock_service.ts
 │       ├── models/              # 数据模型
 │       └── utils/               # 工具函数
 ├── astro.config.mjs
@@ -113,14 +115,14 @@ D1 (SQLite) 共 9 张表：
 
 | 表名 | 说明 |
 |------|------|
-| `users` | 用户账户（管理员/编辑者，SHA-256密码哈希） |
-| `categories` | 文章分类 |
-| `tags` | 标签 |
-| `articles` | 文章（含Markdown原文和HTML渲染结果，category_id可选） |
+| `users` | 用户账户（管理员/编辑者，SHA-256密码哈希，角色权限） |
+| `categories` | 文章分类（含 created_by 所有权） |
+| `tags` | 标签（含 created_by 所有权） |
+| `articles` | 文章（含Markdown原文和HTML渲染结果，author_id作者，category_id默认1） |
 | `article_tags` | 文章-标签多对多关联 |
 | `comments` | 评论（含审核状态） |
 | `article_likes` | 点赞记录（IP去重） |
-| `media_assets` | 媒体文件元数据 |
+| `media_assets` | 媒体文件元数据（含 uploaded_by 所有权） |
 | `friend_links` | 友情链接 |
 | `site_config` | 站点配置（KV结构，含JWT密钥） |
 
@@ -145,34 +147,51 @@ D1 (SQLite) 共 9 张表：
 | GET | `/search` | 全文搜索 |
 | POST | `/articles/:article_id/like` | 点赞/取消 |
 | GET | `/articles/:article_id/like-status` | 点赞状态 |
+| GET | `/articles/:article_id/view` | 增加阅读量（Cookie去重，24小时TTL） |
 | GET | `/media/serve/*` | 媒体文件访问 |
 | GET | `/friend-links` | 友情链接 |
 | GET | `/config` | 公开站点配置 |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
 
+#### 通用接口
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/auth/refresh` | 刷新Token |
-| POST | `/articles` | 创建文章 |
-| PUT | `/articles/:id` | 更新文章 |
-| DELETE | `/articles/:id` | 删除文章 |
-| POST | `/categories` | 创建分类 |
-| PUT | `/categories/:id` | 更新分类 |
-| DELETE | `/categories/:id` | 删除分类 |
-| POST | `/tags` | 创建标签 |
-| DELETE | `/tags/:id` | 删除标签 |
-| GET | `/comments` | 所有评论（管理） |
+| POST | `/articles` | 创建文章（自动设置author_id） |
+| PUT | `/articles/:id` | 更新文章（editor仅自己的） |
+| DELETE | `/articles/:id` | 删除文章（editor仅自己的） |
+| POST | `/categories` | 创建分类（自动设置created_by） |
+| PUT | `/categories/:id` | 更新分类（editor仅自己的） |
+| POST | `/tags` | 创建标签（自动设置created_by） |
+| GET | `/comments` | 评论列表（editor仅自己文章的） |
 | PUT | `/comments/:id/approve` | 审核通过 |
 | PUT | `/comments/:id/reject` | 审核拒绝 |
 | DELETE | `/comments/:id` | 删除评论 |
-| POST | `/media/upload` | 上传媒体 |
-| GET | `/media` | 媒体列表 |
+| POST | `/media/upload` | 上传媒体（自动设置uploaded_by） |
+| GET | `/media` | 媒体列表（editor仅自己的） |
 | DELETE | `/media/:id` | 删除媒体 |
+
+#### 编辑锁接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/articles/:id/lock` | 获取编辑锁（30分钟TTL） |
+| DELETE | `/articles/:id/lock` | 释放编辑锁 |
+| GET | `/articles/:id/lock` | 查询编辑锁状态 |
+| POST | `/articles/:id/lock/force` | 强制接管编辑锁（admin） |
+
+#### 管理员专属接口（需 admin 角色）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| DELETE | `/categories/:id` | 删除分类 |
+| DELETE | `/tags/:id` | 删除标签 |
 | GET | `/users` | 用户列表 |
 | POST | `/users` | 创建用户 |
 | PUT | `/users/:id` | 更新用户（密码、显示名、角色） |
-| DELETE | `/users/:id` | 删除用户（至少保留一个） |
+| DELETE | `/users/:id` | 删除用户（至少保留一个admin） |
 | GET | `/config/all` | 全部配置 |
 | PUT | `/config` | 更新配置 |
 | GET | `/friend-links/all` | 全部友链 |
@@ -202,15 +221,19 @@ D1 (SQLite) 共 9 张表：
 
 访问 `/admin` 进入管理后台，功能包括：
 
-- **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息
+- **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息和角色
+- **角色权限** — admin（全部功能）和 editor（文章/分类/标签/评论/图片，受所有权限制）
 - **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式），Slug支持中文
-- **分类管理** — 增删改
-- **标签管理** — 增删
-- **评论管理** — 筛选/审核/拒绝/删除
-- **图片管理** — 上传/缩略图预览/复制链接/删除
-- **关于页面** — Markdown编辑，保存后前台实时更新
-- **站点配置** — 标题、副标题、描述、关键词等
-- **账户管理** — 多用户支持（管理员/编辑者角色），增删改，密码修改
+  - editor 只能编辑/删除自己的文章
+  - 编辑锁：编辑前自动获取锁，冲突时弹窗提示，admin可强制接管
+- **分类管理** — 增改（editor仅自己的），删除仅admin
+- **标签管理** — 增（editor创建的），删除仅admin
+- **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
+- **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
+- **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
+- **友情链接** — 增删改（仅admin）
+- **站点配置** — 标题、副标题、描述、关键词等（仅admin）
+- **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
 
 ## 站点配置动态化
 
@@ -289,7 +312,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 需要提前在 Cloudflare Dashboard 中创建：
 
 1. **D1 数据库** — 名为 `blog-db`
-2. **KV 命名空间** — `MEDIA`（媒体存储）+ `VIEW_CACHE`（阅读量缓存）
+2. **KV 命名空间** — `MEDIA`（媒体存储）+ `EDIT_LOCK`（编辑锁，TTL 30分钟）
 3. **Pages 项目** — 名为 `blog-website-page`
 4. **Worker** — 名为 `blog-api`
 
@@ -311,6 +334,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 |------|------|-----|------|
 | `blog-website-page` | Pages | `blog-website-page.pages.dev` | 前端站点（Astro SSR + 静态） |
 | `blog-api` | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV） |
+| `blog_website` | Worker | — | Git集成自动创建（冗余，不冲突） |
 
 前端通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker。
 
