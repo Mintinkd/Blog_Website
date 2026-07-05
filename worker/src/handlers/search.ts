@@ -1,6 +1,5 @@
 import { Env } from '../index';
 import { successResponse, error, ErrorCodes } from '../utils/response';
-import { validate } from '../utils/validator';
 
 export async function handleSearch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -13,9 +12,11 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
   }
 
   const escaped_q = q.replace(/"/g, '""');
+  const like_q = `%${q}%`;
+  const offset = (page - 1) * page_size;
 
   try {
-    const results = await env.DB.prepare(`
+    const ftsResults = await env.DB.prepare(`
       SELECT a.id, a.title, a.slug, a.summary, a.published_at, a.created_at,
              snippet(articles_fts, 0, '<mark>', '</mark>', '...', 30) as title_highlight,
              snippet(articles_fts, 1, '<mark>', '</mark>', '...', 80) as content_highlight
@@ -25,9 +26,9 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
       AND a.status = 'published'
       ORDER BY rank
       LIMIT ? OFFSET ?
-    `).bind(`"${escaped_q}"`, page_size, (page - 1) * page_size).all();
+    `).bind(`"${escaped_q}"`, page_size, offset).all();
 
-    const countResult = await env.DB.prepare(`
+    const ftsCount = await env.DB.prepare(`
       SELECT COUNT(*) as total
       FROM articles_fts f
       JOIN articles a ON a.id = f.rowid
@@ -36,13 +37,45 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
     `).bind(`"${escaped_q}"`).first<{ total: number }>();
 
     return successResponse({
-      items: results.results,
+      items: ftsResults.results,
+      total: ftsCount?.total || 0,
+      page,
+      page_size,
+      query: q,
+    });
+  } catch {
+    const results = await env.DB.prepare(`
+      SELECT id, title, slug, summary, published_at, created_at
+      FROM articles
+      WHERE status = 'published'
+      AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)
+      ORDER BY published_at DESC, created_at DESC
+      LIMIT ? OFFSET ?
+    `).bind(like_q, like_q, like_q, page_size, offset).all();
+
+    const countResult = await env.DB.prepare(`
+      SELECT COUNT(*) as total
+      FROM articles
+      WHERE status = 'published'
+      AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)
+    `).bind(like_q, like_q, like_q).first<{ total: number }>();
+
+    const items = results.results.map((row: Record<string, unknown>) => ({
+      ...row,
+      title_highlight: String(row.title || '').replace(new RegExp(escapeRegExp(q), 'gi'), '<mark>$&</mark>'),
+      content_highlight: String(row.summary || '').replace(new RegExp(escapeRegExp(q), 'gi'), '<mark>$&</mark>'),
+    }));
+
+    return successResponse({
+      items,
       total: countResult?.total || 0,
       page,
       page_size,
       query: q,
     });
-  } catch (e) {
-    return error(ErrorCodes.PARAM_ERROR, 'Invalid search query. Please try different keywords.');
   }
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
