@@ -16,7 +16,7 @@ export async function handleListCategories(request: Request, env: Env): Promise<
   return successResponse(categories.results);
 }
 
-export async function handleCreateCategory(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
+export async function handleCreateCategory(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
 
   const result = validate(body, [
