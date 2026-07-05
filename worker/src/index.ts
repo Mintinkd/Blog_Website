@@ -4,6 +4,7 @@ export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
   VIEW_CACHE: KVNamespace;
+  EDIT_LOCK: KVNamespace;
   API_PREFIX: string;
 }
 

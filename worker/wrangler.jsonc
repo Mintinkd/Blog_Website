@@ -17,6 +17,10 @@
     {
       "binding": "VIEW_CACHE",
       "id": "4a001536365e49e195409380ac3d872e"
+    },
+    {
+      "binding": "EDIT_LOCK",
+      "id": "4a001536365e49e195409380ac3d872e"
     }
   ],
   "vars": {

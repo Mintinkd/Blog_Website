@@ -1,5 +1,6 @@
 import { Env } from '../index';
 import { Article, ArticleListItem, ArticleDetail, CreateArticleRequest, UpdateArticleRequest } from '../models/article';
+import type { AuthResult } from '../middleware/auth';
 
 function generateSlug(title: string): string {
   return title
@@ -16,10 +17,17 @@ interface ListArticlesOptions {
   category_slug?: string;
   tag_slug?: string;
   status?: string;
+  auth_result?: AuthResult;
+  author_id?: number;
+}
+
+async function getUserIdByUsername(env: Env, username: string): Promise<number | null> {
+  const row = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first<{ id: number }>();
+  return row?.id || null;
 }
 
 export async function listArticles(env: Env, options: ListArticlesOptions): Promise<{ items: ArticleListItem[]; total: number }> {
-  const { page, page_size, category_slug, tag_slug, status = 'published' } = options;
+  const { page, page_size, category_slug, tag_slug, status = 'published', auth_result, author_id } = options;
   const offset = (page - 1) * page_size;
 
   let whereClause = '';
@@ -40,15 +48,29 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
     params.push(tag_slug);
   }
 
+  if (auth_result && auth_result.role === 'editor') {
+    const userId = await getUserIdByUsername(env, auth_result.username);
+    if (userId) {
+      whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';
+      params.push(userId);
+    }
+  } else if (author_id) {
+    whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';
+    params.push(author_id);
+  }
+
   const countResult = await env.DB.prepare(`SELECT COUNT(*) as total FROM articles a LEFT JOIN categories c ON a.category_id = c.id ${whereClause}`).bind(...params).first<{ total: number }>();
   const total = countResult?.total || 0;
 
   const articles = await env.DB.prepare(`
     SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status,
            a.view_count, a.like_count, a.comment_count, a.published_at, a.created_at,
-           c.id as category_id, c.name as category_name, c.slug as category_slug
+           a.author_id,
+           c.id as category_id, c.name as category_name, c.slug as category_slug,
+           u.display_name as author_name
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
+    LEFT JOIN users u ON a.author_id = u.id
     ${whereClause}
     ORDER BY a.published_at DESC, a.created_at DESC
     LIMIT ? OFFSET ?
@@ -75,6 +97,8 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
       view_count: row.view_count as number,
       like_count: row.like_count as number,
       comment_count: row.comment_count as number,
+      author_id: row.author_id as number | null,
+      author_name: row.author_name as string | null,
       published_at: row.published_at as string | null,
       created_at: row.created_at as string,
     });
@@ -85,9 +109,11 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
 
 export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleDetail | null> {
   const row = await env.DB.prepare(`
-    SELECT a.*, c.id as category_id, c.name as category_name, c.slug as category_slug
+    SELECT a.*, c.id as category_id, c.name as category_name, c.slug as category_slug,
+           u.display_name as author_name
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
+    LEFT JOIN users u ON a.author_id = u.id
     WHERE a.slug = ?
   `).bind(slug).first();
 
@@ -107,28 +133,35 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
     content_html: row.content_html as string,
     summary: row.summary as string,
     cover_image: row.cover_image as string,
-    category: { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string },
+    category: row.category_id ? { id: row.category_id as number, name: row.category_name as string, slug: row.category_slug as string } : null,
     tags: tags.results.map((t: Record<string, unknown>) => ({ id: t.id as number, name: t.name as string, slug: t.slug as string })),
     status: row.status as 'draft' | 'published',
     view_count: row.view_count as number,
     like_count: row.like_count as number,
     comment_count: row.comment_count as number,
+    author_id: row.author_id as number | null,
+    author_name: row.author_name as string | null,
     published_at: row.published_at as string | null,
     created_at: row.created_at as string,
   };
 }
 
-export async function createArticle(env: Env, data: CreateArticleRequest): Promise<Article> {
+export async function createArticle(env: Env, data: CreateArticleRequest, auth_result?: AuthResult): Promise<Article> {
   const slug = generateSlug(data.title);
   const now = new Date().toISOString();
   const published_at = data.status === 'published' ? now : null;
 
+  let author_id: number | null = null;
+  if (auth_result) {
+    author_id = await getUserIdByUsername(env, auth_result.username);
+  }
+
   const result = await env.DB.prepare(`
-    INSERT INTO articles (title, slug, content, content_html, summary, cover_image, category_id, status, published_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO articles (title, slug, content, content_html, summary, cover_image, category_id, status, published_at, author_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     data.title, slug, data.content, '', data.summary || '', data.cover_image || '',
-    data.category_id, data.status || 'draft', published_at
+    data.category_id, data.status || 'draft', published_at, author_id
   ).run();
 
   const article_id = result.meta.last_row_id;
@@ -144,6 +177,15 @@ export async function createArticle(env: Env, data: CreateArticleRequest): Promi
 
   const article = await getArticleBySlug(env, slug);
   return article!;
+}
+
+export async function checkArticleOwnership(env: Env, articleId: number, auth_result: AuthResult): Promise<boolean> {
+  if (auth_result.role === 'admin') return true;
+  const userId = await getUserIdByUsername(env, auth_result.username);
+  if (!userId) return false;
+  const article = await env.DB.prepare('SELECT author_id FROM articles WHERE id = ?').bind(articleId).first<{ author_id: number | null }>();
+  if (!article) return false;
+  return article.author_id === userId;
 }
 
 export async function updateArticle(env: Env, id: number, data: UpdateArticleRequest): Promise<ArticleDetail | null> {

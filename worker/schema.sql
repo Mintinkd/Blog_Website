@@ -186,3 +186,8 @@ CREATE TABLE IF NOT EXISTS users (
 -- If starting fresh, default password is: changeme
 -- IMPORTANT: Change password after first login!
 INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', '管理员', 'admin');
+
+-- Migration: Add author_id to articles
+ALTER TABLE articles ADD COLUMN author_id INTEGER REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS idx_articles_author_id ON articles(author_id);
+UPDATE articles SET author_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE author_id IS NULL;

@@ -14,9 +14,10 @@ import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia
 import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
 import { handleExport, handleImport } from './handlers/admin';
+import { handleAcquireLock, handleReleaseLock, handleGetLockStatus, handleForceReleaseLock } from './handlers/edit_lock';
 import { Env } from './index';
 
-type Handler = (request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>) => Promise<Response>;
+type Handler = (request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult) => Promise<Response>;
 
 interface Route {
   method: string;
@@ -124,6 +125,11 @@ addRoute('DELETE', '/friend-links/:id', async (req, env, _ctx, params) => handle
 addRoute('GET', '/admin/export', async (req, env) => handleExport(req, env), true, true);
 addRoute('POST', '/admin/import', async (req, env) => handleImport(req, env), true, true);
 
+addRoute('POST', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleAcquireLock(req, env, _ctx, params, auth), true);
+addRoute('DELETE', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleReleaseLock(req, env, _ctx, params, auth), true);
+addRoute('GET', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleGetLockStatus(req, env, _ctx, params, auth), true);
+addRoute('POST', '/articles/:id/edit-lock/force', async (req, env, _ctx, params, auth) => handleForceReleaseLock(req, env, _ctx, params, auth), true, true);
+
 export async function router(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const apiPrefix = env.API_PREFIX || '/api/v1';
@@ -142,15 +148,17 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
       return Response.json({ code: 404, message: `API not found: ${method} ${pathname}`, data: null }, { status: 404 });
     }
 
+    let authResult: AuthResult | undefined;
     if (matched.requireAuth) {
-      const authResult = await authMiddleware(request, env);
-      if (authResult instanceof Response) return authResult;
-      if (matched.requireAdmin && authResult.user.role !== 'admin') {
+      const result = await authMiddleware(request, env);
+      if (result instanceof Response) return result;
+      if (matched.requireAdmin && result.user.role !== 'admin') {
         return forbidden('权限不足，仅管理员可执行此操作');
       }
+      authResult = result.user;
     }
 
-    return await matched.handler(request, env, ctx, matched.params);
+    return await matched.handler(request, env, ctx, matched.params, authResult);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Router error:', errMsg);
