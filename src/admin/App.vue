@@ -79,7 +79,7 @@
         <div v-if="currentTab === 'categories'" class="admin-panel">
           <div class="panel-header">
             <h2>{{ t('admin.categories') }}</h2>
-            <button class="btn-primary" @click="showCategoryForm = true; categoryForm = { name: '', slug: '', description: '' }">{{ t('admin.new_category') }}</button>
+            <button class="btn-primary" @click="editingCategoryId = null; showCategoryForm = true; categoryForm = { name: '', slug: '', description: '' }">{{ t('admin.new_category') }}</button>
           </div>
           <table class="data-table">
             <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.article_count') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
@@ -224,7 +224,7 @@
         <div v-if="currentTab === 'users'" class="admin-panel">
           <div class="panel-header">
             <h2>{{ t('admin.users') }}</h2>
-            <button class="btn-primary" @click="showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">{{ t('admin.new_user') }}</button>
+            <button class="btn-primary" @click="editingUserId = null; showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">{{ t('admin.new_user') }}</button>
           </div>
           <table class="data-table">
             <thead><tr><th>{{ t('admin.username') }}</th><th>{{ t('admin.display_name') }}</th><th>{{ t('admin.role') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
