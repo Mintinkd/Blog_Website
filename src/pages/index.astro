@@ -192,15 +192,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
             <a href="/articles/${article.slug}" class="card-link">
               <div class="card-body">
                 <div class="card-meta">
-                  ${article.category ? `<span class="card-category">${article.category.name}</span>` : ''}
                   <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
                 <h3 class="card-title">${article.title}</h3>
                 <p class="card-summary">${article.summary || ''}</p>
                 <div class="card-footer">
-                  <div class="card-tags">
-                    ${(article.tags || []).slice(0, 2).map((tag: any) => `<span class="card-tag">${tag.name}</span>`).join('')}
-                  </div>
                   <span class="card-read">${article.view_count || 0} ${t('article.read')}</span>
                 </div>
               </div>
@@ -254,11 +250,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-size: 0.8rem;
   }
 
-  .card-category {
-    color: var(--color-accent);
-    font-weight: 500;
-  }
-
   .card-date {
     color: var(--color-text-tertiary);
   }
@@ -293,20 +284,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-  }
-
-  .card-tags {
-    display: flex;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-
-  .card-tag {
-    padding: 0.1rem 0.5rem;
-    background-color: var(--color-tag-bg);
-    color: var(--color-tag-text);
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
   }
 
   .card-read {

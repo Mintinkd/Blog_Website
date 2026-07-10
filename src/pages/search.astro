@@ -12,6 +12,21 @@ import SearchBox from '../islands/SearchBox.vue';
     <div class="search-container">
       <SearchBox client:load />
     </div>
+
+    <div class="taxonomy">
+      <div class="taxonomy-block">
+        <h2 class="taxonomy-title" data-i18n="page.tags">标签</h2>
+        <div id="search-tags" class="taxonomy-cloud">
+          <div class="taxonomy-loading" data-i18n="common.loading">加载中...</div>
+        </div>
+      </div>
+      <div class="taxonomy-block">
+        <h2 class="taxonomy-title" data-i18n="page.categories">分类</h2>
+        <div id="search-categories" class="taxonomy-cloud">
+          <div class="taxonomy-loading" data-i18n="common.loading">加载中...</div>
+        </div>
+      </div>
+    </div>
   </section>
 </BaseLayout>
 
@@ -36,4 +51,134 @@ import SearchBox from '../islands/SearchBox.vue';
   .search-container {
     max-width: 640px;
   }
+
+  .taxonomy {
+    margin-top: 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .taxonomy-block {
+    max-width: 640px;
+  }
+
+  .taxonomy-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 1rem;
+    letter-spacing: -0.01em;
+  }
+
+  .taxonomy-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .taxonomy-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all var(--transition-fast);
+  }
+
+  .taxonomy-item:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    transform: translateY(-1px);
+  }
+
+  .taxonomy-count {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+  }
+
+  .taxonomy-loading,
+  .taxonomy-empty {
+    color: var(--color-text-tertiary);
+    font-size: 0.9rem;
+  }
 </style>
+
+<script>
+  import { t } from '../utils/i18n.ts';
+
+  function esc(s: string): string {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function loadSearchTags() {
+    const container = document.getElementById('search-tags');
+    if (!container) return;
+    try {
+      const response = await fetch('/api/v1/tags');
+      const data = await response.json();
+      if (data.code === 0 && data.data) {
+        const tags = Array.isArray(data.data) ? data.data : (data.data.items || []);
+        if (tags.length === 0) {
+          container.innerHTML = `<p class="taxonomy-empty">${t('page.no_articles_tag')}</p>`;
+          return;
+        }
+        tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
+        container.innerHTML = tags.map((tag: any) => `
+          <a href="/tags/${tag.slug}" class="taxonomy-item">
+            <span>${esc(tag.name)}</span>
+            <span class="taxonomy-count">${tag.article_count || 0}</span>
+          </a>
+        `).join('');
+      } else {
+        container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
+      }
+    } catch (e) {
+      container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
+    }
+  }
+
+  async function loadSearchCategories() {
+    const container = document.getElementById('search-categories');
+    if (!container) return;
+    try {
+      const response = await fetch('/api/v1/categories');
+      const data = await response.json();
+      if (data.code === 0 && data.data) {
+        const categories = Array.isArray(data.data) ? data.data : (data.data.items || []);
+        if (categories.length === 0) {
+          container.innerHTML = `<p class="taxonomy-empty">${t('page.no_categories')}</p>`;
+          return;
+        }
+        categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
+        container.innerHTML = categories.map((cat: any) => `
+          <a href="/categories/${cat.slug}" class="taxonomy-item">
+            <span>${esc(cat.name)}</span>
+            <span class="taxonomy-count">${cat.article_count || 0}</span>
+          </a>
+        `).join('');
+      } else {
+        container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
+      }
+    } catch (e) {
+      container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
+    }
+  }
+
+  loadSearchTags();
+  loadSearchCategories();
+  document.addEventListener('locale-changed', () => {
+    loadSearchTags();
+    loadSearchCategories();
+  });
+</script>
