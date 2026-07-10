@@ -8,7 +8,16 @@ import type { AuthResult } from '../middleware/auth';
 export async function handleListArticles(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const url = new URL(request.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const page_size = Math.min(50, Math.max(1, parseInt(url.searchParams.get('page_size') || '10', 10)));
+  const page_size_param = url.searchParams.get('page_size');
+  let page_size: number;
+  if (page_size_param) {
+    page_size = Math.min(50, Math.max(1, parseInt(page_size_param, 10)));
+  } else {
+    // 未显式指定 page_size 时，回落到站点配置中的「每页文章数」
+    const cfgRow = await env.DB.prepare("SELECT value FROM site_config WHERE key = 'posts_per_page'").first<{ value: string }>();
+    const cfgVal = cfgRow && cfgRow.value ? parseInt(cfgRow.value, 10) : NaN;
+    page_size = Number.isFinite(cfgVal) && cfgVal > 0 ? Math.min(50, cfgVal) : 10;
+  }
   const category_slug = url.searchParams.get('category_slug') || '';
   const tag_slug = url.searchParams.get('tag_slug') || '';
   const status = url.searchParams.get('status') || '';

@@ -65,12 +65,11 @@ const { slug } = Astro.params;
     if (!wrapper) return;
 
     const tagSlug = wrapper.dataset.tagSlug;
-    const pageSize = 10;
     const locale = getLocale();
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
-      const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published&tag_slug=${tagSlug}`);
+      const response = await fetch(`/api/v1/articles?page=${page}&status=published&tag_slug=${tagSlug}`);
       const data = await response.json();
 
       if (data.code === 0 && data.data) {

@@ -51,8 +51,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
-      const pageSize = 10;
-      const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published`);
+      const response = await fetch(`/api/v1/articles?page=${page}&status=published`);
       const data = await response.json();
 
       if (data.code === 0 && data.data) {
