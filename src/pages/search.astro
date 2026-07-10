@@ -135,7 +135,8 @@ import SearchBox from '../islands/SearchBox.vue';
         }
         tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = tags.map((tag: any) => `
-          <a href="/tags/${tag.slug}" class="taxonomy-item">
+          <a href="/tags/${tag.slug}" class="taxonomy-item"
+             data-type="tag" data-slug="${esc(tag.slug)}" data-name="${esc(tag.name)}">
             <span>${esc(tag.name)}</span>
             <span class="taxonomy-count">${tag.article_count || 0}</span>
           </a>
@@ -162,7 +163,8 @@ import SearchBox from '../islands/SearchBox.vue';
         }
         categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = categories.map((cat: any) => `
-          <a href="/categories/${cat.slug}" class="taxonomy-item">
+          <a href="/categories/${cat.slug}" class="taxonomy-item"
+             data-type="category" data-slug="${esc(cat.slug)}" data-name="${esc(cat.name)}">
             <span>${esc(cat.name)}</span>
             <span class="taxonomy-count">${cat.article_count || 0}</span>
           </a>
@@ -174,6 +176,25 @@ import SearchBox from '../islands/SearchBox.vue';
       container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
     }
   }
+
+  // 点击标签/分类 → 在搜索框内联动过滤（不跳转）
+  function onTaxonomyClick(e: Event) {
+    const target = e.target as HTMLElement;
+    const link = target.closest('.taxonomy-item') as HTMLElement | null;
+    if (!link) return;
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('taxonomy-filter', {
+      detail: {
+        type: link.dataset.type,
+        slug: link.dataset.slug,
+        name: link.dataset.name,
+      },
+    }));
+    document.querySelector('.search-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('search-tags')?.addEventListener('click', onTaxonomyClick);
+  document.getElementById('search-categories')?.addEventListener('click', onTaxonomyClick);
 
   loadSearchTags();
   loadSearchCategories();

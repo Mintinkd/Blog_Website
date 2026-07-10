@@ -13,8 +13,18 @@
       </button>
     </div>
 
+    <div v-if="activeFilter" class="active-filter">
+      <span class="active-filter-label">
+        {{ activeFilter.type === 'tag' ? '标签' : '分类' }}：<strong>{{ activeFilter.name }}</strong>
+      </span>
+      <button class="active-filter-clear" @click="clearFilter" aria-label="清除筛选">&times;</button>
+    </div>
+
     <div v-if="results.length > 0" class="search-results">
-      <p class="results-info">找到 {{ total }} 篇相关文章</p>
+      <p class="results-info">
+        <template v-if="activeFilter">共 {{ total }} 篇文章</template>
+        <template v-else>找到 {{ total }} 篇相关文章</template>
+      </p>
       <div v-for="item in results" :key="item.id" class="search-result-item">
         <h3 class="result-title">
           <a :href="`/articles/${item.slug}`" v-html="item.title_highlight || item.title"></a>
@@ -25,7 +35,8 @@
     </div>
 
     <div v-else-if="searched && !loading" class="no-results">
-      <p>未找到相关文章，试试其他关键词？</p>
+      <p v-if="activeFilter">该{{ activeFilter.type === 'tag' ? '标签' : '分类' }}下暂无文章</p>
+      <p v-else>未找到相关文章，试试其他关键词？</p>
     </div>
 
     <div v-if="loading" class="search-loading">
@@ -35,20 +46,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 const query = ref('');
 const results = ref<any[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const searched = ref(false);
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+const activeFilter = ref<{ type: 'tag' | 'category'; slug: string; name: string } | null>(null);
 
 async function doSearch() {
   const q = query.value.trim();
   if (!q || q.length > 100) return;
 
+  // 关键词搜索时清除标签/分类筛选
+  activeFilter.value = null;
   loading.value = true;
   searched.value = true;
 
@@ -66,6 +78,54 @@ async function doSearch() {
     loading.value = false;
   }
 }
+
+async function filterByTaxonomy(type: 'tag' | 'category', slug: string, name: string) {
+  if (!slug) return;
+
+  activeFilter.value = { type, slug, name };
+  query.value = '';
+  loading.value = true;
+  searched.value = true;
+  results.value = [];
+
+  try {
+    const param = type === 'tag'
+      ? `tag_slug=${encodeURIComponent(slug)}`
+      : `category_slug=${encodeURIComponent(slug)}`;
+    const response = await fetch(`/api/v1/articles?page=1&page_size=20&status=published&${param}`);
+    const data = await response.json();
+
+    if (data.code === 0 && data.data) {
+      results.value = data.data.items || [];
+      total.value = data.data.total || 0;
+    }
+  } catch (e) {
+    console.error('Filter failed:', e);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function clearFilter() {
+  activeFilter.value = null;
+  results.value = [];
+  total.value = 0;
+  searched.value = false;
+}
+
+function handleTaxonomyFilter(e: Event) {
+  const detail = (e as CustomEvent).detail;
+  if (!detail) return;
+  filterByTaxonomy(detail.type, detail.slug, detail.name);
+}
+
+onMounted(() => {
+  window.addEventListener('taxonomy-filter', handleTaxonomyFilter);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('taxonomy-filter', handleTaxonomyFilter);
+});
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
@@ -116,6 +176,46 @@ function formatDate(dateStr: string): string {
 
 .search-btn:disabled {
   opacity: 0.6;
+}
+
+.active-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--color-accent-subtle);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+.active-filter-label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.active-filter-label strong {
+  color: var(--color-accent);
+}
+
+.active-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--color-text-tertiary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.active-filter-clear:hover {
+  background: var(--color-accent);
+  color: #fff;
 }
 
 .search-results {
