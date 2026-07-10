@@ -1,5 +1,5 @@
 <template>
-  <div class="friend-links">
+  <div class="friend-links" :class="variant === 'footer' && 'footer-variant'">
     <h3 class="links-title">友情链接</h3>
     <ul v-if="links.length > 0" class="links-list">
       <li v-for="link in links" :key="link.id" class="link-item">
@@ -14,6 +14,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+
+const props = defineProps<{ variant?: string }>();
 
 const links = ref<any[]>([]);
 
@@ -66,5 +68,29 @@ onMounted(async () => {
 .no-links {
   color: var(--color-text-tertiary);
   font-size: 0.85rem;
+}
+
+/* 底部横向排列变体 */
+.footer-variant {
+  padding: 0;
+  background-color: transparent;
+  border-radius: 0;
+}
+
+.footer-variant .links-title {
+  font-size: 0.95rem;
+  margin-bottom: 0.6rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.footer-variant .links-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+}
+
+.footer-variant .link-item {
+  padding: 0;
 }
 </style>

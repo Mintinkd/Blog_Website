@@ -57,9 +57,7 @@ select {
 }
 
 .page-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
+  display: block;
   max-width: var(--content-max-width);
   margin: 0 auto;
   padding: 0 1.5rem;
@@ -68,15 +66,6 @@ select {
 
 @media (min-width: 768px) {
   .page-layout {
-    grid-template-columns: 1fr 260px;
-    padding: 0 2rem;
-    padding-top: calc(var(--header-height) + 3rem);
-  }
-}
-
-@media (min-width: 1200px) {
-  .page-layout {
-    grid-template-columns: 1fr var(--sidebar-width);
     padding: 0 2rem;
     padding-top: calc(var(--header-height) + 3rem);
   }
@@ -85,20 +74,6 @@ select {
 .main-content {
   min-width: 0;
 }
-
-  .sidebar {
-    display: none;
-  }
-
-  @media (min-width: 768px) {
-    .sidebar {
-      display: block;
-    }
-  }
-
-  .page-layout.no-sidebar {
-    grid-template-columns: 1fr;
-  }
 
 .container {
   max-width: var(--content-max-width);

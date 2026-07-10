@@ -1,6 +1,6 @@
 ---
 import '../../styles/global.css';
-import Sidebar from './Sidebar.astro';
+import FriendLinkList from '../../islands/FriendLinkList.vue';
 
 export interface Props {
   title: string;
@@ -8,7 +8,7 @@ export interface Props {
   keywords?: string[];
   ogImage?: string;
   canonicalUrl?: string;
-  sidebar?: boolean;
+  friendLinks?: boolean;
 }
 
 const {
@@ -17,7 +17,7 @@ const {
   keywords = [],
   ogImage,
   canonicalUrl,
-  sidebar = true,
+  friendLinks = true,
 } = Astro.props;
 
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
@@ -78,18 +78,18 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
       </nav>
     </header>
 
-    <main class:list={['page-layout', !sidebar && 'no-sidebar']}>
+    <main class="page-layout">
       <div class="main-content">
         <slot />
       </div>
-      {sidebar && (
-        <aside class="sidebar">
-          <slot name="sidebar"><Sidebar /></slot>
-        </aside>
-      )}
     </main>
 
     <footer class="site-footer">
+      {friendLinks && (
+        <div class="container footer-friend-links">
+          <FriendLinkList client:load variant="footer" />
+        </div>
+      )}
       <div class="container footer-inner">
         <p id="footer-text">&copy; {new Date().getFullYear()} Blog</p>
         <a href="/rss.xml">RSS</a>
