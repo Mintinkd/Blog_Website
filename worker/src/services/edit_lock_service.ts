@@ -22,6 +22,22 @@ export async function acquireLock(env: Env, articleId: number, authResult: AuthR
   const existing = await env.EDIT_LOCK.get(key);
   if (existing) {
     const lock: EditLock = JSON.parse(existing);
+
+    // 同一用户已持有锁 → 直接放行并续期，避免自己锁自己
+    if (lock.holder_id === userInfo.id) {
+      const now = new Date();
+      const expires = new Date(now.getTime() + LOCK_TTL * 1000);
+      const renewedLock: EditLock = {
+        holder_id: lock.holder_id,
+        holder_name: lock.holder_name,
+        acquired_at: lock.acquired_at,
+        expires_at: expires.toISOString(),
+      };
+      await env.EDIT_LOCK.put(key, JSON.stringify(renewedLock), { expirationTtl: LOCK_TTL });
+      return { success: true, lock: renewedLock };
+    }
+
+    // 他人持有锁 → 返回冲突
     const status: EditLockStatus = {
       is_locked: true,
       holder_id: lock.holder_id,

@@ -362,7 +362,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, h, defineComponent } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch, h, defineComponent } from 'vue';
 import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
@@ -535,7 +535,9 @@ async function handleLogin() {
   }
 }
 
-function handleLogout() {
+async function handleLogout() {
+  // 退出前释放当前编辑锁
+  await releaseEditLock();
   token.value = '';
   userRole.value = 'editor';
   currentUserId.value = 0;
@@ -633,8 +635,28 @@ async function forceTakeover() {
   const res = await api('POST', `/articles/${lockConflictArticleId.value}/edit-lock/force`);
   if (res.code === 0) {
     showLockConflict.value = false;
+    // 接管成功后锁已在当前用户名下，直接打开编辑器，不再重复抢锁
     const a = articles.value.find((x: any) => x.id === lockConflictArticleId.value);
-    if (a) await editArticle(a);
+    if (a) {
+      editingArticle.value = a;
+      articleForm.value = {
+        title: a.title,
+        slug: a.slug,
+        summary: a.summary || '',
+        content: '',
+        category_id: a.category?.id?.toString() || '',
+        status: a.status || 'draft',
+      };
+      showArticleEditor.value = true;
+      try {
+        const detail = await api('GET', `/articles/${a.slug}`);
+        if (detail.code === 0 && detail.data) {
+          articleForm.value.content = detail.data.content || '';
+          updatePreview();
+        }
+      } catch {}
+    }
+    lockConflictArticleId.value = null;
   } else {
     alert(res.message || t('admin.save_failed'));
   }
@@ -888,7 +910,28 @@ watch(isLoggedIn, (v) => {
 
 onMounted(() => {
   if (isLoggedIn.value) loadInitialData();
+  window.addEventListener('beforeunload', handleBeforeUnload);
 });
+
+onBeforeUnmount(() => {
+  releaseEditLock();
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+});
+
+function handleBeforeUnload(_e: BeforeUnloadEvent) {
+  // 页面关闭/刷新时尽力释放编辑锁（keepalive 确保请求发出）
+  if (editingArticle.value?.id) {
+    const token = localStorage.getItem('admin_token');
+    const apiBase = import.meta.env.PUBLIC_API_BASE || '/api/v1';
+    if (token) {
+      fetch(`${apiBase}/articles/${editingArticle.value.id}/edit-lock`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+        keepalive: true,
+      }).catch(() => {});
+    }
+  }
+}
 
 
 watch(currentTab, (tab) => {
