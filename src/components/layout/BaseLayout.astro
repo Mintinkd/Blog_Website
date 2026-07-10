@@ -18,6 +18,9 @@ const {
 } = Astro.props;
 
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
+
+// 主页不在导航栏显示「标签」「分类」入口（按需求仅在其他页面/搜索界面展示）
+const isHome = Astro.url.pathname === '/';
 ---
 
 <!doctype html>
@@ -58,8 +61,8 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
         <div class="nav-links">
           <a href="/" data-i18n="nav.home">首页</a>
           <a href="/articles" data-i18n="nav.articles">文章</a>
-          <a href="/tags" data-i18n="nav.tags">标签</a>
-          <a href="/categories" data-i18n="nav.categories">分类</a>
+          {!isHome && <a href="/tags" data-i18n="nav.tags">标签</a>}
+          {!isHome && <a href="/categories" data-i18n="nav.categories">分类</a>}
           <a href="/archives" data-i18n="nav.archives">归档</a>
           <a href="/about" data-i18n="nav.about">关于</a>
         </div>
