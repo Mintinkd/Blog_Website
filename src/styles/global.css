@@ -24,6 +24,17 @@ body {
   line-height: 1.7;
   transition: background-color var(--transition-normal), color var(--transition-normal);
   min-height: 100vh;
+  /* 安卓等移动端：长英文/URL/代码自然换行，避免撑破容器或横向溢出 */
+  overflow-wrap: break-word;
+  word-break: break-word;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 防止任何子元素在窄屏下横向溢出（作为最后兜底） */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 a {
