@@ -1,5 +1,6 @@
 ---
 import '../../styles/global.css';
+import Sidebar from './Sidebar.astro';
 
 export interface Props {
   title: string;
@@ -7,6 +8,7 @@ export interface Props {
   keywords?: string[];
   ogImage?: string;
   canonicalUrl?: string;
+  sidebar?: boolean;
 }
 
 const {
@@ -15,6 +17,7 @@ const {
   keywords = [],
   ogImage,
   canonicalUrl,
+  sidebar = true,
 } = Astro.props;
 
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
@@ -75,13 +78,15 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
       </nav>
     </header>
 
-    <main class="page-layout">
+    <main class:list={['page-layout', !sidebar && 'no-sidebar']}>
       <div class="main-content">
         <slot />
       </div>
-      <aside class="sidebar">
-        <slot name="sidebar" />
-      </aside>
+      {sidebar && (
+        <aside class="sidebar">
+          <slot name="sidebar"><Sidebar /></slot>
+        </aside>
+      )}
     </main>
 
     <footer class="site-footer">
