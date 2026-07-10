@@ -3,6 +3,7 @@ import { router } from './router';
 export interface Env {
   DB: D1Database;
   MEDIA: KVNamespace;
+  RATE_LIMIT: KVNamespace;
 
   EDIT_LOCK: KVNamespace;
   API_PREFIX: string;

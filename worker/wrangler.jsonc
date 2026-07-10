@@ -18,6 +18,13 @@
 
       "binding": "EDIT_LOCK",
       "id": "8a63eee2d516410d8e6e5ec7d420a0b1"
+    },
+    {
+      // TODO: 在 Cloudflare 控制台新建一个独立的 KV 命名空间（例如 blog-rate-limit），
+      //       把它的命名空间 ID 替换到下面这行，再执行 `wrangler deploy`。
+      //       限流计数已不再写入 MEDIA 库，改存到这里。
+      "binding": "RATE_LIMIT",
+      "id": "00000000000000000000000000000000"
     }
   ],
   "vars": {
