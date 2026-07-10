@@ -19,7 +19,7 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
     <div class="card-body">
       <div class="card-meta">
         {category && (
-          <span class="card-category">{category.name}</span>
+          <a href={`/categories/${category.slug}`} class="card-category">{category.name}</a>
         )}
         {published_at && (
           <span class="card-date">
@@ -81,6 +81,11 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
   .card-category {
     color: var(--color-accent);
     font-weight: 500;
+    text-decoration: none;
+  }
+
+  .card-category:hover {
+    text-decoration: underline;
   }
 
   .card-date {
