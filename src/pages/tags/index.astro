@@ -1,0 +1,108 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+
+export const prerender = false;
+---
+
+<BaseLayout title="标签" description="">
+  <section class="tags-page">
+    <div class="page-header">
+      <h1 class="page-title" data-i18n="page.tags">标签</h1>
+    </div>
+    <p class="page-desc" data-i18n="page.tags_desc">按标签浏览所有文章</p>
+    <div id="tags-cloud" class="tags-cloud">
+      <div class="tags-loading" data-i18n="common.loading">加载中...</div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header {
+    margin-bottom: 0.5rem;
+  }
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+  }
+  .page-desc {
+    color: var(--color-text-tertiary);
+    font-size: 0.9rem;
+    margin-bottom: 2rem;
+  }
+  .tags-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .tag-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all var(--transition-fast);
+  }
+  .tag-item:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    transform: translateY(-1px);
+  }
+  .tag-count {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+  }
+  .tags-loading {
+    color: var(--color-text-tertiary);
+    font-size: 0.9rem;
+  }
+  .tags-empty {
+    color: var(--color-text-tertiary);
+    font-size: 0.9rem;
+  }
+</style>
+
+<script>
+  import { t, getLocale } from '../../utils/i18n.ts';
+
+  async function loadTags() {
+    const container = document.getElementById('tags-cloud');
+    if (!container) return;
+
+    try {
+      const response = await fetch('/api/v1/tags');
+      const data = await response.json();
+
+      if (data.code === 0 && data.data) {
+        const tags = Array.isArray(data.data) ? data.data : (data.data.items || []);
+        if (tags.length === 0) {
+          container.innerHTML = `<p class="tags-empty">${t('page.no_articles_tag')}</p>`;
+          return;
+        }
+
+        // 按文章数降序
+        tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
+
+        container.innerHTML = tags.map((tag: any) => `
+          <a href="/tags/${tag.slug}" class="tag-item">
+            <span>${tag.name}</span>
+            <span class="tag-count">${tag.article_count || 0}</span>
+          </a>
+        `).join('');
+      } else {
+        container.innerHTML = `<p class="tags-empty">${t('common.load_failed')}</p>`;
+      }
+    } catch (e) {
+      container.innerHTML = `<p class="tags-empty">${t('common.load_failed')}</p>`;
+    }
+  }
+
+  loadTags();
+  document.addEventListener('locale-changed', () => loadTags());
+</script>

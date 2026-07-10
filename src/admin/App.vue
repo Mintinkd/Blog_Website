@@ -50,7 +50,7 @@
                 <option value="">{{ t('admin.all_authors') }}</option>
                 <option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</option>
               </select>
-              <button class="btn-primary" @click="showArticleEditor = true; editingArticle = null">{{ t('admin.new_article') }}</button>
+              <button class="btn-primary" @click="openNewArticle">{{ t('admin.new_article') }}</button>
             </div>
           </div>
           <div v-if="articlesLoading" class="loading">{{ t('common.loading') }}</div>
@@ -334,6 +334,23 @@
                   </select>
                 </div>
               </div>
+              <div class="form-group">
+                <label>{{ t('admin.tags_label') }}</label>
+                <div class="tag-selector">
+                  <div class="tag-chips">
+                    <button v-for="tag in tags" :key="tag.id" type="button"
+                      :class="['tag-chip', { active: (articleForm.tags || []).includes(tag.name) }]"
+                      @click="toggleTag(tag.name)">{{ tag.name }}</button>
+                  </div>
+                  <div class="tag-input-row">
+                    <input v-model="newTagInput" @keydown.enter.prevent="addNewTag"
+                      :placeholder="t('admin.add_tag_placeholder')" />
+                  </div>
+                  <p v-if="(articleForm.tags || []).length" class="selected-tags-hint">
+                    {{ (articleForm.tags || []).join('、') }}
+                  </p>
+                </div>
+              </div>
               <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
               <div class="form-group">
                 <div class="content-label-row">
@@ -408,7 +425,8 @@ const articlesLoading = ref(false);
 const authorFilter = ref('');
 const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
-const articleForm = ref({ title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft' });
+const articleForm = ref({ title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft', tags: [] as string[] });
+const newTagInput = ref('');
 const articleSaving = ref(false);
 const editorMode = ref<'edit' | 'split' | 'preview'>('edit');
 const previewHtml = ref('');
@@ -618,6 +636,7 @@ async function editArticle(a: any) {
     content: '',
     category_id: a.category?.id?.toString() || '',
     status: a.status || 'draft',
+    tags: (a.tags || []).map((t: any) => t.name),
   };
   showArticleEditor.value = true;
   try {
@@ -646,6 +665,7 @@ async function forceTakeover() {
         content: '',
         category_id: a.category?.id?.toString() || '',
         status: a.status || 'draft',
+        tags: (a.tags || []).map((t: any) => t.name),
       };
       showArticleEditor.value = true;
       try {
@@ -668,11 +688,48 @@ async function releaseEditLock() {
   }
 }
 
+function openNewArticle() {
+  editingArticle.value = null;
+  articleForm.value = { title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft', tags: [] };
+  newTagInput.value = '';
+  showArticleEditor.value = true;
+}
+
+function toggleTag(name: string) {
+  const tags = articleForm.value.tags || (articleForm.value.tags = []);
+  const i = tags.indexOf(name);
+  if (i >= 0) tags.splice(i, 1);
+  else tags.push(name);
+}
+
+async function addNewTag() {
+  const name = (newTagInput.value || '').trim();
+  if (!name) return;
+  const tags = articleForm.value.tags || (articleForm.value.tags = []);
+  if (tags.includes(name)) { newTagInput.value = ''; return; }
+
+  let slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+  if (!slug) slug = 'tag-' + Date.now().toString(36);
+
+  try {
+    const res = await api('POST', '/tags', { name, slug });
+    if (res.code === 0 || res.code === 10006) {
+      await loadTags();
+      if (!articleForm.value.tags.includes(name)) articleForm.value.tags.push(name);
+    } else {
+      alert(res.message || t('admin.save_failed'));
+    }
+  } catch {
+    alert(t('admin.save_failed'));
+  }
+  newTagInput.value = '';
+}
+
 async function saveArticle() {
   articleSaving.value = true;
   try {
     const body: any = { ...articleForm.value };
-    delete body.tag_ids;
+    body.tags = articleForm.value.tags || [];
     if (!body.category_id) body.category_id = null;
     let data;
     if (editingArticle.value) {
@@ -1461,12 +1518,56 @@ watch(currentTab, (tab) => {
   overflow: hidden;
 }
 
-.media-thumb {
-  width: 100%;
-  height: 140px;
-  object-fit: cover;
-  display: block;
-}
+  .media-thumb {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .tag-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .tag-chip {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .tag-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .tag-chip.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .tag-input-row input {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+  }
+  .selected-tags-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--color-text-tertiary);
+  }
 
 .media-info {
   padding: 0.5rem;

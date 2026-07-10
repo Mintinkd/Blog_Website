@@ -54,6 +54,10 @@ const { slug } = Astro.params;
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
 
+  function esc(s: unknown): string {
+    return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+  }
+
   async function loadArticles(page = 1) {
     const container = document.querySelector('.article-list-inner');
     if (!container) return;
@@ -66,7 +70,7 @@ const { slug } = Astro.params;
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
-      const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published&tag=${tagSlug}`);
+      const response = await fetch(`/api/v1/articles?page=${page}&page_size=${pageSize}&status=published&tag_slug=${tagSlug}`);
       const data = await response.json();
 
       if (data.code === 0 && data.data) {
@@ -89,7 +93,7 @@ const { slug } = Astro.params;
                 ${article.summary ? `<p class="list-card-summary">${article.summary}</p>` : ''}
                 <div class="list-card-footer">
                   <div class="list-card-tags">
-                    ${(article.tags || []).slice(0, 3).map((tag: any) => `<span class="list-card-tag">${tag.name}</span>`).join('')}
+                    ${(article.tags || []).slice(0, 3).map((tag: any) => `<a href="/tags/${tag.slug}" class="list-card-tag">${esc(tag.name)}</a>`).join('')}
                   </div>
                   <span class="list-card-stats">${article.view_count || 0} ${t('article.read')}</span>
                 </div>
