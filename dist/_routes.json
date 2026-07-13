@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "include": [
+    "/_server-islands/*",
+    "/_image",
+    "/api/*",
+    "/articles/*",
+    "/categories/*",
+    "/rss.xml",
+    "/tags/*"
+  ],
+  "exclude": [
+    "/",
+    "/_assets/*",
+    "/.assetsignore",
+    "/robots.txt",
+    "/404",
+    "/about",
+    "/admin",
+    "/archives",
+    "/articles",
+    "/search"
+  ]
+}
