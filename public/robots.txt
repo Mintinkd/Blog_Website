@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-Sitemap: https://blog.example.com/sitemap-index.xml
+Sitemap: https://blog.zenfishlog.dpdns.org/sitemap-index.xml
