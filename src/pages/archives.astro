@@ -101,11 +101,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           for (const month of months) {
             html += `<div class="archive-month-group">`;
             html += `<h3 class="archive-month">${t(`month.${month}`)}</h3>`;
-            html += '<ul class="archive-list">';
+            html += '<ul class="archive-list" data-reveal-stagger>';
             for (const article of grouped[year][month]) {
               const date = new Date(article.published_at || article.created_at);
               const dateStr = `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-              html += `<li><span class="archive-date">${dateStr}</span><a href="/articles/${article.slug}">${article.title}</a></li>`;
+              html += `<li data-reveal="fade-up"><span class="archive-date">${dateStr}</span><a href="/articles/${article.slug}">${article.title}</a></li>`;
             }
             html += '</ul></div>';
           }
@@ -114,6 +114,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         }
 
         container.innerHTML = html;
+        window.dispatchEvent(new CustomEvent('motion:refresh'));
       }
     } catch (e) {
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;

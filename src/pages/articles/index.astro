@@ -63,7 +63,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
         }
 
         container.innerHTML = items.map((article: any) => `
-          <article class="list-card">
+          <article class="list-card" data-reveal="fade-up">
             <a href="/articles/${article.slug}" class="list-card-link">
               <div class="list-card-body">
                 <div class="list-card-meta">
@@ -82,6 +82,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
             </a>
           </article>
         `).join('');
+        window.dispatchEvent(new CustomEvent('motion:refresh'));
 
         const paginationMount = document.getElementById('pagination-mount');
         if (paginationMount && total_pages > 1) {

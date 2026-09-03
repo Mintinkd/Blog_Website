@@ -1,6 +1,8 @@
 ---
 import '../../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 import FriendLinkList from '../../islands/FriendLinkList.vue';
+import ScrollProgress from '../../components/common/ScrollProgress.astro';
 
 export interface Props {
   title: string;
@@ -50,8 +52,11 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
         else document.documentElement.setAttribute('data-locale', navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en');
       })();
     </script>
+    <ClientRouter />
   </head>
   <body>
+    <div class="site-bg" aria-hidden="true"></div>
+    <ScrollProgress />
     <header class="site-header">
       <nav class="header-nav container">
         <a href="/" class="site-logo">
@@ -65,13 +70,13 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
           <a href="/about" data-i18n="nav.about">关于</a>
         </div>
         <div class="nav-actions">
-          <a href="/search" class="nav-icon" aria-label="搜索">
+          <a href="/search" class="nav-icon" aria-label="搜索" data-feature="search">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </a>
-          <button class="nav-icon" id="locale-toggle-btn" aria-label="切换语言" title="中文/English">
+          <button class="nav-icon" id="locale-toggle-btn" aria-label="切换语言" title="中文/English" data-feature="i18n">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           </button>
-          <button class="nav-icon" id="theme-toggle-btn" aria-label="切换主题">
+          <button class="nav-icon" id="theme-toggle-btn" aria-label="切换主题" data-feature="darkMode">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
           </button>
         </div>
@@ -86,13 +91,13 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
 
     <footer class="site-footer">
       {friendLinks && (
-        <div class="container footer-friend-links">
+        <div class="container footer-friend-links" data-feature="friendLinks">
           <FriendLinkList client:load variant="footer" />
         </div>
       )}
       <div class="container footer-inner">
         <p id="footer-text">&copy; {new Date().getFullYear()} Blog</p>
-        <a href="/rss.xml">RSS</a>
+        <a href="/rss.xml" data-feature="rss">RSS</a>
       </div>
     </footer>
 
@@ -100,16 +105,24 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
       document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
         const cur = document.documentElement.getAttribute('data-theme') || 'light';
         const next = cur === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
+        const apply = () => {
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+        };
+        if (document.startViewTransition) document.startViewTransition(apply);
+        else apply();
       });
 
       document.getElementById('locale-toggle-btn')?.addEventListener('click', () => {
         const cur = document.documentElement.getAttribute('data-locale') || 'zh';
         const next = cur === 'zh' ? 'en' : 'zh';
-        document.documentElement.setAttribute('data-locale', next);
-        localStorage.setItem('locale', next);
-        applyLocale(next);
+        const apply = () => {
+          document.documentElement.setAttribute('data-locale', next);
+          localStorage.setItem('locale', next);
+          applyLocale(next);
+        };
+        if (document.startViewTransition) document.startViewTransition(apply);
+        else apply();
       });
 
       async function applyLocale(locale: string) {
@@ -171,6 +184,28 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
 
           const heroDesc = document.getElementById('hero-site-desc');
           if (heroDesc && cfg.site_description) heroDesc.textContent = cfg.site_description;
+        } catch {}
+      })();
+
+      // 拉取并套用后台可视化配置（配色/布局/背景/功能开关/文案覆盖）
+      (async () => {
+        try {
+          const { initSettings } = await import('../../utils/settings');
+          initSettings();
+        } catch {}
+      })();
+
+      // 初始化全站动效（reveal / 磁吸 / 进度条 / 视差）；ClientRouter 跨页后重挂
+      (async () => {
+        try {
+          const { initMotion } = await import('../../utils/motion');
+          let teardown: (() => void) | null = null;
+          const startMotion = () => {
+            teardown?.();
+            teardown = initMotion();
+          };
+          startMotion();
+          document.addEventListener('astro:page-load', startMotion);
         } catch {}
       })();
     </script>
@@ -249,6 +284,13 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
     color: var(--color-text-primary);
     background: var(--color-accent-subtle);
   }
+  /* 主题切换按钮：点击时图标旋转，呼应整页渐变 */
+  .nav-icon#theme-toggle-btn svg {
+    transition: transform var(--motion-duration-base) var(--motion-ease-standard);
+  }
+  .nav-icon#theme-toggle-btn:active svg {
+    transform: rotate(180deg);
+  }
   @media (max-width: 767px) {
     .nav-links { display: none; }
   }
@@ -270,5 +312,15 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
   }
   .footer-inner a:hover {
     color: var(--color-accent);
+  }
+
+  /* 主题/语言切换时的整页平滑交叉（背景图随之渐变） */
+  @keyframes site-vt-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: site-vt-fade var(--transition-fast, 0.15s) ease both;
   }
 </style>

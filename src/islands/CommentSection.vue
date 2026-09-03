@@ -1,5 +1,5 @@
 <template>
-  <div class="comment-section">
+  <div class="comment-section" data-feature="comments">
     <h3 class="section-title">评论 ({{ comments.length }})</h3>
 
     <div v-if="comments.length > 0" class="comment-list">

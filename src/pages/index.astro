@@ -5,15 +5,16 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <BaseLayout title="首页">
   <section class="hero">
-    <div class="hero-inner">
-      <h1 class="hero-title" id="hero-site-title" data-i18n="hero.title">探索 · 记录 · 分享</h1>
-      <p class="hero-subtitle" id="hero-site-subtitle" data-i18n="hero.subtitle">关于技术、生活与思考的个人空间</p>
-      <p class="hero-desc" id="hero-site-desc"></p>
+    <div class="hero-inner" data-reveal-stagger>
+      <h1 class="hero-title" id="hero-site-title" data-i18n="hero.title" data-reveal="fade-up">探索 · 记录 · 分享</h1>
+      <p class="hero-subtitle" id="hero-site-subtitle" data-i18n="hero.subtitle" data-reveal="fade-up">关于技术、生活与思考的个人空间</p>
+      <p class="hero-desc" id="hero-site-desc" data-reveal="fade-up"></p>
       <div class="hero-actions">
-        <a href="/articles" class="hero-btn primary" data-i18n="hero.browse">浏览文章</a>
-        <a href="/about" class="hero-btn secondary" data-i18n="hero.learn_more">了解更多</a>
+        <a href="/articles" class="hero-btn primary" data-i18n="hero.browse" data-hover="magnetic">浏览文章</a>
+        <a href="/about" class="hero-btn secondary" data-i18n="hero.learn_more" data-hover="magnetic">了解更多</a>
       </div>
     </div>
+    <div class="hero-blade" data-parallax="0.08" aria-hidden="true"></div>
   </section>
 
   <section class="article-section">
@@ -37,6 +38,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .hero-inner {
     max-width: 560px;
     margin: 0 auto;
+  }
+
+  /* 装饰光斑层：极轻微视差，不干扰阅读 */
+  .hero-blade {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 20%, var(--color-accent-subtle), transparent 55%),
+      radial-gradient(ellipse at 80% 70%, var(--color-accent-subtle), transparent 50%);
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform;
   }
 
   .hero-title {
@@ -188,7 +201,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         }
 
         container.innerHTML = items.map((article: any) => `
-          <article class="article-card">
+          <article class="article-card" data-reveal="fade-up">
             <a href="/articles/${article.slug}" class="card-link">
               <div class="card-body">
                 <div class="card-meta">
@@ -207,6 +220,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
             </a>
           </article>
         `).join('');
+        window.dispatchEvent(new CustomEvent('motion:refresh'));
       }
     } catch (e) {
       container.innerHTML = `<p class="error-text" style="grid-column:1/-1;text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('article.load_error')}</p>`;

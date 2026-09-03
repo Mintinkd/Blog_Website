@@ -1,4 +1,5 @@
 @import "./variables.css";
+@import "./motion.css";
 @import "./prose.css";
 
 *,
@@ -15,19 +16,63 @@ html {
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 兜底底色：背景图加载失败/被禁用时仍有主题色，避免白屏闪烁 */
+  background-color: var(--color-bg-primary);
+  transition: background-color var(--transition-normal);
 }
 
 body {
   font-family: var(--font-sans);
   color: var(--color-text-primary);
-  background-color: var(--color-bg-primary);
+  /* 背景交给固定层 .site-bg 负责，body 本身透明，避免盖住背景图 */
+  background-color: transparent;
   line-height: 1.7;
-  transition: background-color var(--transition-normal), color var(--transition-normal);
+  transition: color var(--transition-normal);
   min-height: 100vh;
   /* 安卓等移动端：长英文/URL/代码自然换行，避免撑破容器或横向溢出 */
   overflow-wrap: break-word;
   word-break: break-word;
   -webkit-text-size-adjust: 100%;
+}
+
+/* ============================================================
+ * 全站背景层：固定铺满视口、覆盖全站、响应式不变形
+ * - 用独立 fixed 层（而非 background-attachment:fixed），规避 iOS Safari 的性能/渲染坑
+ * - 多背景：上层遮罩(保证可读性) + 下层图片(cover 铺满)
+ * - z-index:-1 置于内容之下；html 兜底色在其之后，不会被盖
+ * ============================================================ */
+.site-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--bg-overlay), var(--bg-image);
+  background-size: cover, cover;
+  background-position: var(--bg-position), center;
+  background-repeat: no-repeat, no-repeat;
+  /* 背景图切换（日/夜不同图或遮罩）时平滑交叉，配合 View Transitions 更佳 */
+  transition: opacity var(--transition-normal);
+  pointer-events: none;
+}
+
+/* 竖屏 / 窄屏：主体光斑略微上移，避免被裁到边缘外导致「重点缺失」 */
+@media (orientation: portrait) {
+  .site-bg {
+    background-position: center 18%, center;
+  }
+}
+
+/* 超宽屏：保持中心裁切，避免横向拉伸变形 */
+@media (min-aspect-ratio: 21/9) {
+  .site-bg {
+    background-position: center center, center;
+  }
+}
+
+/* 减弱动画偏好：背景是静态装饰，保留显示即可，无需特殊处理 */
+@media (prefers-reduced-motion: reduce) {
+  .site-bg {
+    transition: none;
+  }
 }
 
 /* 防止任何子元素在窄屏下横向溢出（作为最后兜底） */

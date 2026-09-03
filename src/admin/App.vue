@@ -299,6 +299,94 @@
           </div>
         </div>
 
+        <div v-if="currentTab === 'appearance'" class="admin-panel">
+          <div class="panel-header">
+            <h2>外观与个性化</h2>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button class="btn-secondary" @click="exportSettingsFile">导出</button>
+              <label class="btn-secondary" style="cursor:pointer;">
+                导入
+                <input type="file" accept="application/json" @change="importSettingsFile" style="display:none;" />
+              </label>
+              <button class="btn-secondary" style="color:var(--color-error);" @click="resetSettings">恢复默认</button>
+              <button class="btn-primary" @click="saveSettings" :disabled="settingsSaving">{{ settingsSaving ? t('admin.save_loading') : t('admin.save') }}</button>
+            </div>
+          </div>
+          <div v-if="settingsLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-else class="config-form appearance-form">
+            <section class="setting-section">
+              <h3>主题与配色</h3>
+              <div class="theme-group" v-for="themeKey in ['light', 'dark']" :key="themeKey">
+                <h4>{{ themeKey === 'light' ? '浅色模式' : '深色模式' }}</h4>
+                <div class="color-grid">
+                  <div class="color-field" v-for="cf in colorFields" :key="cf.key">
+                    <label>{{ cf.label }}</label>
+                    <div class="color-input-row">
+                      <input type="color" v-model="settings.theme[themeKey][cf.key]" @input="previewSettings" />
+                      <input type="text" class="color-hex" v-model="settings.theme[themeKey][cf.key]" @input="previewSettings" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="setting-section">
+              <h3>布局</h3>
+              <div class="form-row">
+                <div class="form-group"><label>内容最大宽度</label><input v-model="settings.layout.contentMaxWidth" @input="previewSettings" placeholder="1200px" /></div>
+                <div class="form-group"><label>顶栏高度</label><input v-model="settings.layout.headerHeight" @input="previewSettings" placeholder="64px" /></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>圆角(小)</label><input v-model="settings.layout.radiusSm" @input="previewSettings" placeholder="6px" /></div>
+                <div class="form-group"><label>圆角(中)</label><input v-model="settings.layout.radiusMd" @input="previewSettings" placeholder="10px" /></div>
+                <div class="form-group"><label>圆角(大)</label><input v-model="settings.layout.radiusLg" @input="previewSettings" placeholder="16px" /></div>
+              </div>
+            </section>
+
+            <section class="setting-section">
+              <h3>背景</h3>
+              <div class="form-group"><label>背景图路径 (URL，留空用默认)</label><input v-model="settings.background.bgImage" @input="previewSettings" placeholder="/bg-placeholder.svg" /></div>
+              <div class="form-group">
+                <label>背景浓度：{{ settings.background.bgOpacity }}</label>
+                <input type="range" min="0" max="1" step="0.01" v-model.number="settings.background.bgOpacity" @input="previewSettings" />
+              </div>
+            </section>
+
+            <section class="setting-section">
+              <h3>功能开关</h3>
+              <div class="toggle-grid">
+                <label class="toggle-item" v-for="ft in featureList" :key="ft.key">
+                  <input type="checkbox" v-model="settings.features[ft.key]" @change="previewSettings" />
+                  <span>{{ ft.label }}</span>
+                </label>
+              </div>
+            </section>
+
+            <section class="setting-section">
+              <h3>文案覆盖</h3>
+              <p class="hint">覆盖界面文案（随当前语言生效），留空使用默认文案。</p>
+              <div class="copy-row head"><span>键 (key)</span><span>中文 (zh)</span><span>英文 (en)</span><span></span></div>
+              <div class="copy-row" v-for="key in copyKeys" :key="key">
+                <input :list="'i18n-keys'" :value="key" @input="renameCopyKey(key, ($event.target as HTMLInputElement).value)" placeholder="如 nav.home" />
+                <input v-model="settings.copy.zh[key]" @input="previewSettings" />
+                <input v-model="settings.copy.en[key]" @input="previewSettings" />
+                <button class="btn-danger" @click="removeCopyKey(key)">×</button>
+              </div>
+              <div class="copy-row">
+                <input :list="'i18n-keys'" v-model="newCopyKey" placeholder="新增键名，如 nav.home" />
+                <input v-model="newCopyZh" placeholder="中文" />
+                <input v-model="newCopyEn" placeholder="English" />
+                <button class="btn-primary" @click="addCopyKey">+</button>
+              </div>
+              <datalist id="i18n-keys">
+                <option v-for="k in i18nKeys" :key="k" :value="k"></option>
+              </datalist>
+            </section>
+
+            <p v-if="settingsMsg" class="msg">{{ settingsMsg }}</p>
+          </div>
+        </div>
+
         <div v-if="showLockConflict" class="modal-overlay" @click.self="showLockConflict = false">
           <div class="modal">
             <h3>{{ t('admin.edit_locked') }}</h3>
@@ -379,8 +467,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, h, defineComponent } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, h, defineComponent } from 'vue';
 import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
+import { applySettings, getDefaultSettings, broadcastSettingsChange } from '../utils/settings.ts';
+import zh from '../i18n/zh.json';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import DOMPurify from 'dompurify';
@@ -485,10 +575,11 @@ const navItems = [
   { key: 'media', label: () => t('admin.media'), minRole: 'editor', icon: SvgIcon('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>') },
   { key: 'friend_links', label: () => t('admin.friend_links'), minRole: 'admin', icon: SvgIcon('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>') },
   { key: 'config', label: () => t('admin.site_config'), minRole: 'admin', icon: SvgIcon('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>') },
+  { key: 'appearance', label: () => '外观与个性化', minRole: 'admin', icon: SvgIcon('<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.53-.21-1.01-.55-1.37-.34-.36-.55-.84-.55-1.38 0-1.1.9-2 2-2h2.34c2.64 0 4.79-2.15 4.79-4.79C21.63 6.32 17.31 2 12 2z"></path><circle cx="7.5" cy="10.5" r="1.5"></circle><circle cx="12" cy="7.5" r="1.5"></circle><circle cx="16.5" cy="10.5" r="1.5"></circle>') },
   { key: 'users', label: () => t('admin.users'), minRole: 'admin', icon: SvgIcon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>') },
 ];
 
-const adminOnlyTabs = ['config', 'users', 'about', 'friend_links'];
+const adminOnlyTabs = ['config', 'users', 'about', 'friend_links', 'appearance'];
 
 const visibleNavItems = computed(() => {
   return navItems.filter(item => {
@@ -815,6 +906,169 @@ async function saveAbout() {
   }
 }
 
+// ===== 外观与个性化（可视化配置中心）=====
+const settings = reactive(getDefaultSettings());
+const settingsLoading = ref(false);
+const settingsSaving = ref(false);
+const settingsMsg = ref('');
+const newCopyKey = ref('');
+const newCopyZh = ref('');
+const newCopyEn = ref('');
+
+const i18nKeys = Object.keys(zh as Record<string, unknown>);
+const colorFields = [
+  { key: 'accent', label: '主色' },
+  { key: 'accentHover', label: '主色(悬停)' },
+  { key: 'bgPrimary', label: '页面背景' },
+  { key: 'bgSecondary', label: '卡片背景' },
+  { key: 'bgTertiary', label: '次要背景' },
+  { key: 'textPrimary', label: '主文字' },
+  { key: 'textSecondary', label: '次文字' },
+  { key: 'textTertiary', label: '辅助文字' },
+  { key: 'border', label: '边框' },
+  { key: 'borderLight', label: '浅边框' },
+] as const;
+const featureList = [
+  { key: 'comments', label: '评论' },
+  { key: 'likes', label: '点赞' },
+  { key: 'friendLinks', label: '友情链接' },
+  { key: 'search', label: '搜索' },
+  { key: 'rss', label: 'RSS' },
+  { key: 'darkMode', label: '暗色切换按钮' },
+  { key: 'i18n', label: '语言切换按钮' },
+] as const;
+
+const copyKeys = computed(() =>
+  Array.from(new Set([...Object.keys(settings.copy.zh), ...Object.keys(settings.copy.en)]))
+);
+
+// 实时预览：把当前草稿直接套用到页面（后台面板本身也用同一套 CSS 变量，因此可即时预览）
+function previewSettings() {
+  applySettings(settings);
+}
+
+async function loadSettings() {
+  settingsLoading.value = true;
+  try {
+    const data = await api('GET', '/settings');
+    if (data.code === 0 && data.data) {
+      const inc = data.data;
+      settings.theme = inc.theme;
+      settings.layout = inc.layout;
+      settings.background = inc.background;
+      settings.features = inc.features;
+      settings.copy = inc.copy || { zh: {}, en: {} };
+      previewSettings();
+    }
+  } finally {
+    settingsLoading.value = false;
+  }
+}
+
+async function saveSettings() {
+  settingsSaving.value = true;
+  settingsMsg.value = '';
+  try {
+    const data = await api('PUT', '/settings', JSON.parse(JSON.stringify(settings)));
+    if (data.code === 0) {
+      settingsMsg.value = t('admin.save_success');
+      broadcastSettingsChange();
+    } else {
+      settingsMsg.value = data.message || t('admin.save_failed');
+    }
+  } catch {
+    settingsMsg.value = t('admin.save_failed');
+  } finally {
+    settingsSaving.value = false;
+  }
+}
+
+async function exportSettingsFile() {
+  try {
+    const res = await fetch(`${API}/settings/export`, { headers: authHeaders() });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'site-settings.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    alert('导出失败');
+  }
+}
+
+async function importSettingsFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const obj = JSON.parse(await file.text());
+    const data = await api('POST', '/settings/import', obj);
+    if (data.code === 0 && data.data) {
+      settings.theme = data.data.theme;
+      settings.layout = data.data.layout;
+      settings.background = data.data.background;
+      settings.features = data.data.features;
+      settings.copy = data.data.copy || { zh: {}, en: {} };
+      previewSettings();
+      broadcastSettingsChange();
+      settingsMsg.value = '配置导入成功';
+    } else {
+      settingsMsg.value = data.message || '导入失败';
+    }
+  } catch {
+    settingsMsg.value = '导入失败：文件格式错误';
+  }
+  input.value = '';
+}
+
+async function resetSettings() {
+  if (!confirm('确定将所有外观设置恢复为默认值？此操作不可撤销。')) return;
+  const data = await api('POST', '/settings/reset');
+  if (data.code === 0 && data.data) {
+    settings.theme = data.data.theme;
+    settings.layout = data.data.layout;
+    settings.background = data.data.background;
+    settings.features = data.data.features;
+    settings.copy = data.data.copy || { zh: {}, en: {} };
+    previewSettings();
+    broadcastSettingsChange();
+    settingsMsg.value = '已恢复默认设置';
+  } else {
+    settingsMsg.value = '恢复失败';
+  }
+}
+
+function addCopyKey() {
+  const k = (newCopyKey.value || '').trim();
+  if (!k) return;
+  if (newCopyZh.value) settings.copy.zh[k] = newCopyZh.value;
+  if (newCopyEn.value) settings.copy.en[k] = newCopyEn.value;
+  newCopyKey.value = '';
+  newCopyZh.value = '';
+  newCopyEn.value = '';
+  previewSettings();
+}
+
+function removeCopyKey(k: string) {
+  delete settings.copy.zh[k];
+  delete settings.copy.en[k];
+  previewSettings();
+}
+
+function renameCopyKey(oldKey: string, newKey: string) {
+  const k = (newKey || '').trim();
+  if (!k || k === oldKey) return;
+  const zhv = settings.copy.zh[oldKey];
+  const env = settings.copy.en[oldKey];
+  delete settings.copy.zh[oldKey];
+  delete settings.copy.en[oldKey];
+  if (zhv !== undefined) settings.copy.zh[k] = zhv;
+  if (env !== undefined) settings.copy.en[k] = env;
+  previewSettings();
+}
+
 async function loadUsers() {
   const data = await api('GET', '/users');
   if (data.code === 0) users.value = data.data || [];
@@ -993,6 +1247,7 @@ function handleBeforeUnload(_e: BeforeUnloadEvent) {
 
 watch(currentTab, (tab) => {
   if (tab === 'config' || tab === 'about') loadConfig();
+  if (tab === 'appearance') loadSettings();
   if (tab === 'users') loadUsers();
   if (tab === 'comments') loadComments();
   if (tab === 'media') loadMedia();
@@ -1601,6 +1856,126 @@ watch(currentTab, (tab) => {
 .status-badge.rejected {
   background: rgba(255, 59, 48, 0.1);
   color: var(--color-error);
+}
+
+.appearance-form {
+  max-width: 820px;
+}
+
+.setting-section {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  background: var(--color-bg-primary);
+}
+
+.setting-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.9rem;
+}
+
+.setting-section h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0.75rem 0 0.5rem;
+}
+
+.theme-group {
+  margin-bottom: 0.5rem;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.6rem;
+}
+
+.color-field label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.color-input-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.color-input-row input[type="color"] {
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.color-hex {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+
+.toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.copy-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 36px;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.copy-row.head {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
+}
+
+.copy-row.head span {
+  padding: 0 0.25rem;
+}
+
+.copy-row input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 0.8rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  margin-bottom: 0.75rem;
 }
 
 @media (max-width: 767px) {

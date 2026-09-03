@@ -91,19 +91,19 @@ const { slug } = Astro.params;
         }
 
         container.innerHTML = `
-          <header class="article-header">
-            <div class="article-meta-top">
+          <header class="article-header" data-reveal-stagger>
+            <div class="article-meta-top" data-reveal="fade-up">
               ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category">${article.category.name}</a>` : ''}
               <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
             </div>
-            <h1 class="article-title">${article.title}</h1>
-            ${article.summary ? `<p class="article-summary">${article.summary}</p>` : ''}
-            <div class="article-meta-bottom">
+            <h1 class="article-title" data-reveal="fade-up">${article.title}</h1>
+            ${article.summary ? `<p class="article-summary" data-reveal="fade-up">${article.summary}</p>` : ''}
+            <div class="article-meta-bottom" data-reveal="fade-up">
               <span class="meta-item">${article.view_count} ${t('article.views')}</span>
               <span class="meta-item">${article.like_count} ${t('article.likes')}</span>
               <span class="meta-item">${article.reading_time || 1} ${t('article.minutes_read')}</span>
             </div>
-            <div class="article-tags">
+            <div class="article-tags" data-reveal="fade-up">
               ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="article-tag">${tag.name}</a>`).join('')}
             </div>
           </header>
@@ -114,6 +114,7 @@ const { slug } = Astro.params;
           <div id="comment-section-mount"></div>
         `;
 
+        window.dispatchEvent(new CustomEvent('motion:refresh'));
         mountVueComponents(article.id, article.like_count || 0);
       } else {
         container.innerHTML = `<div class="article-not-found"><h2>${t('article.not_found')}</h2><p>${t('article.check_link')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;

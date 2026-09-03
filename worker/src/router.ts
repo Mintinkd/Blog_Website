@@ -12,6 +12,7 @@ import { handleSearch } from './handlers/search';
 import { handleToggleLike, handleLikeStatus } from './handlers/like';
 import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia } from './handlers/media';
 import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
+import { handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
 import { handleExport, handleImport } from './handlers/admin';
 import { handleAcquireLock, handleReleaseLock, handleGetLockStatus, handleForceReleaseLock } from './handlers/edit_lock';
@@ -115,6 +116,14 @@ addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeM
 addRoute('GET', '/config', async (req, env) => handleGetPublicConfig(req, env));
 addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env), true, true);
 addRoute('PUT', '/config', async (req, env) => handleUpdateConfig(req, env), true, true);
+
+// 全站可视化配置中心
+addRoute('GET', '/settings', async (req, env) => handleGetSettings(req, env));
+addRoute('GET', '/settings/all', async (req, env) => handleGetSettings(req, env), true, true);
+addRoute('PUT', '/settings', async (req, env) => handleUpdateSettings(req, env), true, true);
+addRoute('POST', '/settings/reset', async (req, env) => handleResetSettings(req, env), true, true);
+addRoute('GET', '/settings/export', async (req, env) => handleExportSettings(req, env), true, true);
+addRoute('POST', '/settings/import', async (req, env) => handleImportSettings(req, env), true, true);
 
 addRoute('GET', '/friend-links', async (req, env) => handleListFriendLinks(req, env));
 addRoute('GET', '/friend-links/all', async (req, env) => handleListAllFriendLinks(req, env), true);

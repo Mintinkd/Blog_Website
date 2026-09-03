@@ -25,13 +25,15 @@
         <template v-if="activeFilter">共 {{ total }} 篇文章</template>
         <template v-else>找到 {{ total }} 篇相关文章</template>
       </p>
-      <div v-for="item in results" :key="item.id" class="search-result-item">
-        <h3 class="result-title">
-          <a :href="`/articles/${item.slug}`" v-html="item.title_highlight || item.title"></a>
-        </h3>
-        <p class="result-excerpt" v-html="item.content_highlight || item.summary"></p>
-        <span class="result-date">{{ formatDate(item.published_at || item.created_at) }}</span>
-      </div>
+      <TransitionGroup name="result" tag="div" class="search-results-list">
+        <div v-for="item in results" :key="item.id" class="search-result-item">
+          <h3 class="result-title">
+            <a :href="`/articles/${item.slug}`" v-html="item.title_highlight || item.title"></a>
+          </h3>
+          <p class="result-excerpt" v-html="item.content_highlight || item.summary"></p>
+          <span class="result-date">{{ formatDate(item.published_at || item.created_at) }}</span>
+        </div>
+      </TransitionGroup>
     </div>
 
     <div v-else-if="searched && !loading" class="no-results">
@@ -153,11 +155,12 @@ function formatDate(dateStr: string): string {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .search-input:focus {
   border-color: var(--color-accent);
+  box-shadow: var(--motion-glow-accent);
 }
 
 .search-btn {
@@ -235,6 +238,21 @@ function formatDate(dateStr: string): string {
 
 .search-result-item:last-child {
   border-bottom: none;
+}
+
+/* 搜索结果逐条入场（TransitionGroup） */
+.search-results-list {
+  display: block;
+}
+.result-enter-active,
+.result-leave-active {
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+              transform var(--motion-duration-base) var(--motion-ease-standard);
+}
+.result-enter-from,
+.result-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .result-title {
