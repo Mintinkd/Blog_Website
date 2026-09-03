@@ -6,3 +6,7 @@ build_tmp.log
 
 # worker 自动部署时 Cloudflare 自己 build 生成，不进 git
 worker/dist/
+
+# wrangler 本地构建缓存（dev/deploy 时生成），不进 git
+.wrangler/
+worker/.wrangler/
