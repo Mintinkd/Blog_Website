@@ -27,6 +27,7 @@
 │   └── deploy.yml              # CI/CD 自动部署
 ├── public/
 │   ├── .assetsignore             # Workers+Assets 排除 _worker.js
+│   ├── bg-placeholder.svg       # 默认全站背景图
 │   └── robots.txt
 ├── src/
 │   ├── admin/
@@ -36,7 +37,8 @@
 │   │   │   └── ArticleCard.astro
 │   │   ├── common/
 │   │   │   ├── Pagination.astro
-│   │   │   └── EmptyState.astro
+│   │   │   ├── EmptyState.astro
+│   │   │   └── ScrollProgress.astro  # 顶部滚动进度条
 │   │   └── layout/
 │   │       ├── BaseLayout.astro  # 全局布局（毛玻璃导航栏）
 │   │       └── Sidebar.astro
@@ -64,17 +66,21 @@
 │   │   ├── zh.json               # 中文
 │   │   └── en.json               # 英文
 │   ├── styles/
-│   │   ├── variables.css        # 设计令牌（颜色、字体、阴影等）
-│   │   ├── global.css           # 全局样式
+│   │   ├── variables.css        # 设计令牌（颜色、字体、阴影、背景、动效等）
+│   │   ├── global.css           # 全局样式（含 .site-bg 固定背景层）
+│   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级兜底）
 │   │   └── prose.css            # 文章排版样式
-│   └── utils/
+│   ├── utils/
 │       ├── api.ts               # API请求工具
 │       ├── markdown.ts          # Markdown渲染
 │       ├── theme.ts             # 主题切换
-│       ├── siteConfig.ts        # 站点配置读取与应用
+│       ├── siteConfig.ts        # 站点基础配置读取与应用
+│       ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
+│       ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 ├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.toml            # Worker配置（旧版）\n│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定）
+│   ├── wrangler.toml            # Worker配置（旧版，已弃用）
+│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
 │   ├── schema.sql               # 数据库Schema
 │   └── src/
 │       ├── index.ts             # Worker入口
@@ -92,6 +98,7 @@
 │       │   ├── like.ts
 │       │   ├── media.ts
 │       │   ├── config.ts
+│       │   ├── settings.ts      # 可视化配置中心后端（site_config JSON blob）
 │       │   ├── friend_link.ts
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
@@ -106,7 +113,11 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── .node-version
-└── .npmrc
+├── .npmrc
+└── docs/                         # 设计与功能文档
+    ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
+    ├── BACKGROUND_IMAGE.md      # 全站背景图说明
+    └── SITE_SETTINGS.md         # 可视化配置中心说明
 ```
 
 ## 数据库设计
@@ -151,6 +162,7 @@ D1 (SQLite) 共 9 张表：
 | GET | `/media/serve/*` | 媒体文件访问 |
 | GET | `/friend-links` | 友情链接 |
 | GET | `/config` | 公开站点配置 |
+| GET | `/settings` | 公开可视化配置（前台运行时套用） |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
 
@@ -200,6 +212,11 @@ D1 (SQLite) 共 9 张表：
 | DELETE | `/friend-links/:id` | 删除友链 |
 | GET | `/admin/export` | 导出数据 |
 | POST | `/admin/import` | 导入数据 |
+| GET | `/settings/all` | 拉取全部可视化配置 |
+| PUT | `/settings` | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效） |
+| POST | `/settings/reset` | 恢复默认可视化配置 |
+| GET | `/settings/export` | 导出配置 JSON |
+| POST | `/settings/import` | 导入配置 JSON |
 
 ## 前台页面
 
@@ -233,7 +250,52 @@ D1 (SQLite) 共 9 张表：
 - **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
+- **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图与遮罩浓度、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
+
+## 视觉与体验增强
+
+> 以下三项能力均通过「可视化配置中心」在 `/admin` 后台实时调整，无需重新部署。详细设计见 `docs/` 目录：`BACKGROUND_IMAGE.md`、`SITE_SETTINGS.md`、`UI_MOTION_UPGRADE.md`。
+
+### 全站背景图
+
+全站所有页面共享一张铺满视口的固定背景层，响应式适配桌面 / 平板 / 手机及横竖屏，不变形、不遮挡文字。
+
+- **实现**：`BaseLayout.astro` 注入 `<div class="site-bg">` 固定层（`position: fixed; inset: -10% 0; z-index: -1`）；背景图与遮罩色由 CSS 变量 `--bg-image` / `--bg-overlay` / `--bg-position` 控制（`variables.css` 中日 / 夜各一份）。
+- **默认图**：`public/bg-placeholder.svg`，可在配置中心替换为自定义图片 URL。
+- **文字对比度**：遮罩按主题背景色 + 配置的浓度（`bgOpacity`，默认 0.85）自动生成渐变，保证前景文字清晰。
+- **主题 / 语言切换**：通过 View Transitions（`startViewTransition`）做平滑过渡，背景层同步切换。
+
+### 可视化配置中心
+
+所有个性化设置（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效）统一存为 `site_config` 表中的 JSON blob（key = `site_settings`），由后台「外观与个性化」面板可视化编辑，前后端实时生效。
+
+- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `DEFAULT_SETTINGS` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开读取 + admin 写 / 导出 / 导入 / 恢复默认接口。
+- **前端注入器**：`src/utils/settings.ts` 的 `applySettings()` 把配置转成可直接生效的视觉与行为：
+  1. **配色 / 布局 / 背景** → 注入 CSS 变量覆盖 `variables.css` 默认值（`!important` 保证生效），按 `[data-theme="light"/"dark"]` 分写，日 / 夜切换照常生效；
+  2. **功能开关** → 在 `<html>` 写 `data-feature-<name>="off"`，配合 `[data-feature]` 钩子隐藏对应模块（评论 / 点赞 / 友链 / 搜索 / RSS / 暗色 / 双语）；
+  3. **文案覆盖** → 写入 i18n 覆盖层并按当前 locale 刷新 `[data-i18n]` 文本，中 / 英切换照常生效；
+  4. **动效** → 写 `data-motion-intensity` 与 `data-parallax` 及 `--parallax-speed`。
+- **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
+- **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
+- **数据安全**：这些设置不含任何密钥，`/settings` 作为公开接口供前台拉取；写 / 导出 / 导入 / 恢复均为 admin 专属。
+
+### UI 动效升级
+
+基于 transform / opacity 的轻量动效体系，性能优先、尊重系统偏好，并可在配置中心按需开关。
+
+- **基建**：`src/styles/motion.css`（入场 / 磁吸 / hover 样式 + 强度分级兜底）+ `src/utils/motion.ts`（初始化逻辑）。
+- **能力**：
+  - **入场动画** —— 通过 `[data-reveal]` / `[data-reveal="fade-up"]` 与 `[data-reveal-stagger]` 触发，IntersectionObserver 滚动进入视口时播放，支持错峰；
+  - **滚动进度条** —— `ScrollProgress.astro` 顶部细进度条；
+  - **磁吸 / hover 微动效** —— `[data-hover="magnetic"]` 按钮磁吸、卡片 / 图标 hover 反馈；
+  - **视差** —— 背景层极轻微视差（`data-parallax-fixed`，位移 = 滚动进度 × 视口高 × 速度系数，有界），速度可在配置中心调节（默认 0.04）；
+  - **主题 / 语言过渡** —— View Transitions 平滑过渡。
+- **分级与兜底**：
+  - 动效强度 `motion.intensity`：`normal`（全部）/ `reduced`（仅保留轻量入场与进度条，禁用磁吸 / 视差）/ `off`（全部禁用），写入 `<html data-motion-intensity>`；
+  - 视差开关 `motion.parallax`：关闭时写 `data-parallax="off"`；
+  - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差。
+- **生命周期**：`BaseLayout.astro` 引入 Astro `ClientRouter` 并在 `astro:page-load` 后调用 `initMotion()`；动态渲染的内容触发 `motion:refresh` 事件重新绑定。
 
 ## 站点配置动态化
 
@@ -352,7 +414,8 @@ npx wrangler deploy
 
 ## 自定义域名
 
-在 Cloudflare Pages 项目设置中绑定自定义域名。API Worker 需要在 Workers 设置中单独添加自定义域名或路由。
+- **前端（Pages）** — 在 Cloudflare Pages 项目设置中绑定自定义域名，例如本项目的 `blog.zenfishlog.dpdns.org`。
+- **API Worker** — 前端通过 Astro API 路由（`/api/v1/*`）同源代理到 `blog-api` Worker，因此**无需**为 Worker 单独配置自定义域名或路由；自定义域名仅作用于 Pages 即可覆盖全站访问。
 
 ## 多语言 (i18n)
 
@@ -373,6 +436,7 @@ npx wrangler deploy
 - **暗色** — 深色背景 + 浅紫 (#818cf8) 强调色
 - **字体** — Inter (正文) + JetBrains Mono (代码)
 - **风格** — Apple式毛玻璃导航栏 + 卡片化布局
+- **可配置** — 上述配色（accent / 背景 / 文字 / 边框等）现已可在后台「外观与个性化 → 配色」中可视化调整，日 / 夜分别配置，保存后实时生效，详见 [可视化配置中心](#可视化配置中心)。
 
 ## License
 
