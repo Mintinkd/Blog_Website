@@ -99,3 +99,31 @@
     transform: none !important;
   }
 }
+
+/* 固定背景层视差：提示浏览器该层 transform 会变化（单元素，开销可控） */
+[data-parallax-fixed] {
+  will-change: transform;
+}
+
+/* ---------- 5. 配置中心「动效强度 = 关」总开关 ---------- */
+/* 由 settings.ts 写入 <html data-motion-intensity="off"> 触发：禁用所有入场/微动/视差，元素直接可见 */
+
+[data-motion-intensity="off"] [data-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
+  animation: none !important;
+  will-change: auto !important;
+}
+[data-motion-intensity="off"] [data-hover] {
+  transition: none !important;
+}
+[data-motion-intensity="off"] [data-hover="lift"]:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+[data-motion-intensity="off"] [data-hover="magnetic"] {
+  transform: none !important;
+}
+[data-motion-intensity="off"] .scroll-progress {
+  display: none !important;
+}

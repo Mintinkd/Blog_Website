@@ -52,6 +52,12 @@ export interface SiteSettings {
     zh: Record<string, string>;
     en: Record<string, string>;
   };
+  /** 动效强度与视差开关（后台可配） */
+  motion: {
+    intensity: 'normal' | 'reduced' | 'off';
+    parallax: boolean;
+    parallaxSpeed: number;
+  };
 }
 
 export function getDefaultSettings(): SiteSettings {
@@ -103,6 +109,11 @@ export function getDefaultSettings(): SiteSettings {
       i18n: true,
     },
     copy: { zh: {}, en: {} },
+    motion: {
+      intensity: 'normal',
+      parallax: true,
+      parallaxSpeed: 0.04,
+    },
   };
 }
 

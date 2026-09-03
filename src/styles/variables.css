@@ -54,6 +54,7 @@
   --motion-duration-instant: 120ms;
   --motion-duration-fast:    200ms;
   --motion-duration-base:    320ms;
+  --parallax-speed:          0.04;
   --motion-duration-slow:    520ms;
   --motion-duration-page:    420ms;
 

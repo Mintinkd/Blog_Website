@@ -353,6 +353,31 @@
             </section>
 
             <section class="setting-section">
+              <h3>动效</h3>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>动效强度</label>
+                  <select v-model="settings.motion.intensity" @change="previewSettings">
+                    <option value="normal">标准（全部动效）</option>
+                    <option value="reduced">减弱（仅轻量入场与进度条）</option>
+                    <option value="off">关闭（无动效）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="toggle-grid">
+                <label class="toggle-item">
+                  <input type="checkbox" v-model="settings.motion.parallax" @change="previewSettings" />
+                  <span>启用背景视差</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>视差速度：{{ settings.motion.parallaxSpeed }}</label>
+                <input type="range" min="0" max="0.1" step="0.005" v-model.number="settings.motion.parallaxSpeed" @input="previewSettings" :disabled="!settings.motion.parallax" />
+              </div>
+              <p class="hint">背景视差为极轻微滚动位移，增强沉浸感且不干扰阅读；在任意主题与语言下均生效。</p>
+            </section>
+
+            <section class="setting-section">
               <h3>功能开关</h3>
               <div class="toggle-grid">
                 <label class="toggle-item" v-for="ft in featureList" :key="ft.key">
@@ -958,6 +983,7 @@ async function loadSettings() {
       settings.background = inc.background;
       settings.features = inc.features;
       settings.copy = inc.copy || { zh: {}, en: {} };
+      settings.motion = inc.motion || getDefaultSettings().motion;
       previewSettings();
     }
   } finally {
@@ -1011,6 +1037,7 @@ async function importSettingsFile(e: Event) {
       settings.background = data.data.background;
       settings.features = data.data.features;
       settings.copy = data.data.copy || { zh: {}, en: {} };
+      settings.motion = data.data.motion || getDefaultSettings().motion;
       previewSettings();
       broadcastSettingsChange();
       settingsMsg.value = '配置导入成功';
@@ -1032,6 +1059,7 @@ async function resetSettings() {
     settings.background = data.data.background;
     settings.features = data.data.features;
     settings.copy = data.data.copy || { zh: {}, en: {} };
+    settings.motion = data.data.motion || getDefaultSettings().motion;
     previewSettings();
     broadcastSettingsChange();
     settingsMsg.value = '已恢复默认设置';

@@ -53,6 +53,15 @@ export interface SiteSettings {
     zh: Record<string, string>;
     en: Record<string, string>;
   };
+  /** 动效强度与视差开关（后台可配） */
+  motion: {
+    /** normal=全部动效；reduced=仅保留轻量入场与进度条，禁用磁吸/视差；off=全部禁用 */
+    intensity: 'normal' | 'reduced' | 'off';
+    /** 是否启用视差（含背景层极轻微视差） */
+    parallax: boolean;
+    /** 视差速度系数 0~0.1，越大位移越明显；背景层默认 0.04 */
+    parallaxSpeed: number;
+  };
 }
 
 export function getDefaultSettings(): SiteSettings {
@@ -104,6 +113,11 @@ export function getDefaultSettings(): SiteSettings {
       i18n: true,
     },
     copy: { zh: {}, en: {} },
+    motion: {
+      intensity: 'normal',
+      parallax: true,
+      parallaxSpeed: 0.04,
+    },
   };
 }
 
@@ -181,7 +195,14 @@ export function applySettings(s: SiteSettings): void {
     else root.setAttribute(`data-feature-${k}`, 'off');
   }
 
-  // 3) 文案覆盖：写入 i18n 覆盖层并刷新 DOM 上 [data-i18n]
+  // 4) 动效强度与视差开关：写 data 属性 + CSS 变量，供 motion.ts / motion.css 读取
+  const m = s.motion;
+  root.setAttribute('data-motion-intensity', m.intensity);
+  if (m.parallax) root.removeAttribute('data-parallax');
+  else root.setAttribute('data-parallax', 'off');
+  root.style.setProperty('--parallax-speed', String(m.parallaxSpeed));
+
+  // 5) 文案覆盖：写入 i18n 覆盖层并刷新 DOM 上 [data-i18n]
   setOverrides(s.copy);
   refreshDomTranslations();
 }

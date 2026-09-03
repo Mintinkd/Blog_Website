@@ -13,6 +13,15 @@ const prefersReduce = (): boolean =>
 const isMobile = (): boolean =>
   window.matchMedia('(max-width: 768px)').matches;
 
+/** 动效强度等级：0=off, 1=reduced, 2=normal（综合系统偏好与配置中心强度） */
+function motionLevel(): number {
+  if (prefersReduce()) return 0;
+  const attr = document.documentElement.getAttribute('data-motion-intensity');
+  if (attr === 'off') return 0;
+  if (attr === 'reduced') return 1;
+  return 2;
+}
+
 /* ---------- 1. 滚动入场 ---------- */
 
 let revealObserver: IntersectionObserver | null = null;
@@ -46,8 +55,8 @@ function injectStagger(root: ParentNode): void {
 
 export function initReveal(root: ParentNode = document): void {
   const targets = root.querySelectorAll<HTMLElement>('[data-reveal]');
-  if (prefersReduce()) {
-    // 减弱动画：直接显示，不做入场
+  if (motionLevel() === 0) {
+    // 动效全关 / 减弱偏好：直接显示，不做入场
     targets.forEach((el) => el.classList.add('is-revealed'));
     return;
   }
@@ -64,7 +73,7 @@ if (typeof window !== 'undefined') {
 /* ---------- 2. 磁吸按钮 ---------- */
 
 export function initMagnetic(): void {
-  if (prefersReduce() || isMobile()) return;
+  if (motionLevel() < 2 || isMobile()) return;
   document.querySelectorAll<HTMLElement>('[data-hover="magnetic"]').forEach((el) => {
     const onMove = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
@@ -83,7 +92,7 @@ export function initMagnetic(): void {
 /* ---------- 3. 阅读进度条 ---------- */
 
 export function initScrollProgress(selector = '.scroll-progress'): void {
-  if (prefersReduce()) return;
+  if (motionLevel() === 0) return;
   const bar = document.querySelector<HTMLElement>(selector);
   if (!bar) return;
 
@@ -105,20 +114,43 @@ export function initScrollProgress(selector = '.scroll-progress'): void {
 
 /* ---------- 4. 视差（仅作用于装饰层 / 背景层） ---------- */
 
+let parallaxBound = false;
+
 export function initParallax(selector = '[data-parallax]'): void {
-  if (prefersReduce() || isMobile()) return;
-  const els = document.querySelectorAll<HTMLElement>(selector);
+  if (motionLevel() < 2 || isMobile()) return; // off/reduced/移动端 不启用视差
+  if (parallaxBound) return;                   // 防止 ClientRouter 跨页重复绑定 scroll 监听
+  parallaxBound = true;
+  const els = Array.from(document.querySelectorAll<HTMLElement>(selector + ', [data-parallax-fixed]'));
   if (!els.length) return;
 
   let raf = 0;
   const onScroll = () => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
+      const root = document.documentElement;
+      // 配置中心视差开关关闭：清除任何残留位移
+      if (root.getAttribute('data-parallax') === 'off') {
+        els.forEach((el) => (el.style.transform = ''));
+        return;
+      }
+      const scrollY = window.scrollY || (window as any).pageYOffset || 0;
+      const speedVar = getComputedStyle(root).getPropertyValue('--parallax-speed').trim();
+      const baseSpeed = parseFloat(speedVar) || 0.04;
       els.forEach((el) => {
-        const speed = parseFloat(el.dataset.parallax || '0.1');
-        const rect = el.getBoundingClientRect();
-        // 元素越往上滚（rect.top 越小）反向位移，制造视差；speed 很小（≤0.12）不干扰阅读
-        el.style.transform = `translate3d(0, ${(-rect.top * speed).toFixed(1)}px, 0)`;
+        let offset: number;
+        if (el.hasAttribute('data-parallax-fixed')) {
+          // 固定背景层：位移 = 滚动进度(0~1) × 视口高 × speed，上限受 .site-bg 的 inset 余量约束，绝不露边
+          const sp = parseFloat(el.dataset.parallaxFixed || '') || baseSpeed;
+          const docMax = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+          const prog = docMax > 0 ? Math.min(1, scrollY / docMax) : 0;
+          offset = prog * window.innerHeight * sp;
+        } else {
+          // 文档流装饰层：随滚动位置反向位移
+          const sp = parseFloat(el.dataset.parallax || '') || 0.1;
+          const rect = el.getBoundingClientRect();
+          offset = -rect.top * sp;
+        }
+        el.style.transform = `translate3d(0, ${offset.toFixed(1)}px, 0)`;
       });
     });
   };

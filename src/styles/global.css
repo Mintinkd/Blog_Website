@@ -43,7 +43,8 @@ body {
  * ============================================================ */
 .site-bg {
   position: fixed;
-  inset: 0;
+  /* 上下各留 10% 余量，供视差（data-parallax-fixed）位移使用，避免位移时露出边缘 */
+  inset: -10% 0;
   z-index: -1;
   background-image: var(--bg-overlay), var(--bg-image);
   background-size: cover, cover;
