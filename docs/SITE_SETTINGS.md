@@ -19,6 +19,7 @@ Worker (worker/src/handlers/settings.ts)
    │  GET /settings → applySettings()
    │   · 注入 CSS 变量覆盖（配色/布局/背景，!important）
    │   · <html> 写 data-feature-*="off" 控制功能开关
+   │   · <html> 写 data-motion-intensity / data-parallax，写 --parallax-speed（动效强度与视差开关，供 motion.ts / motion.css 读取）
    │   · 写入 i18n 文案覆盖层 + 刷新 [data-i18n]
    ▼
 全站页面（随主题 / 语言切换照常生效，跨标签页实时同步）
@@ -33,8 +34,18 @@ Worker (worker/src/handlers/settings.ts)
 | `background` | bgImage(URL), bgOpacity(0~1) | 背景图路径 + 浓度（遮罩由主题背景色 + 浓度自动生成，保证文字对比度） |
 | `features` | comments, likes, friendLinks, search, rss, darkMode, i18n | 功能开关，关掉则在对应 DOM 上隐藏 |
 | `copy` | zh{}, en{} | 文案覆盖，键名复用 i18n key（如 `nav.home`），按当前语言生效 |
+| `motion` | intensity(normal\|reduced\|off), parallax(bool), parallaxSpeed(0~0.1) | 动效强度与背景视差开关。intensity=off 时全站禁用入场/微动/进度条；reduced 时仅保留轻量入场与进度条、禁用磁吸/视差；parallax 关时背景层不位移。视差 speed 默认 0.04，位移=滚动进度(0~1)×视口高×speed（有界，不露边） |
 
 默认值见 `worker/src/handlers/settings.ts` 与 `src/utils/settings.ts` 的 `getDefaultSettings()`（与 `src/styles/variables.css` 当前外观保持一致，故「恢复默认」= 还原当前外观）。
+
+### 动效开关（motion）用法
+
+后台「外观与个性化 → 动效」分组可实时配置：
+- **动效强度**：`normal`（全部动效）/ `reduced`（仅轻量入场与进度条，禁用磁吸与视差）/ `off`（无动效，元素直接可见，等价于 `prefers-reduced-motion`）。
+- **启用背景视差**：开关背景层（`.site-bg` 的 `data-parallax-fixed`）极轻微滚动位移，增强沉浸感且不干扰阅读；移动端自动禁用。
+- **视差速度**：0~0.1，越大位移越明显，默认 0.04。
+
+实现要点：`applySettings()` 把 motion 配置转成 `<html data-motion-intensity=...>`、`<html data-parallax=off>`（关时）与 CSS 变量 `--parallax-speed`；`motion.ts` 的 `motionLevel()` 综合系统偏好与配置强度分级，各动效（reveal/磁吸/进度条/视差）按级启用；`motion.css` 的 `[data-motion-intensity="off"]` 规则兜底禁用 hover/磁吸/reveal。两组开关在任意主题与语言下均生效。
 
 ## API 接口
 
