@@ -89,7 +89,7 @@ export function getDefaultSettings(): SiteSettings {
         textSecondary: '#a1a1a6',
         textTertiary: '#6e6e73',
         border: '#38383a',
-        borderLight: '#2c2c2e',
+        borderLight: '#15151a',
       },
     },
     layout: {
@@ -151,7 +151,8 @@ function buildOverlay(bg: string, opacity: number): string {
   return `linear-gradient(180deg, rgba(${r}, ${g}, ${b}, ${a1}) 0%, rgba(${r}, ${g}, ${b}, ${a2}) 100%)`;
 }
 
-function buildCss(s: SiteSettings): string {
+/** 构建完整 CSS 字符串；纯函数，可在 Astro SSR 与客户端之间复用 */
+export function buildCss(s: SiteSettings): string {
   const L = s.theme.light;
   const D = s.theme.dark;
   const ly = s.layout;
@@ -235,6 +236,8 @@ export async function initSettings(): Promise<void> {
       if (e.key === VERSION_KEY) initSettings();
     });
     window.addEventListener('settings-updated', () => initSettings());
+    // SPA 跨页（astro:page-load）后重新拉取并应用，保证所有页面沿用最新 settings
+    document.addEventListener('astro:page-load', () => initSettings());
   }
 }
 

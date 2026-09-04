@@ -85,7 +85,7 @@ export function getDefaultSettings(): SiteSettings {
         textSecondary: '#a1a1a6',
         textTertiary: '#6e6e73',
         border: '#38383a',
-        borderLight: '#2c2c2e',
+        borderLight: '#15151a',
       },
     },
     layout: {

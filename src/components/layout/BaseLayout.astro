@@ -3,6 +3,7 @@ import '../../styles/global.css';
 import { ClientRouter } from 'astro:transitions';
 import FriendLinkList from '../../islands/FriendLinkList.vue';
 import ScrollProgress from '../../components/common/ScrollProgress.astro';
+import { buildCss, getDefaultSettings } from '../../utils/settings';
 
 export interface Props {
   title: string;
@@ -23,6 +24,26 @@ const {
 } = Astro.props;
 
 const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site).href;
+
+// SSR 阶段预拉取 settings 并内联 CSS 变量 —— 解决"必须刷新才能看到背景图"：
+// 之前只客户端异步 fetch，首屏 SSR 渲染的是默认渐变 / 默认色，JS 起来后才覆盖；
+// 现在直接把用户的 settings 烤进首屏 <style>，首屏就与客户端一致。
+const host = Astro.url.hostname;
+const isProdOrigin = host && host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.local');
+let initialSettings = getDefaultSettings();
+if (isProdOrigin) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 800);
+    const res = await fetch(`${Astro.url.origin}/api/v1/settings`, { signal: ctrl.signal });
+    clearTimeout(t);
+    const data = await res.json();
+    if (data?.code === 0 && data.data) initialSettings = data.data;
+  } catch {
+    /* 拉取失败/超时则回退默认，buildCss 仍能产出合法 CSS，不影响首屏 */
+  }
+}
+const initialCss = buildCss(initialSettings);
 ---
 
 <!doctype html>
@@ -53,6 +74,8 @@ const fullCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, Astro.site)
       })();
     </script>
     <ClientRouter />
+    {/* SSR 阶段预内联 settings 生成的 CSS 变量；客户端 initSettings 会用同一 ID 覆盖，保持单一来源 */}
+    <style id="dynamic-settings" set:html={initialCss}></style>
   </head>
   <body>
     <div class="site-bg" data-parallax-fixed aria-hidden="true"></div>
