@@ -101,7 +101,7 @@ export function getDefaultSettings(): SiteSettings {
     },
     background: {
       bgImage: '/bg-placeholder.svg',
-      bgOpacity: 0.85,
+      bgOpacity: 0.55,
     },
     features: {
       comments: true,
@@ -135,12 +135,20 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** 背景遮罩：用主题背景色按浓度生成渐变，保证前景文字对比度 */
+/**
+ * 背景遮罩：用主题背景色按「图片强度」生成渐变，保证前景文字对比度
+ * - 语义约定：opacity = 图片穿透蒙版的可见度（0=几乎全遮挡、1=几乎全透出图）
+ * - 实际蒙版 alpha = (1 - opacity) * 0.55，封顶 55%，确保最不透明时文字仍有清晰对比度
+ *   这样用户拖滑杆时，「图更明显 / 图更淡」与直觉一致；以前是相反的「蒙版浓度」
+ */
 function buildOverlay(bg: string, opacity: number): string {
   const [r, g, b] = hexToRgb(bg);
   const o = Math.max(0, Math.min(1, Number(opacity) || 0));
-  const o2 = Math.min(1, o + 0.06);
-  return `linear-gradient(180deg, rgba(${r}, ${g}, ${b}, ${o}) 0%, rgba(${r}, ${g}, ${b}, ${o2}) 100%)`;
+  const mask = Math.max(0, Math.min(1, (1 - o) * 0.55));
+  // 顶端略低、底端略高（深→浅阴影感），与原来方向一致；保留 0.05 的小跨度
+  const a1 = Math.max(0, mask - 0.05);
+  const a2 = Math.min(1, mask + 0.05);
+  return `linear-gradient(180deg, rgba(${r}, ${g}, ${b}, ${a1}) 0%, rgba(${r}, ${g}, ${b}, ${a2}) 100%)`;
 }
 
 function buildCss(s: SiteSettings): string {

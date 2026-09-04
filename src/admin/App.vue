@@ -347,9 +347,10 @@
               <h3>背景</h3>
               <div class="form-group"><label>背景图路径 (URL，留空用默认)</label><input v-model="settings.background.bgImage" @input="previewSettings" placeholder="/bg-placeholder.svg" /></div>
               <div class="form-group">
-                <label>背景浓度：{{ settings.background.bgOpacity }}</label>
+                <label>背景图片强度：{{ settings.background.bgOpacity }}</label>
                 <input type="range" min="0" max="1" step="0.01" v-model.number="settings.background.bgOpacity" @input="previewSettings" />
               </div>
+              <p class="hint">数值越高，背景图片越清晰、蒙版越淡；建议 0.3~0.7 平衡可读性与图片可见度。</p>
             </section>
 
             <section class="setting-section">

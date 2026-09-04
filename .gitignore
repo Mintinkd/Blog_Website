@@ -10,3 +10,6 @@ worker/dist/
 # wrangler 本地构建缓存（dev/deploy 时生成），不进 git
 .wrangler/
 worker/.wrangler/
+
+# Astro dev/build 缓存（data-store、settings、临时类型），不进 git
+.astro/

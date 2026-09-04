@@ -97,7 +97,8 @@ export function getDefaultSettings(): SiteSettings {
     },
     background: {
       bgImage: '/bg-placeholder.svg',
-      bgOpacity: 0.85,
+      // 与前端 settings.ts 同步：bgOpacity 语义为「图片可见度」而非「遮罩浓度」
+      bgOpacity: 0.55,
     },
     features: {
       comments: true,
