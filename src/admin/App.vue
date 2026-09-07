@@ -1429,6 +1429,11 @@ watch(currentTab, (tab) => {
 .admin-main {
   flex: 1;
   min-width: 0;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  height: fit-content;
 }
 
 .panel-header {

@@ -47,15 +47,15 @@ const _sfc_main = /* @__PURE__ */ defineComponent({
 function _sfc_ssrRender(_ctx, _push, _parent, _attrs, $props, $setup, $data, $options) {
   _push(`<div${ssrRenderAttrs(mergeProps({
     class: ["friend-links", $props.variant === "footer" && "footer-variant"]
-  }, _attrs))} data-v-daa932fd><h3 class="links-title" data-v-daa932fd>友情链接</h3>`);
+  }, _attrs))} data-v-ffa59a23><h3 class="links-title" data-v-ffa59a23>友情链接</h3>`);
   if ($setup.links.length > 0) {
-    _push(`<ul class="links-list" data-v-daa932fd><!--[-->`);
+    _push(`<ul class="links-list" data-v-ffa59a23><!--[-->`);
     ssrRenderList($setup.links, (link) => {
-      _push(`<li class="link-item" data-v-daa932fd><a${ssrRenderAttr("href", link.url)} target="_blank" rel="noopener noreferrer" class="link-url" data-v-daa932fd>${ssrInterpolate(link.name)}</a></li>`);
+      _push(`<li class="link-item" data-v-ffa59a23><a${ssrRenderAttr("href", link.url)} target="_blank" rel="noopener noreferrer" class="link-url" data-v-ffa59a23>${ssrInterpolate(link.name)}</a></li>`);
     });
     _push(`<!--]--></ul>`);
   } else {
-    _push(`<p class="no-links" data-v-daa932fd>暂无友情链接</p>`);
+    _push(`<p class="no-links" data-v-ffa59a23>暂无友情链接</p>`);
   }
   _push(`</div>`);
 }
@@ -65,7 +65,7 @@ _sfc_main.setup = (props, ctx) => {
   (ssrContext.modules || (ssrContext.modules = /* @__PURE__ */ new Set())).add("src/islands/FriendLinkList.vue");
   return _sfc_setup ? _sfc_setup(props, ctx) : void 0;
 };
-const FriendLinkList = /* @__PURE__ */ _export_sfc(_sfc_main, [["ssrRender", _sfc_ssrRender], ["__scopeId", "data-v-daa932fd"]]);
+const FriendLinkList = /* @__PURE__ */ _export_sfc(_sfc_main, [["ssrRender", _sfc_ssrRender], ["__scopeId", "data-v-ffa59a23"]]);
 
 const $$ScrollProgress = createComponent(($$result, $$props, $$slots) => {
   return renderTemplate`${maybeRenderHead()}<div class="scroll-progress" role="progressbar" aria-label="阅读进度" aria-hidden="true"></div>`;

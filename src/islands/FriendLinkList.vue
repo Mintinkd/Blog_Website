@@ -81,7 +81,6 @@ onMounted(async () => {
   font-size: 0.95rem;
   margin-bottom: 0.6rem;
   padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
 }
 
 .footer-variant .links-list {
