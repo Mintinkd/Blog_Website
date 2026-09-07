@@ -177,7 +177,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <script>
   import { t, getLocale } from '../utils/i18n.ts';
-  import { getCategoryColor, categoryGradient, categoryBadgeStyle, shade } from '../utils/categoryColors';
+  import { getCategoryColor, categoryBadgeVars, categoryGradVars, categoryNameVars } from '../utils/categoryColors';
 
   async function loadArticles() {
     const container = document.getElementById('article-grid');
@@ -201,24 +201,22 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           return;
         }
 
-        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
         const escAttr = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
         container.innerHTML = items.map((article: any) => {
           const cat = article.category;
           const catColor = getCategoryColor(cat?.slug, cat?.name);
-          const badge = cat ? categoryBadgeStyle(catColor, dark) : null;
-          const badgeStyle = badge ? `style="background:${badge.background};color:${badge.color};border:${badge.border};"` : '';
+          const badgeVars = cat ? categoryBadgeVars(catColor) : '';
           const cover = article.cover_image
             ? `<div class="card-cover"><img src="${escAttr(article.cover_image)}" alt="" loading="lazy" /></div>`
-            : `<div class="card-cover card-cover-grad" style="background:${categoryGradient(catColor, dark)};"><span class="cover-cat-name" style="color:${dark ? shade(catColor, 40) : shade(catColor, -28)};">${cat?.name || '✦'}</span></div>`;
+            : `<div class="card-cover card-cover-grad" style="${categoryGradVars(catColor)}"><span class="cover-cat-name" style="${categoryNameVars(catColor)}">${cat?.name || '✦'}</span></div>`;
           return `
           <article class="article-card" data-reveal="fade-up">
             <a href="/articles/${article.slug}" class="card-link">
               ${cover}
               <div class="card-body">
                 <div class="card-meta">
-                  ${cat ? `<span class="card-category" ${badgeStyle}>${cat.name}</span>` : ''}
+                  ${cat ? `<span class="card-category" style="${badgeVars}">${cat.name}</span>` : ''}
                   <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
                 <h3 class="card-title">${article.title}</h3>
@@ -282,6 +280,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     display: flex;
     align-items: center;
     justify-content: center;
+    background: var(--grad-l);
+  }
+
+  [data-theme="dark"] .card-cover-grad {
+    background: var(--grad-d);
   }
 
   .cover-cat-name {
@@ -289,6 +292,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-weight: 600;
     letter-spacing: 0.02em;
     opacity: 0.9;
+    color: var(--catname-l);
+  }
+
+  [data-theme="dark"] .cover-cat-name {
+    color: var(--catname-d);
   }
 
   .card-link {
@@ -319,7 +327,16 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-size: 0.75rem;
     font-weight: 500;
     text-decoration: none;
+    background: var(--cat-bg);
+    color: var(--cat-fg);
+    border: 1px solid var(--cat-bd);
     transition: filter var(--transition-fast);
+  }
+
+  [data-theme="dark"] .card-category {
+    background: var(--cat-bg-d);
+    color: var(--cat-fg-d);
+    border-color: var(--cat-bd-d);
   }
 
   .card-category:hover {

@@ -99,3 +99,26 @@ export function categoryBadgeStyle(color: string, dark: boolean): Record<string,
     border: `1px solid ${hexToRgba(color, dark ? 0.45 : 0.3)}`,
   };
 }
+
+/**
+ * 分类徽标 CSS 变量集（双主题：亮/暗各一套），
+ * 配合 `[data-theme="dark"]` 规则即时响应主题切换，无需重渲染。
+ */
+export function categoryBadgeVars(color: string): string {
+  const l = categoryBadgeStyle(color, false);
+  const d = categoryBadgeStyle(color, true);
+  return [
+    `--cat-bg:${l.background}`, `--cat-fg:${l.color}`, `--cat-bd:${l.border}`,
+    `--cat-bg-d:${d.background}`, `--cat-fg-d:${d.color}`, `--cat-bd-d:${d.border}`,
+  ].join(';') + ';';
+}
+
+/** 分类渐变横幅 CSS 变量集（亮/暗各一套） */
+export function categoryGradVars(color: string): string {
+  return `--grad-l:${categoryGradient(color, false)};--grad-d:${categoryGradient(color, true)};`;
+}
+
+/** 渐变横幅上的分类名颜色（亮/暗各一套） */
+export function categoryNameVars(color: string): string {
+  return `--catname-l:${shade(color, -28)};--catname-d:${shade(color, 40)};`;
+}

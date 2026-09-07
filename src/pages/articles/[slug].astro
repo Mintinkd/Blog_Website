@@ -44,7 +44,7 @@ const { slug } = Astro.params;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
-  import { getCategoryColor, categoryBadgeStyle } from '../../utils/categoryColors';
+  import { getCategoryColor, categoryBadgeVars, categoryGradVars, categoryNameVars } from '../../utils/categoryColors';
   import { createApp } from 'vue';
 
   async function mountVueComponents(articleId: number, likeCount: number) {
@@ -91,20 +91,18 @@ const { slug } = Astro.params;
           bodyHtml = renderMarkdown(article.content);
         }
 
-        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
         const escAttr = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         const catColor = getCategoryColor(article.category?.slug, article.category?.name);
-        const badge = article.category ? categoryBadgeStyle(catColor, dark) : null;
-        const badgeStyle = badge ? `style="background:${badge.background};color:${badge.color};border:${badge.border};"` : '';
+        const badgeVars = article.category ? categoryBadgeVars(catColor) : '';
         const banner = article.cover_image
           ? `<div class="article-banner"><img src="${escAttr(article.cover_image)}" alt="" /></div>`
-          : '';
+          : `<div class="article-banner article-banner-grad" style="${categoryGradVars(catColor)}"><span class="banner-cat-name" style="${categoryNameVars(catColor)}">${article.category?.name || '✦'}</span></div>`;
 
         container.innerHTML = `
           <header class="article-header" data-reveal-stagger>
             ${banner}
             <div class="article-meta-top" data-reveal="fade-up">
-              ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category" ${badgeStyle}>${article.category.name}</a>` : ''}
+              ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category" style="${badgeVars}">${article.category.name}</a>` : ''}
               <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
             </div>
             <h1 class="article-title" data-reveal="fade-up">${article.title}</h1>
@@ -206,11 +204,44 @@ const { slug } = Astro.params;
     border-radius: 999px;
     font-size: 0.8rem;
     font-weight: 500;
+    background: var(--cat-bg);
+    color: var(--cat-fg);
+    border: 1px solid var(--cat-bd);
     transition: filter var(--transition-fast);
+  }
+
+  [data-theme="dark"] .article-category {
+    background: var(--cat-bg-d);
+    color: var(--cat-fg-d);
+    border-color: var(--cat-bd-d);
   }
 
   .article-category:hover {
     filter: brightness(0.9);
+  }
+
+  .article-banner-grad {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    background: var(--grad-l);
+  }
+
+  [data-theme="dark"] .article-banner-grad {
+    background: var(--grad-d);
+  }
+
+  .banner-cat-name {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    opacity: 0.9;
+    color: var(--catname-l);
+  }
+
+  [data-theme="dark"] .banner-cat-name {
+    color: var(--catname-d);
   }
 
   .article-date {
