@@ -77,6 +77,8 @@
   "admin.title": "标题",
   "admin.slug": "链接标识",
   "admin.summary": "摘要",
+  "admin.cover": "封面图 URL",
+  "admin.cover_placeholder": "https://... 留空则使用分类色渐变",
   "admin.content": "内容",
   "admin.category": "分类",
   "admin.status": "状态",

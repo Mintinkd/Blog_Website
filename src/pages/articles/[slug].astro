@@ -44,6 +44,7 @@ const { slug } = Astro.params;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
+  import { getCategoryColor, categoryBadgeStyle } from '../../utils/categoryColors';
   import { createApp } from 'vue';
 
   async function mountVueComponents(articleId: number, likeCount: number) {
@@ -90,10 +91,20 @@ const { slug } = Astro.params;
           bodyHtml = renderMarkdown(article.content);
         }
 
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const escAttr = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const catColor = getCategoryColor(article.category?.slug, article.category?.name);
+        const badge = article.category ? categoryBadgeStyle(catColor, dark) : null;
+        const badgeStyle = badge ? `style="background:${badge.background};color:${badge.color};border:${badge.border};"` : '';
+        const banner = article.cover_image
+          ? `<div class="article-banner"><img src="${escAttr(article.cover_image)}" alt="" /></div>`
+          : '';
+
         container.innerHTML = `
           <header class="article-header" data-reveal-stagger>
+            ${banner}
             <div class="article-meta-top" data-reveal="fade-up">
-              ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category">${article.category.name}</a>` : ''}
+              ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category" ${badgeStyle}>${article.category.name}</a>` : ''}
               <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
             </div>
             <h1 class="article-title" data-reveal="fade-up">${article.title}</h1>
@@ -115,6 +126,7 @@ const { slug } = Astro.params;
         `;
 
         window.dispatchEvent(new CustomEvent('motion:refresh'));
+        enhanceCodeBlocks(container);
         mountVueComponents(article.id, article.like_count || 0);
       } else {
         container.innerHTML = `<div class="article-not-found"><h2>${t('article.not_found')}</h2><p>${t('article.check_link')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;
@@ -122,6 +134,39 @@ const { slug } = Astro.params;
     } catch (e) {
       container.innerHTML = `<div class="article-not-found"><p>${t('article.load_error')}</p><a href="/" class="back-link">${t('article.back_home')}</a></div>`;
     }
+  }
+
+  function enhanceCodeBlocks(root: HTMLElement) {
+    root.querySelectorAll('pre').forEach((pre) => {
+      if ((pre as HTMLElement).dataset.enhanced) return;
+      (pre as HTMLElement).dataset.enhanced = '1';
+      const code = pre.querySelector('code');
+      const langMatch = code?.className.match(/language-([\w+-]+)/);
+      const lang = langMatch ? langMatch[1] : '';
+      const bar = document.createElement('div');
+      bar.className = 'code-bar';
+      if (lang) {
+        const label = document.createElement('span');
+        label.className = 'code-lang';
+        label.textContent = lang;
+        bar.appendChild(label);
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'code-copy';
+      btn.textContent = '复制';
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(code?.textContent || pre.textContent || '');
+          btn.textContent = '已复制';
+        } catch {
+          btn.textContent = '复制失败';
+        }
+        setTimeout(() => (btn.textContent = '复制'), 1600);
+      });
+      bar.appendChild(btn);
+      pre.prepend(bar);
+    });
   }
 
   loadArticle();
@@ -134,6 +179,19 @@ const { slug } = Astro.params;
     margin-bottom: 2.5rem;
   }
 
+  .article-banner {
+    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+
+  .article-banner img {
+    width: 100%;
+    max-height: 360px;
+    object-fit: cover;
+  }
+
   .article-meta-top {
     display: flex;
     align-items: center;
@@ -143,8 +201,16 @@ const { slug } = Astro.params;
   }
 
   .article-category {
-    color: var(--color-accent);
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
     font-weight: 500;
+    transition: filter var(--transition-fast);
+  }
+
+  .article-category:hover {
+    filter: brightness(0.9);
   }
 
   .article-date {
@@ -192,8 +258,8 @@ const { slug } = Astro.params;
   }
 
   .article-tag:hover {
-    background-color: var(--color-accent-light);
-    color: var(--color-accent);
+    background-color: var(--color-tag-hover-bg);
+    color: var(--color-tag-hover-text);
   }
 
   .article-actions {

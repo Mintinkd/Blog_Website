@@ -466,6 +466,7 @@
                 </div>
               </div>
               <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
+              <div class="form-group"><label>{{ t('admin.cover') }}</label><input v-model="articleForm.cover_image" :placeholder="t('admin.cover_placeholder')" /></div>
               <div class="form-group">
                 <div class="content-label-row">
                   <label>{{ t('admin.content') }} (Markdown)</label>
@@ -541,7 +542,7 @@ const articlesLoading = ref(false);
 const authorFilter = ref('');
 const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
-const articleForm = ref({ title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft', tags: [] as string[] });
+const articleForm = ref({ title: '', slug: '', summary: '', content: '', cover_image: '', category_id: '', status: 'draft', tags: [] as string[] });
 const newTagInput = ref('');
 const articleSaving = ref(false);
 const editorMode = ref<'edit' | 'split' | 'preview'>('edit');
@@ -751,6 +752,7 @@ async function editArticle(a: any) {
     slug: a.slug,
     summary: a.summary || '',
     content: '',
+    cover_image: a.cover_image || '',
     category_id: a.category?.id?.toString() || '',
     status: a.status || 'draft',
     tags: (a.tags || []).map((t: any) => t.name),
@@ -780,6 +782,7 @@ async function forceTakeover() {
         slug: a.slug,
         summary: a.summary || '',
         content: '',
+        cover_image: a.cover_image || '',
         category_id: a.category?.id?.toString() || '',
         status: a.status || 'draft',
         tags: (a.tags || []).map((t: any) => t.name),
@@ -807,7 +810,7 @@ async function releaseEditLock() {
 
 function openNewArticle() {
   editingArticle.value = null;
-  articleForm.value = { title: '', slug: '', summary: '', content: '', category_id: '', status: 'draft', tags: [] };
+  articleForm.value = { title: '', slug: '', summary: '', content: '', cover_image: '', category_id: '', status: 'draft', tags: [] };
   newTagInput.value = '';
   showArticleEditor.value = true;
 }
@@ -1519,7 +1522,7 @@ watch(currentTab, (tab) => {
 }
 
 .status-badge.admin {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(73, 177, 245, 0.1);
   color: var(--color-accent);
 }
 

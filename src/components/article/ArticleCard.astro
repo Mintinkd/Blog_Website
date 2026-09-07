@@ -1,21 +1,41 @@
 ---
+import { getCategoryColor, hexToRgba, shade } from '../../utils/categoryColors';
+
 interface Props {
   id: number;
   title: string;
   slug: string;
   summary: string;
   published_at: string | null;
+  cover_image?: string;
   category?: { name: string; slug: string };
   tags?: Array<{ name: string; slug: string }>;
   view_count: number;
   like_count: number;
 }
 
-const { title, slug, summary, published_at, category, tags, view_count, like_count } = Astro.props;
+const { title, slug, summary, published_at, cover_image, category, tags, view_count, like_count } = Astro.props;
+
+const catColor = getCategoryColor(category?.slug, category?.name);
+const catVars = {
+  '--cat': catColor,
+  '--cat-bg-light': hexToRgba(catColor, 0.13),
+  '--cat-bg-dark': hexToRgba(catColor, 0.26),
+  '--cat-text-light': shade(catColor, -28),
+  '--cat-text-dark': shade(catColor, 40),
+  '--cat-border-light': hexToRgba(catColor, 0.3),
+  '--cat-border-dark': hexToRgba(catColor, 0.45),
+};
+const catStyle = Object.entries(catVars).map(([k, v]) => `${k}:${v}`).join(';');
 ---
 
-<article class="article-card">
+<article class="article-card" style={catStyle}>
   <a href={`/articles/${slug}`} class="card-link">
+    {cover_image ? (
+      <div class="card-cover"><img src={cover_image} alt="" loading="lazy" /></div>
+    ) : (
+      <div class="card-cover card-cover-grad"><span class="cover-cat-name">{category?.name || '✦'}</span></div>
+    )}
     <div class="card-body">
       <div class="card-meta">
         {category && (
@@ -64,6 +84,48 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
     color: inherit;
   }
 
+  /* ===== 封面区（安知鱼风格：有图上图下文，无图分类色渐变） ===== */
+  .card-cover {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--color-bg-tertiary);
+  }
+
+  .card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--motion-duration-base, 0.32s) var(--motion-ease-standard, ease);
+  }
+
+  .article-card:hover .card-cover img {
+    transform: scale(1.04);
+  }
+
+  .card-cover-grad {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--cat-bg-light) 0%, transparent 100%);
+  }
+
+  [data-theme="dark"] .card-cover-grad {
+    background: linear-gradient(135deg, var(--cat-bg-dark) 0%, transparent 100%);
+  }
+
+  .cover-cat-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    opacity: 0.9;
+    color: var(--cat-text-light);
+  }
+
+  [data-theme="dark"] .cover-cat-name {
+    color: var(--cat-text-dark);
+  }
+
   .card-body {
     padding: 1.5rem;
     display: flex;
@@ -79,13 +141,26 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
   }
 
   .card-category {
-    color: var(--color-accent);
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
     font-weight: 500;
     text-decoration: none;
+    background: var(--cat-bg-light);
+    color: var(--cat-text-light);
+    border: 1px solid var(--cat-border-light);
+    transition: filter var(--transition-fast);
+  }
+
+  [data-theme="dark"] .card-category {
+    background: var(--cat-bg-dark);
+    color: var(--cat-text-dark);
+    border-color: var(--cat-border-dark);
   }
 
   .card-category:hover {
-    text-decoration: underline;
+    filter: brightness(0.9);
   }
 
   .card-date {
@@ -132,6 +207,12 @@ const { title, slug, summary, published_at, category, tags, view_count, like_cou
     color: var(--color-tag-text);
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
+    transition: all var(--transition-fast);
+  }
+
+  .card-tag:hover {
+    background-color: var(--color-tag-hover-bg);
+    color: var(--color-tag-hover-text);
   }
 
   .card-stats {

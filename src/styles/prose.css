@@ -29,7 +29,7 @@
 .prose h2 {
   font-size: 1.5rem;
   padding-bottom: 0.4em;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 2px solid var(--color-accent-subtle);
 }
 
 .prose h3 {
@@ -91,11 +91,11 @@
 }
 
 .prose blockquote {
-  border-left: 3px solid var(--color-accent);
+  border-left: 4px solid var(--color-accent);
   background-color: var(--color-quote-bg);
-  padding: 0.8em 1.2em;
+  padding: 0.9em 1.3em;
   margin: 1.5em 0;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   color: var(--color-text-secondary);
 }
 
@@ -113,13 +113,53 @@
 }
 
 .prose pre {
+  position: relative;
   background-color: var(--color-code-bg);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  padding: 1.1em 1.3em;
+  padding: 2.9em 1.3em 1.1em;
   overflow-x: auto;
   margin: 1.5em 0;
   line-height: 1.6;
+}
+
+/* 代码块语言标签 + 复制按钮工具条 */
+.code-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45em 1em;
+  border-bottom: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background-color: var(--color-bg-tertiary);
+}
+
+.code-lang {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  text-transform: lowercase;
+}
+
+.code-copy {
+  padding: 0.15rem 0.65rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.code-copy:hover {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
 }
 
 .prose pre code {

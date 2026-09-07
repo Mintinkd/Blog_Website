@@ -11,20 +11,20 @@
   --color-text-tertiary: #a1a1a6;
   --color-border: #e8e8ed;
   --color-border-light: #f0f0f5;
-  --color-accent: #6366f1;
-  --color-accent-hover: #4f46e5;
-  --color-accent-light: #eef2ff;
-  --color-accent-subtle: rgba(99, 102, 241, 0.08);
+  --color-accent: #49b1f5;
+  --color-accent-hover: #3a9de8;
+  --color-accent-light: #e8f4fd;
+  --color-accent-subtle: rgba(73, 177, 245, 0.08);
   --color-code-bg: #f5f5f7;
   --color-code-text: #1d1d1f;
-  --color-quote-border: #6366f1;
-  --color-quote-bg: rgba(99, 102, 241, 0.04);
+  --color-quote-border: #49b1f5;
+  --color-quote-bg: rgba(73, 177, 245, 0.05);
   --color-success: #34c759;
   --color-warning: #ff9f0a;
   --color-error: #ff3b30;
   --color-tag-bg: #f5f5f7;
   --color-tag-text: #6e6e73;
-  --color-tag-hover-bg: #6366f1;
+  --color-tag-hover-bg: #49b1f5;
   --color-tag-hover-text: #ffffff;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
@@ -71,7 +71,7 @@
   --motion-scale-md: 1.05;
 
   --motion-glow-accent: 0 0 0 4px var(--color-accent-subtle);
-  --shadow-card-hover-strong: 0 16px 48px rgba(99, 102, 241, 0.18);
+  --shadow-card-hover-strong: 0 16px 48px rgba(73, 177, 245, 0.18);
 }
 
 [data-theme="dark"] {
@@ -84,20 +84,20 @@
   --color-text-tertiary: #6e6e73;
   --color-border: #38383a;
   --color-border-light: #15151a;
-  --color-accent: #818cf8;
-  --color-accent-hover: #a5b4fc;
-  --color-accent-light: #1e1b4b;
-  --color-accent-subtle: rgba(129, 140, 248, 0.1);
+  --color-accent: #7cb8f0;
+  --color-accent-hover: #a6d4f8;
+  --color-accent-light: #123a5c;
+  --color-accent-subtle: rgba(124, 184, 240, 0.12);
   --color-code-bg: #1c1c1e;
   --color-code-text: #f5f5f7;
-  --color-quote-border: #818cf8;
-  --color-quote-bg: rgba(129, 140, 248, 0.06);
+  --color-quote-border: #7cb8f0;
+  --color-quote-bg: rgba(124, 184, 240, 0.07);
   --color-success: #30d158;
   --color-warning: #ffd60a;
   --color-error: #ff453a;
   --color-tag-bg: #2c2c2e;
   --color-tag-text: #a1a1a6;
-  --color-tag-hover-bg: #818cf8;
+  --color-tag-hover-bg: #7cb8f0;
   --color-tag-hover-text: #0a0a0a;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -111,7 +111,7 @@
   --bg-position: center center;
 
   /* 深色主题：光晕用更亮的靛蓝，保持层次 */
-  --shadow-card-hover-strong: 0 16px 48px rgba(129, 140, 248, 0.22);
+  --shadow-card-hover-strong: 0 16px 48px rgba(124, 184, 240, 0.22);
 }
 
 /* 尊重用户「减弱动态效果」偏好：所有动效时长退化为瞬时 */

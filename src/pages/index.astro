@@ -31,7 +31,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 <style>
   .hero {
     text-align: center;
-    padding: 4rem 0 3rem;
+    padding: 5rem 0 3.5rem;
     position: relative;
   }
 
@@ -53,7 +53,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .hero-title {
-    font-size: 2.75rem;
+    font-size: 3rem;
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.03em;
@@ -104,7 +104,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     background-color: var(--color-accent-hover);
     color: #fff;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 12px rgba(73, 177, 245, 0.3);
   }
 
   .hero-btn.secondary {
@@ -177,6 +177,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <script>
   import { t, getLocale } from '../utils/i18n.ts';
+  import { getCategoryColor, categoryGradient, categoryBadgeStyle, shade } from '../utils/categoryColors';
 
   async function loadArticles() {
     const container = document.getElementById('article-grid');
@@ -200,12 +201,24 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           return;
         }
 
-        container.innerHTML = items.map((article: any) => `
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const escAttr = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+        container.innerHTML = items.map((article: any) => {
+          const cat = article.category;
+          const catColor = getCategoryColor(cat?.slug, cat?.name);
+          const badge = cat ? categoryBadgeStyle(catColor, dark) : null;
+          const badgeStyle = badge ? `style="background:${badge.background};color:${badge.color};border:${badge.border};"` : '';
+          const cover = article.cover_image
+            ? `<div class="card-cover"><img src="${escAttr(article.cover_image)}" alt="" loading="lazy" /></div>`
+            : `<div class="card-cover card-cover-grad" style="background:${categoryGradient(catColor, dark)};"><span class="cover-cat-name" style="color:${dark ? shade(catColor, 40) : shade(catColor, -28)};">${cat?.name || '✦'}</span></div>`;
+          return `
           <article class="article-card" data-reveal="fade-up">
             <a href="/articles/${article.slug}" class="card-link">
+              ${cover}
               <div class="card-body">
                 <div class="card-meta">
-                  ${article.category ? `<span class="card-category">${article.category.name}</span>` : ''}
+                  ${cat ? `<span class="card-category" ${badgeStyle}>${cat.name}</span>` : ''}
                   <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
                 <h3 class="card-title">${article.title}</h3>
@@ -218,8 +231,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
                 </div>
               </div>
             </a>
-          </article>
-        `).join('');
+          </article>`;
+        }).join('');
         window.dispatchEvent(new CustomEvent('motion:refresh'));
       }
     } catch (e) {
@@ -247,6 +260,37 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     transform: translateY(-2px);
   }
 
+  .card-cover {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--color-bg-tertiary);
+  }
+
+  .card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--motion-duration-base, 0.32s) var(--motion-ease-standard, ease);
+  }
+
+  .article-card:hover .card-cover img {
+    transform: scale(1.04);
+  }
+
+  .card-cover-grad {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cover-cat-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    opacity: 0.9;
+  }
+
   .card-link {
     display: block;
     text-decoration: none;
@@ -257,7 +301,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    min-height: 200px;
+    min-height: 0;
   }
 
   .card-meta {
@@ -269,8 +313,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .card-category {
-    color: var(--color-accent);
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
     font-weight: 500;
+    text-decoration: none;
+    transition: filter var(--transition-fast);
+  }
+
+  .card-category:hover {
+    filter: brightness(0.9);
+    text-decoration: none;
   }
 
   .card-date {
@@ -321,6 +375,12 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     color: var(--color-tag-text);
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
+    transition: all var(--transition-fast);
+  }
+
+  .card-tag:hover {
+    background-color: var(--color-tag-hover-bg);
+    color: var(--color-tag-hover-text);
   }
 
   .card-read {

@@ -64,8 +64,8 @@ export function getDefaultSettings(): SiteSettings {
   return {
     theme: {
       light: {
-        accent: '#6366f1',
-        accentHover: '#4f46e5',
+        accent: '#49b1f5',
+        accentHover: '#3a9de8',
         bgPrimary: '#fafafa',
         bgSecondary: '#ffffff',
         bgTertiary: '#f5f5f5',
@@ -76,8 +76,8 @@ export function getDefaultSettings(): SiteSettings {
         borderLight: '#f0f0f5',
       },
       dark: {
-        accent: '#818cf8',
-        accentHover: '#a5b4fc',
+        accent: '#7cb8f0',
+        accentHover: '#a6d4f8',
         bgPrimary: '#0a0a0a',
         bgSecondary: '#1c1c1e',
         bgTertiary: '#2c2c2e',
