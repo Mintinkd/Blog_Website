@@ -153,6 +153,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     gap: 1rem;
   }
 
+  .article-grid.grid-single {
+    grid-template-columns: 1fr;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
   @media (min-width: 640px) {
     .article-grid {
       grid-template-columns: repeat(2, 1fr);
@@ -231,6 +238,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
             </a>
           </article>`;
         }).join('');
+        // 仅一篇文章时切换为单列居中，避免中宽视口下挤在左列
+        container.classList.toggle('grid-single', items.length === 1);
         window.dispatchEvent(new CustomEvent('motion:refresh'));
       }
     } catch (e) {
