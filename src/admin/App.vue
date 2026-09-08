@@ -290,7 +290,7 @@
               <div class="form-group"><label>URL</label><input v-model="friendLinkForm.url" /></div>
               <div class="form-group"><label>{{ t('admin.description') }}</label><input v-model="friendLinkForm.description" /></div>
               <div class="form-group"><label>{{ t('admin.sort_order') }}</label><input v-model.number="friendLinkForm.sort_order" type="number" /></div>
-              <div class="form-group"><label><input type="checkbox" v-model="friendLinkForm.is_active" /> {{ t('admin.active') }}</label></div>
+              <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="friendLinkForm.is_active" /> {{ t('admin.active') }}</label></div>
               <div class="modal-actions">
                 <button class="btn-secondary" @click="showFriendLinkForm = false">{{ t('admin.cancel') }}</button>
                 <button class="btn-primary" @click="saveFriendLink">{{ t('admin.save') }}</button>
@@ -1588,6 +1588,31 @@ watch(currentTab, (tab) => {
 .form-group textarea:focus {
   outline: none;
   border-color: var(--color-accent);
+}
+
+/* checkbox 不受通用 input 样式（width:100%/padding/border）影响，紧贴文字显示 */
+.form-group input[type="checkbox"] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  accent-color: var(--color-accent);
+  margin: 0 0.4rem 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.3rem;
+  cursor: pointer;
+}
+
+.checkbox-label:hover {
+  color: var(--color-text-primary);
 }
 
 .form-row {
