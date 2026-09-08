@@ -134,6 +134,14 @@ select {
   -webkit-backdrop-filter: blur(10px) saturate(1.15);
   backdrop-filter: blur(10px) saturate(1.15);
   border-radius: var(--radius-lg);
+  /* 衬底内留白：把最边上的字完整包进毛玻璃，而不是贴着/盖住边缘 */
+  padding: 1.5rem 2rem;
+}
+
+@media (max-width: 639px) {
+  .main-content {
+    padding: 1rem 1.25rem;
+  }
 }
 
 .container {
