@@ -276,7 +276,7 @@
                 <td>{{ fl.sort_order }}</td>
                 <td><span :class="['status-badge', fl.is_active ? 'published' : 'draft']">{{ fl.is_active ? t('admin.active') : t('admin.inactive') }}</span></td>
                 <td class="actions">
-                  <button @click="editingFriendLinkId = fl.id; friendLinkForm = { name: fl.name, url: fl.url, description: fl.description || '', sort_order: fl.sort_order, is_active: fl.is_active }; showFriendLinkForm = true">{{ t('admin.edit') }}</button>
+                  <button @click="editingFriendLinkId = fl.id; friendLinkForm = { name: fl.name, url: fl.url, description: fl.description || '', sort_order: fl.sort_order, is_active: !!fl.is_active }; showFriendLinkForm = true">{{ t('admin.edit') }}</button>
                   <button @click="deleteFriendLink(fl.id)" class="btn-danger">{{ t('admin.delete') }}</button>
                 </td>
               </tr>
