@@ -173,13 +173,24 @@ const { slug } = Astro.params;
 </script>
 
 <style is:global>
+  .article-detail {
+    --card-pad: 2rem;
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--card-pad);
+    box-shadow: var(--shadow-md);
+  }
+
   .article-header {
     margin-bottom: 2.5rem;
   }
 
   .article-banner {
-    margin-bottom: 1.5rem;
-    border-radius: var(--radius-lg);
+    margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 1.5rem;
+    border-radius: calc(var(--radius-lg) - 2px) calc(var(--radius-lg) - 2px) 0 0;
     overflow: hidden;
     box-shadow: var(--shadow-md);
   }
@@ -236,12 +247,14 @@ const { slug } = Astro.params;
     font-size: 1.5rem;
     font-weight: 700;
     letter-spacing: 0.04em;
-    opacity: 0.9;
+    opacity: 0.95;
     color: var(--catname-l);
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.55), 0 0 26px rgba(255, 255, 255, 0.3);
   }
 
   [data-theme="dark"] .banner-cat-name {
     color: var(--catname-d);
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 255, 255, 0.2);
   }
 
   .article-date {
@@ -333,6 +346,10 @@ const { slug } = Astro.params;
   }
 
   @media (max-width: 639px) {
+    .article-detail {
+      --card-pad: 1.25rem;
+    }
+
     .article-title {
       font-size: 1.5rem;
     }
