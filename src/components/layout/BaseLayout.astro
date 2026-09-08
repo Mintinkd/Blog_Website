@@ -399,6 +399,10 @@ const initialCss = buildCss(initialSettings);
   .site-footer {
     padding: 2rem 0;
     margin-top: 6rem;
+    /* 底部文字同样叠背景，加同款轻磨砂衬底保证可读 */
+    background: color-mix(in srgb, var(--color-bg-primary) 74%, transparent);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+    backdrop-filter: blur(10px) saturate(1.15);
   }
   .footer-inner {
     display: flex;
