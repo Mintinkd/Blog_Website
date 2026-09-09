@@ -206,7 +206,7 @@ const $$BaseLayout = createComponent(async ($$result, $$props, $$slots) => {
     }
   }
   const initialCss = buildCss(initialSettings);
-  return renderTemplate(_a || (_a = __template(['<html lang="zh-CN" data-astro-cid-o7hvdbfg> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator"', "><title data-site-title>", '</title><meta name="description"', "", ">", '<link rel="canonical"', '><meta property="og:type" content="website"><meta property="og:title"', ">", '<meta property="og:url"', ">", `<link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/favicon.png"><script>
+  return renderTemplate(_a || (_a = __template(['<html lang="zh-CN" data-astro-cid-o7hvdbfg> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator"', "><title data-site-title>", '</title><meta name="description"', "", ">", '<link rel="canonical"', '><meta property="og:type" content="website"><meta property="og:title"', ">", '<meta property="og:url"', ">", `<link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="icon" type="image/png" sizes="192x192" href="/favicon.png"><link rel="apple-touch-icon" href="/favicon.png"><script>
       (function() {
         const t = localStorage.getItem('theme');
         if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);

@@ -267,6 +267,12 @@ hitokoto-widget {
   display: none;
 }
 
+/* 卡片翻转：按钮上方空间不足时改为在按钮下方展开 */
+hitokoto-widget.card-below .hk-card {
+  bottom: auto;
+  top: calc(100% + 12px);
+}
+
 .hk-text {
   margin: 0;
   font-size: 0.92rem;

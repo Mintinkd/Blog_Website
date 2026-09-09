@@ -61,7 +61,8 @@ const initialCss = buildCss(initialSettings);
     {description && <meta property="og:description" content={description} />}
     <meta property="og:url" content={fullCanonicalUrl} />
     {ogImage && <meta property="og:image" content={ogImage} />}
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <script is:inline>
       (function() {
@@ -371,7 +372,42 @@ const initialCss = buildCss(initialSettings);
               return { x, y };
             };
 
-            // ---- 拖动：pointer 事件，位移 > 6px 视为拖动 ----
+            // ---- 边界约束：组件（含展开的卡片）必须完整落在视口内，越界弹回最近合法位置 ----
+            const MARGIN = 8;
+            const ensureInView = () => {
+              const br = btn.getBoundingClientRect();
+              const rects = [br];
+              if (!card.hidden) rects.push(card.getBoundingClientRect());
+              const top = Math.min(...rects.map((r) => r.top));
+              const bottom = Math.max(...rects.map((r) => r.bottom));
+              const left = Math.min(...rects.map((r) => r.left));
+              const right = Math.max(...rects.map((r) => r.right));
+              const vw = window.innerWidth, vh = window.innerHeight;
+              let dx = 0, dy = 0;
+              if (top < MARGIN) dy = MARGIN - top;
+              else if (bottom > vh - MARGIN) dy = (vh - MARGIN) - bottom;
+              if (left < MARGIN) dx = MARGIN - left;
+              else if (right > vw - MARGIN) dx = (vw - MARGIN) - right;
+              if (dx || dy) {
+                const p = readPos();
+                apply({
+                  x: Math.min(97, Math.max(3, p.x + (dx / vw) * 100)),
+                  y: Math.min(97, Math.max(3, p.y + (dy / vh) * 100))
+                });
+                return true;
+              }
+              return false;
+            };
+            (this as any)._ensureInView = ensureInView;
+
+            // 卡片默认在按钮上方展开；上方空间不足时翻转到按钮下方，保证卡片不进视口外
+            const updateCardSide = () => {
+              const spaceAbove = btn.getBoundingClientRect().top;
+              const cardH = card.offsetHeight || 130;
+              root.classList.toggle('card-below', spaceAbove < cardH + 16);
+            };
+
+            // ---- 拖动：pointer 事件，位移 > 6px 视为拖动；拖动过程实时弹回视口内 ----
             let dragging = false;
             let moved = 0;
             let sx = 0, sy = 0, spx = 0, spy = 0;
@@ -390,6 +426,7 @@ const initialCss = buildCss(initialSettings);
               const ny = Math.min(97, Math.max(3, spy + (dy / window.innerHeight) * 100));
               root.style.left = nx + '%';
               root.style.top = ny + '%';
+              ensureInView();
             });
             const endDrag = (e: PointerEvent) => {
               if (!dragging) return;
@@ -397,6 +434,7 @@ const initialCss = buildCss(initialSettings);
               if (moved <= 6) {
                 toggleCard();
               } else {
+                ensureInView();
                 try { localStorage.setItem(POS_KEY, JSON.stringify(readPos())); } catch {}
               }
             };
@@ -434,13 +472,26 @@ const initialCss = buildCss(initialSettings);
 
             const toggleCard = () => {
               const show = card.hidden;
-              card.hidden = !show;
-              if (show) load(false);
+              if (show) {
+                updateCardSide();
+                card.hidden = false;
+                ensureInView();
+                load(false);
+              } else {
+                card.hidden = true;
+              }
             };
             refreshBtn.addEventListener('click', () => load(true));
+            ensureInView();
           }
         }
         if (!customElements.get('hitokoto-widget')) customElements.define('hitokoto-widget', HitokotoWidget);
+
+        // 视口尺寸变化（旋转/缩放窗口）时，把当前页组件弹回视口内
+        window.addEventListener('resize', () => {
+          const w = document.querySelector('hitokoto-widget') as any;
+          if (w && w._inited && typeof w._ensureInView === 'function') w._ensureInView();
+        });
       })();
     </script>
   </body>
