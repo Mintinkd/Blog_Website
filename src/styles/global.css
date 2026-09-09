@@ -195,3 +195,116 @@ select {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-tertiary);
 }
+
+/* ============================================================
+ * 全局悬浮一言组件（hitokoto-widget）
+ * - 固定定位、可拖动；位置由 JS 以百分比写入 left/top（localStorage 记忆）
+ * - 放全局而非组件 scoped，避免 Astro scoped 匹配不到 JS 生成的内部元素
+ * ============================================================ */
+hitokoto-widget {
+  position: fixed;
+  left: 88%;
+  top: 84%;
+  transform: translate(-50%, -50%);
+  z-index: 92;
+  line-height: 1.5;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hk-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-bg-primary) 72%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  cursor: grab;
+  touch-action: none;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.hk-btn:hover {
+  transform: scale(1.07);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.2);
+}
+
+.hk-btn:active {
+  cursor: grabbing;
+}
+
+[data-theme="dark"] .hk-btn {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.hk-card {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 272px;
+  max-width: calc(100vw - 32px);
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-bg-primary) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .hk-card {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+
+.hk-card[hidden] {
+  display: none;
+}
+
+.hk-text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--color-text-primary);
+}
+
+.hk-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.hk-from {
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hk-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.hk-refresh:hover {
+  color: #ffffff;
+  background: var(--color-accent);
+}

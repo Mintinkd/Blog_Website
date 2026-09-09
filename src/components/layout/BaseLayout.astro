@@ -129,6 +129,22 @@ const initialCss = buildCss(initialSettings);
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
     </button>
 
+    <!-- 全局悬浮一言组件：可拖动、位置记忆、点击展开一言卡片 -->
+    <hitokoto-widget>
+      <button class="hk-btn" type="button" aria-label="一言" title="一言">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </button>
+      <div class="hk-card" role="dialog" aria-label="一言" hidden>
+        <p class="hk-text">加载中…</p>
+        <div class="hk-meta">
+          <span class="hk-from"></span>
+          <button class="hk-refresh" type="button" aria-label="换一句" title="换一句">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
+    </hitokoto-widget>
+
     <script>
       // ===== 主题 / 语言：localStorage 持久化 + 事件委托 + 跨页恢复 =====
       const THEME_KEY = 'theme';
@@ -321,6 +337,111 @@ const initialCss = buildCss(initialSettings);
         window.addEventListener('scroll', onScroll, { passive: true });
         backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
       }
+
+      // ===== 全局悬浮一言组件：可拖动 + 位置记忆 + 跨页复原 =====
+      (() => {
+        const POS_KEY = 'hitokoto-widget-pos';
+        const API_URL = 'https://api.furry.ist/hitokoto/';
+
+        class HitokotoWidget extends HTMLElement {
+          connectedCallback() {
+            if ((this as any)._inited) return;
+            (this as any)._inited = true;
+
+            const root = this;
+            const btn = root.querySelector('.hk-btn') as HTMLButtonElement;
+            const card = root.querySelector('.hk-card') as HTMLElement;
+            const textEl = root.querySelector('.hk-text') as HTMLElement;
+            const fromEl = root.querySelector('.hk-from') as HTMLElement;
+            const refreshBtn = root.querySelector('.hk-refresh') as HTMLButtonElement;
+            if (!btn || !card) return;
+
+            // ---- 位置：localStorage 记忆，默认右下 ----
+            let pos: { x: number; y: number } | null = null;
+            try { pos = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch {}
+            if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') pos = { x: 88, y: 84 };
+            const apply = (p: { x: number; y: number }) => {
+              root.style.left = p.x + '%';
+              root.style.top = p.y + '%';
+            };
+            apply(pos);
+            const readPos = () => {
+              const x = parseFloat(root.style.left) || 88;
+              const y = parseFloat(root.style.top) || 84;
+              return { x, y };
+            };
+
+            // ---- 拖动：pointer 事件，位移 > 6px 视为拖动 ----
+            let dragging = false;
+            let moved = 0;
+            let sx = 0, sy = 0, spx = 0, spy = 0;
+            btn.addEventListener('pointerdown', (e) => {
+              dragging = true;
+              moved = 0;
+              sx = e.clientX; sy = e.clientY;
+              const p = readPos(); spx = p.x; spy = p.y;
+              btn.setPointerCapture(e.pointerId);
+            });
+            btn.addEventListener('pointermove', (e) => {
+              if (!dragging) return;
+              const dx = e.clientX - sx, dy = e.clientY - sy;
+              moved = Math.max(moved, Math.abs(dx), Math.abs(dy));
+              const nx = Math.min(97, Math.max(3, spx + (dx / window.innerWidth) * 100));
+              const ny = Math.min(97, Math.max(3, spy + (dy / window.innerHeight) * 100));
+              root.style.left = nx + '%';
+              root.style.top = ny + '%';
+            });
+            const endDrag = (e: PointerEvent) => {
+              if (!dragging) return;
+              dragging = false;
+              if (moved <= 6) {
+                toggleCard();
+              } else {
+                try { localStorage.setItem(POS_KEY, JSON.stringify(readPos())); } catch {}
+              }
+            };
+            btn.addEventListener('pointerup', endDrag);
+            btn.addEventListener('pointercancel', endDrag);
+
+            // ---- 一言内容 ----
+            let loading = false;
+            const load = async (force: boolean) => {
+              if (loading) return;
+              if (!force && textEl.textContent && textEl.textContent !== '加载中…') return;
+              loading = true;
+              textEl.textContent = '加载中…';
+              fromEl.textContent = '';
+              const ctrl = new AbortController();
+              const timer = window.setTimeout(() => ctrl.abort(), 8000);
+              try {
+                const res = await fetch(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+                if (!res.ok) throw new Error('http ' + res.status);
+                const data = await res.json();
+                const d = (data && typeof data === 'object' && data.data && typeof data.data === 'object') ? data.data : data;
+                const t = (d && typeof d.hitokoto === 'string' && d.hitokoto.trim()) ? d.hitokoto.trim() : '';
+                if (!t) throw new Error('empty');
+                textEl.textContent = t;
+                const src = (d && typeof d.from === 'string' && d.from.trim()) ? d.from.trim() : '';
+                const who = (d && typeof d.from_who === 'string' && d.from_who.trim()) ? d.from_who.trim() : '';
+                fromEl.textContent = src ? (who ? `${src} —— ${who}` : src) : '';
+              } catch {
+                textEl.textContent = '一言获取失败，点刷新重试';
+              } finally {
+                window.clearTimeout(timer);
+                loading = false;
+              }
+            };
+
+            const toggleCard = () => {
+              const show = card.hidden;
+              card.hidden = !show;
+              if (show) load(false);
+            };
+            refreshBtn.addEventListener('click', () => load(true));
+          }
+        }
+        if (!customElements.get('hitokoto-widget')) customElements.define('hitokoto-widget', HitokotoWidget);
+      })();
     </script>
   </body>
 </html>
