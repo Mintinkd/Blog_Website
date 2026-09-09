@@ -61,7 +61,8 @@ const initialCss = buildCss(initialSettings);
     {description && <meta property="og:description" content={description} />}
     <meta property="og:url" content={fullCanonicalUrl} />
     {ogImage && <meta property="og:image" content={ogImage} />}
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <script is:inline>
       (function() {
         const t = localStorage.getItem('theme');
@@ -183,6 +184,45 @@ const initialCss = buildCss(initialSettings);
           refreshDomTranslations();
         } catch {}
       }
+
+      // ===== 动态标签标题：离开挽留 / 回来欢迎（visibilitychange，document 级监听跨页有效）=====
+      (() => {
+        const AWAY_MSG = '/(ㄒoㄒ)/~~ 不要走嘛';
+        const BACK_MSG = 'ヾ(≧▽≦*)o 欢迎回来～';
+        const TITLES = [AWAY_MSG, BACK_MSG];
+        let restoreTimer: number | undefined;
+
+        // 记录页面自己的标题（跳过文案态，避免把文案当原标题）
+        const snapshotTitle = () => {
+          if (!TITLES.includes(document.title)) {
+            (window as any).__blogOrigTitle = document.title;
+          }
+        };
+
+        snapshotTitle();
+        // ClientRouter 跨页后标题已被 Astro 更新，刷新快照
+        document.addEventListener('astro:page-load', () => {
+          if (!document.hidden) snapshotTitle();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            // 离开：持续显示挽留语
+            window.clearTimeout(restoreTimer);
+            if (document.title !== AWAY_MSG) {
+              snapshotTitle();
+              document.title = AWAY_MSG;
+            }
+          } else {
+            // 回来：先短暂显示欢迎语，再恢复原标题
+            window.clearTimeout(restoreTimer);
+            document.title = BACK_MSG;
+            restoreTimer = window.setTimeout(() => {
+              if (!document.hidden) document.title = (window as any).__blogOrigTitle || document.title;
+            }, 1800);
+          }
+        });
+      })();
 
       // 首屏：应用存储的主题 / 语言 + 刷新静态翻译
       syncThemeLocale();
