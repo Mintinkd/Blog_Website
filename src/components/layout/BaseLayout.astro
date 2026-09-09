@@ -403,6 +403,8 @@ const initialCss = buildCss(initialSettings);
     background: color-mix(in srgb, var(--color-bg-primary) 74%, transparent);
     -webkit-backdrop-filter: blur(10px) saturate(1.15);
     backdrop-filter: blur(10px) saturate(1.15);
+    /* 配合 body flex：不被压缩，始终贴底 */
+    flex-shrink: 0;
   }
   .footer-inner {
     display: flex;

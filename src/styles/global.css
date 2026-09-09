@@ -29,6 +29,9 @@ body {
   line-height: 1.7;
   transition: color var(--transition-normal);
   min-height: 100vh;
+  /* 页脚白框贴底：flex 纵向布局，内容不足一屏时 main 撑满、footer 贴视口底部 */
+  display: flex;
+  flex-direction: column;
   /* 安卓等移动端：长英文/URL/代码自然换行，避免撑破容器或横向溢出 */
   overflow-wrap: break-word;
   word-break: break-word;
@@ -119,6 +122,9 @@ select {
   margin: 0 auto;
   padding: 0 1.5rem;
   padding-top: calc(var(--header-height) + 2rem);
+  /* 纵向撑满剩余空间，把 footer 顶到视口底部 */
+  flex: 1 0 auto;
+  width: 100%;
 }
 
 @media (min-width: 768px) {
