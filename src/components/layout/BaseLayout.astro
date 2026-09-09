@@ -383,8 +383,11 @@ const initialCss = buildCss(initialSettings);
               const left = Math.min(...rects.map((r) => r.left));
               const right = Math.max(...rects.map((r) => r.right));
               const vw = window.innerWidth, vh = window.innerHeight;
+              // 顶部禁区 = 固定导航栏高度 + 留白：组件（含展开卡片）不得进入导航栏区域
+              const headerEl = document.querySelector('.site-header');
+              const topMin = (headerEl ? headerEl.getBoundingClientRect().height : 0) + MARGIN;
               let dx = 0, dy = 0;
-              if (top < MARGIN) dy = MARGIN - top;
+              if (top < topMin) dy = topMin - top;
               else if (bottom > vh - MARGIN) dy = (vh - MARGIN) - bottom;
               if (left < MARGIN) dx = MARGIN - left;
               else if (right > vw - MARGIN) dx = (vw - MARGIN) - right;
@@ -402,7 +405,9 @@ const initialCss = buildCss(initialSettings);
 
             // 卡片默认在按钮上方展开；上方空间不足时翻转到按钮下方，保证卡片不进视口外
             const updateCardSide = () => {
-              const spaceAbove = btn.getBoundingClientRect().top;
+              const headerEl = document.querySelector('.site-header');
+              const topMin = (headerEl ? headerEl.getBoundingClientRect().height : 0) + MARGIN;
+              const spaceAbove = btn.getBoundingClientRect().top - topMin;
               const cardH = card.offsetHeight || 130;
               root.classList.toggle('card-below', spaceAbove < cardH + 16);
             };
