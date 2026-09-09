@@ -490,6 +490,31 @@ const initialCss = buildCss(initialSettings);
             ensureInView();
           }
         }
+      // ===== 外链图片自动降级代理：直连失败（防盗链/失效）→ 本站 /api/v1/img-proxy 兜底 =====
+      (() => {
+        const PROXY_PREFIX = '/api/v1/img-proxy?url=';
+        document.addEventListener('error', (e) => {
+          const t = e.target as HTMLImageElement | null;
+          if (!t || !(t instanceof HTMLImageElement)) return;
+          const src = t.currentSrc || t.getAttribute('src') || '';
+          if (!src || !/^https?:\/\//i.test(src)) return;
+          if (src.includes('/api/v1/img-proxy')) {
+            // 代理也失败：隐藏图片占位，避免破图破坏布局
+            if (!t.dataset.proxyFailed) {
+              t.dataset.proxyFailed = '1';
+              t.style.visibility = 'hidden';
+            }
+            return;
+          }
+          if (t.dataset.proxyDone) return;
+          let u: URL;
+          try { u = new URL(src, location.href); } catch { return; }
+          if (u.origin === location.origin) return; // 本站资源无需代理
+          t.dataset.proxyDone = '1';
+          t.src = PROXY_PREFIX + encodeURIComponent(src);
+        }, true);
+      })();
+
         if (!customElements.get('hitokoto-widget')) customElements.define('hitokoto-widget', HitokotoWidget);
 
         // 视口尺寸变化（旋转/缩放窗口）时，把当前页组件弹回视口内
