@@ -457,7 +457,8 @@ const initialCss = buildCss(initialSettings);
               const ctrl = new AbortController();
               const timer = window.setTimeout(() => ctrl.abort(), 8000);
               try {
-                const res = await window.fetchWithProxy(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+                // api.furry.ist 在部分地区直连会触发证书/安全警告（被墙/SNI 干扰），强制走本站代理
+                const res = await window.fetchWithProxy(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal }, { forceProxy: true });
                 if (!res.ok) throw new Error('http ' + res.status);
                 const data = await res.json();
                 const d = (data && typeof data === 'object' && data.data && typeof data.data === 'object') ? data.data : data;
@@ -493,14 +494,18 @@ const initialCss = buildCss(initialSettings);
       // ===== 外链文字/接口内容自动降级代理：fetch 直连失败（网络/CORS/非 2xx）→ 本站 /api/v1/text-proxy 兜底 =====
       // 用法：const res = await window.fetchWithProxy('https://外部接口/xxx', { headers: {...} });
       // 返回标准 Response；调用方仅作文本/JSON 解析，勿 innerHTML 注入（防 XSS）。
-      (window as any).fetchWithProxy = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      (window as any).fetchWithProxy = async (input: RequestInfo | URL, init?: RequestInit, opts?: { forceProxy?: boolean }): Promise<Response> => {
         const target = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
-        let res: Response | null = null;
-        try {
-          res = await fetch(input, init);
-          if (res.ok) return res; // 直连成功：直接返回，不影响体验
-        } catch {
-          /* 网络/CORS 失败，进入代理兜底 */
+        // forceProxy：目标域名已被证实会在用户浏览器直连时触发证书/安全警告（如被墙、SNI 干扰的接口），
+        // 直接走本站代理，浏览器从不直连目标，从源头避免「不安全」提示。
+        if (!opts || !opts.forceProxy) {
+          let res: Response | null = null;
+          try {
+            res = await fetch(input, init);
+            if (res.ok) return res; // 直连成功：直接返回，不影响体验
+          } catch {
+            /* 网络/CORS 失败，进入代理兜底 */
+          }
         }
         // 代理请求不携带原 signal：直连因超时中断时仍需走代理（Worker 端自带 10s 超时保护）
         const proxyUrl = location.origin + '/api/v1/text-proxy?url=' + encodeURIComponent(target);
