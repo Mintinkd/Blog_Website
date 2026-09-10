@@ -469,10 +469,10 @@
                   <div class="tag-input-row">
                     <input v-model="newTagInput" @keydown.enter.prevent="addNewTag"
                       :placeholder="t('admin.add_tag_placeholder')" />
+                    <span v-if="(articleForm.tags || []).length" class="selected-tags-hint">
+                      {{ t('admin.selected_tags_prefix') }}{{ (articleForm.tags || []).join('、') }}
+                    </span>
                   </div>
-                  <p v-if="(articleForm.tags || []).length" class="selected-tags-hint">
-                    {{ (articleForm.tags || []).join('、') }}
-                  </p>
                 </div>
               </div>
               <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
@@ -1881,8 +1881,15 @@ watch(currentTab, (tab) => {
     border-color: var(--color-accent);
     color: #fff;
   }
+  .tag-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
   .tag-input-row input {
-    width: 100%;
+    flex: 1 1 200px;
+    min-width: 0;
     padding: 0.5rem 0.7rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
@@ -1894,6 +1901,7 @@ watch(currentTab, (tab) => {
     margin: 0;
     font-size: 0.78rem;
     color: var(--color-text-tertiary);
+    white-space: nowrap;
   }
 
 .media-info {
