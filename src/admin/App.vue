@@ -435,7 +435,8 @@
           </div>
         </div>
 
-        <div v-if="showArticleEditor" class="article-editor-overlay">
+        <Teleport to="body">
+          <div v-if="showArticleEditor" class="article-editor-overlay">
           <div class="article-editor">
             <div class="editor-header">
               <h3>{{ editingArticle ? t('admin.edit') + t('admin.articles') : t('admin.new_article') }}</h3>
@@ -469,9 +470,6 @@
                   <div class="tag-input-row">
                     <input v-model="newTagInput" @keydown.enter.prevent="addNewTag"
                       :placeholder="t('admin.add_tag_placeholder')" />
-                    <span v-if="(articleForm.tags || []).length" class="selected-tags-hint">
-                      {{ t('admin.selected_tags_prefix') }}{{ (articleForm.tags || []).join('、') }}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -497,7 +495,8 @@
               <button class="btn-primary" @click="saveArticle" :disabled="articleSaving">{{ articleSaving ? t('admin.save_loading') : t('admin.save') }}</button>
             </div>
           </div>
-        </div>
+          </div>
+        </Teleport>
       </main>
     </div>
   </div>
@@ -1672,6 +1671,7 @@ watch(currentTab, (tab) => {
   z-index: 300;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .article-editor {
@@ -1896,12 +1896,6 @@ watch(currentTab, (tab) => {
     background: var(--color-bg);
     color: var(--color-text-primary);
     font-size: 0.85rem;
-  }
-  .selected-tags-hint {
-    margin: 0;
-    font-size: 0.78rem;
-    color: var(--color-text-tertiary);
-    white-space: nowrap;
   }
 
 .media-info {

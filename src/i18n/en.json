@@ -161,6 +161,5 @@
   "admin.edit_locked_msg": "This article is being edited by {name}",
   "admin.lock_expires_at": "Lock expires at",
   "admin.force_takeover": "Force Takeover",
-  "admin.force_takeover_confirm": "This will force release the edit lock. The editor's unsaved changes may be lost. Continue?",
-  "admin.selected_tags_prefix": "Selected: "
+  "admin.force_takeover_confirm": "This will force release the edit lock. The editor's unsaved changes may be lost. Continue?"
 }
