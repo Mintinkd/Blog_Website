@@ -14,6 +14,7 @@ import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia
 import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
 import { handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
 import { handleImgProxy } from './handlers/img_proxy';
+import { handleTextProxy } from './handlers/text_proxy';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
 import { handleExport, handleImport } from './handlers/admin';
 import { handleAcquireLock, handleReleaseLock, handleGetLockStatus, handleForceReleaseLock } from './handlers/edit_lock';
@@ -116,6 +117,9 @@ addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeM
 
 // 外链图片智能代理（前端 img 直连失败时自动降级到本站代理，带安全校验与 KV TTL 缓存）
 addRoute('GET', '/img-proxy', async (req, env, ctx) => handleImgProxy(req, env, ctx));
+
+// 外链文字/接口内容代理（前端 fetch 直连失败/CORS 受限时自动降级，text/json/xml 白名单 + CORS 头）
+addRoute('GET', '/text-proxy', async (req, env, ctx) => handleTextProxy(req, env, ctx));
 
 addRoute('GET', '/config', async (req, env) => handleGetPublicConfig(req, env));
 addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env), true, true);

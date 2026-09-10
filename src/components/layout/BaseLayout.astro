@@ -457,7 +457,7 @@ const initialCss = buildCss(initialSettings);
               const ctrl = new AbortController();
               const timer = window.setTimeout(() => ctrl.abort(), 8000);
               try {
-                const res = await fetch(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+                const res = await window.fetchWithProxy(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
                 if (!res.ok) throw new Error('http ' + res.status);
                 const data = await res.json();
                 const d = (data && typeof data === 'object' && data.data && typeof data.data === 'object') ? data.data : data;
@@ -490,6 +490,33 @@ const initialCss = buildCss(initialSettings);
             ensureInView();
           }
         }
+      // ===== 外链文字/接口内容自动降级代理：fetch 直连失败（网络/CORS/非 2xx）→ 本站 /api/v1/text-proxy 兜底 =====
+      // 用法：const res = await window.fetchWithProxy('https://外部接口/xxx', { headers: {...} });
+      // 返回标准 Response；调用方仅作文本/JSON 解析，勿 innerHTML 注入（防 XSS）。
+      (window as any).fetchWithProxy = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const target = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
+        let res: Response | null = null;
+        try {
+          res = await fetch(input, init);
+          if (res.ok) return res; // 直连成功：直接返回，不影响体验
+        } catch {
+          /* 网络/CORS 失败，进入代理兜底 */
+        }
+        // 代理请求不携带原 signal：直连因超时中断时仍需走代理（Worker 端自带 10s 超时保护）
+        const proxyUrl = location.origin + '/api/v1/text-proxy?url=' + encodeURIComponent(target);
+        try {
+          return await fetch(proxyUrl, {
+            method: 'GET',
+            headers: { Accept: (init && init.headers && (init.headers as any).Accept) || 'application/json,text/plain,*/*' },
+          });
+        } catch {
+          return new Response(JSON.stringify({ code: 502, message: '代理兜底失败', data: null }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      };
+
       // ===== 外链图片自动降级代理：直连失败（防盗链/失效）→ 本站 /api/v1/img-proxy 兜底 =====
       (() => {
         const PROXY_PREFIX = '/api/v1/img-proxy?url=';

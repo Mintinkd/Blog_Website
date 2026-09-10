@@ -23,18 +23,18 @@ const ALLOWED_IMAGE_MIME = [
   'image/svg+xml', 'image/x-icon', 'image/bmp', 'image/tiff', 'image/jxl',
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_URL_LEN = 2048;
-const CACHE_TTL = 60 * 60 * 24; // 24h，到期 KV 自动删除
-const FETCH_TIMEOUT_MS = 10_000;
-const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 120; // 每 IP 每分钟
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+export const MAX_URL_LEN = 2048;
+export const CACHE_TTL = 60 * 60 * 24; // 24h，到期 KV 自动删除
+export const FETCH_TIMEOUT_MS = 10_000;
+export const RATE_WINDOW_MS = 60_000;
+export const RATE_MAX = 120; // 每 IP 每分钟
 
 // 拒绝的域名：内部/保留/示例域名，及 Cloudflare workers.dev（防递归代理本站 API）
-const BLOCKED_HOST_RE = /(^|\.)(localhost|local|internal|intranet|example\.com|example\.org|example\.net|test|invalid|onion|home|lan)$/i;
-const WORKERS_DEV_RE = /\.workers\.dev$/i;
+export const BLOCKED_HOST_RE = /(^|\.)(localhost|local|internal|intranet|example\.com|example\.org|example\.net|test|invalid|onion|home|lan)$/i;
+export const WORKERS_DEV_RE = /\.workers\.dev$/i;
 
-function isBlockedIp(host: string): boolean {
+export function isBlockedIp(host: string): boolean {
   // IPv6 字面量 [::1] 形式
   const h = host.replace(/^\[|\]$/g, '');
   if (/^[0-9.]+$/.test(h)) {
@@ -47,7 +47,7 @@ function isBlockedIp(host: string): boolean {
   return /^::1$/.test(h) || /^::$/.test(h) || /^f[cd]/.test(h) || /^fe[89ab]/.test(h);
 }
 
-function clientIp(request: Request): string {
+export function clientIp(request: Request): string {
   return (
     request.headers.get('CF-Connecting-IP') ||
     request.headers.get('X-Real-IP') ||
@@ -56,7 +56,7 @@ function clientIp(request: Request): string {
   );
 }
 
-async function sha1Hex(input: string): Promise<string> {
+export async function sha1Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(input));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
