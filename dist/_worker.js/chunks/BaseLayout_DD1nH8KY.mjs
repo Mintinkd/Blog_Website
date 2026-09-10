@@ -108,7 +108,9 @@ function getDefaultSettings() {
     },
     background: {
       bgImage: "/bg-placeholder.svg",
-      bgOpacity: 0.55
+      bgOpacity: 0.55,
+      bgBlur: 6,
+      bgBrightness: 1
     },
     features: {
       comments: true,
@@ -157,6 +159,8 @@ function buildCss(s) {
   lines.push(`  --radius-md: ${ly.radiusMd} !important;`);
   lines.push(`  --radius-lg: ${ly.radiusLg} !important;`);
   lines.push(`  --bg-image: url("${bg.bgImage}") !important;`);
+  lines.push(`  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`);
+  lines.push(`  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`);
   lines.push("}");
   lines.push('[data-theme="light"] {');
   for (const [k, v] of Object.entries(L)) lines.push(`  --color-${kebab(k)}: ${v} !important;`);

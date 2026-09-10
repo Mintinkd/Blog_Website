@@ -53,6 +53,9 @@ body {
   background-size: cover, cover;
   background-position: var(--bg-position), center;
   background-repeat: no-repeat, no-repeat;
+  /* 背景图雾化 + 亮度：后台「外观与个性化→背景」可调，提升前景可读性；
+     模糊值由 --bg-blur 控制（默认 6px 轻度雾化，0 即关闭）；纯色遮罩不受 blur 影响 */
+  filter: blur(var(--bg-blur, 6px)) brightness(var(--bg-brightness, 1));
   /* 背景图切换（日/夜不同图或遮罩）时平滑交叉，配合 View Transitions 更佳 */
   transition: opacity var(--transition-normal);
   pointer-events: none;
@@ -72,10 +75,11 @@ body {
   }
 }
 
-/* 减弱动画偏好：背景是静态装饰，保留显示即可，无需特殊处理 */
+/* 减弱动画偏好：背景是静态装饰，保留显示即可；关闭雾化 blur（省性能且纯装饰） */
 @media (prefers-reduced-motion: reduce) {
   .site-bg {
     transition: none;
+    filter: none;
   }
 }
 

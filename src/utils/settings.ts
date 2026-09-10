@@ -39,6 +39,10 @@ export interface SiteSettings {
   background: {
     bgImage: string;
     bgOpacity: number;
+    /** 背景图雾化模糊（px，0=不模糊），提升前景文字可读性 */
+    bgBlur: number;
+    /** 背景图亮度（0.7~1.3，1=原样），暗色主题下调低可避免亮图刺眼 */
+    bgBrightness: number;
   };
   features: {
     comments: boolean;
@@ -102,6 +106,8 @@ export function getDefaultSettings(): SiteSettings {
     background: {
       bgImage: '/bg-placeholder.svg',
       bgOpacity: 0.55,
+      bgBlur: 6,
+      bgBrightness: 1,
     },
     features: {
       comments: true,
@@ -166,6 +172,8 @@ export function buildCss(s: SiteSettings): string {
   lines.push(`  --radius-md: ${ly.radiusMd} !important;`);
   lines.push(`  --radius-lg: ${ly.radiusLg} !important;`);
   lines.push(`  --bg-image: url("${bg.bgImage}") !important;`);
+  lines.push(`  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`);
+  lines.push(`  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`);
   lines.push('}');
 
   lines.push('[data-theme="light"] {');

@@ -38,6 +38,8 @@ export interface SiteSettings {
   background: {
     bgImage: string;
     bgOpacity: number;
+    bgBlur: number;
+    bgBrightness: number;
   };
   features: {
     comments: boolean;
@@ -99,6 +101,8 @@ export function getDefaultSettings(): SiteSettings {
       bgImage: '/bg-placeholder.svg',
       // 与前端 settings.ts 同步：bgOpacity 语义为「图片可见度」而非「遮罩浓度」
       bgOpacity: 0.55,
+      bgBlur: 6,
+      bgBrightness: 1,
     },
     features: {
       comments: true,

@@ -351,6 +351,16 @@
                 <input type="range" min="0" max="1" step="0.01" v-model.number="settings.background.bgOpacity" @input="previewSettings" />
               </div>
               <p class="hint">数值越高，背景图片越清晰、蒙版越淡；建议 0.3~0.7 平衡可读性与图片可见度。</p>
+              <div class="form-group">
+                <label>背景雾化强度：{{ settings.background.bgBlur }}px</label>
+                <input type="range" min="0" max="30" step="1" v-model.number="settings.background.bgBlur" @input="previewSettings" />
+              </div>
+              <p class="hint">数值越高背景越模糊（0 为不模糊）。轻度雾化可显著提升前景文字可读性，建议 4~10。</p>
+              <div class="form-group">
+                <label>背景亮度：{{ settings.background.bgBrightness }}</label>
+                <input type="range" min="0.7" max="1.3" step="0.01" v-model.number="settings.background.bgBrightness" @input="previewSettings" />
+              </div>
+              <p class="hint">低于 1 可压暗过亮的背景图（暗色主题更舒适），高于 1 提亮。</p>
             </section>
 
             <section class="setting-section">

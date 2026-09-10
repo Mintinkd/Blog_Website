@@ -100,6 +100,8 @@
 │       │   ├── config.ts
 │       │   ├── settings.ts      # 可视化配置中心后端（site_config JSON blob）
 │       │   ├── friend_link.ts
+│       │   ├── img_proxy.ts     # 外链图片代理（防盗链兜底，SSRF/限流校验 + KV TTL 缓存）
+│       │   ├── text_proxy.ts    # 外链文字/接口代理（CORS + text/json/xml 白名单 + KV TTL 缓存）
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
 │       │   └── admin.ts
@@ -163,6 +165,8 @@ D1 (SQLite) 共 9 张表：
 | GET | `/friend-links` | 友情链接 |
 | GET | `/config` | 公开站点配置 |
 | GET | `/settings` | 公开可视化配置（前台运行时套用） |
+| GET | `/img-proxy?url=` | 外链图片代理（前端 img 直连失败自动降级；SSRF/域名/限流校验，KV TTL 24h 缓存） |
+| GET | `/text-proxy?url=` | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；text/json/xml 白名单 + CORS 头） |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
 
@@ -250,7 +254,7 @@ D1 (SQLite) 共 9 张表：
 - **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
-- **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图与遮罩浓度、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
+- **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
 
 ## 视觉与体验增强
@@ -263,7 +267,7 @@ D1 (SQLite) 共 9 张表：
 
 - **实现**：`BaseLayout.astro` 注入 `<div class="site-bg">` 固定层（`position: fixed; inset: -10% 0; z-index: -1`）；背景图与遮罩色由 CSS 变量 `--bg-image` / `--bg-overlay` / `--bg-position` 控制（`variables.css` 中日 / 夜各一份）。
 - **默认图**：`public/bg-placeholder.svg`，可在配置中心替换为自定义图片 URL。
-- **文字对比度**：遮罩按主题背景色 + 配置的浓度（`bgOpacity`，默认 0.85）自动生成渐变，保证前景文字清晰。
+- **文字对比度**：遮罩按主题背景色 + 配置的浓度（`bgOpacity`，默认 0.55）自动生成渐变，保证前景文字清晰；另支持**背景雾化**（`bgBlur`，0~30px，默认 6px 轻度雾化）与**背景亮度**（`bgBrightness`，0.7~1.3，默认 1），两者均可在后台「外观与个性化 → 背景」调节，让亮图/复杂图背景下的正文保持高可读性。
 - **主题 / 语言切换**：通过 View Transitions（`startViewTransition`）做平滑过渡，背景层同步切换。
 
 ### 可视化配置中心
@@ -276,9 +280,20 @@ D1 (SQLite) 共 9 张表：
   2. **功能开关** → 在 `<html>` 写 `data-feature-<name>="off"`，配合 `[data-feature]` 钩子隐藏对应模块（评论 / 点赞 / 友链 / 搜索 / RSS / 暗色 / 双语）；
   3. **文案覆盖** → 写入 i18n 覆盖层并按当前 locale 刷新 `[data-i18n]` 文本，中 / 英切换照常生效；
   4. **动效** → 写 `data-motion-intensity` 与 `data-parallax` 及 `--parallax-speed`。
-- **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
+- **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度 / 雾化 / 亮度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
 - **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
 - **数据安全**：这些设置不含任何密钥，`/settings` 作为公开接口供前台拉取；写 / 导出 / 导入 / 恢复均为 admin 专属。
+
+### 外链内容智能代理
+
+当外链图片因防盗链 / 域名失效无法显示、或外链文字接口因网络 / CORS 受限无法拉取时，自动降级到本站代理，用户无感。
+
+- **图片通道** `/api/v1/img-proxy?url=`：前端全局监听 `<img>` 加载失败（`document` 捕获阶段 error 事件）→ 自动把 `src` 切换为代理地址；代理成功显示原图，代理也失败则隐藏占位（不显示破图）。仅本站之外的图片触发，同源图片不代理。
+- **文字通道** `/api/v1/text-proxy?url=`：前端提供全局 `window.fetchWithProxy(url, opts)`——直连成功原样返回；失败（网络 / CORS / 非 2xx）自动改请求代理地址。返回标准 `Response`，调用方仅作文本 / JSON 解析。悬浮一言组件已接入。
+- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、仅白名单 MIME（图片通道 image/*，文字通道 text/* + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**保持严格 TLS 证书校验**，不做全局绕过。
+- **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
+- **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
+- 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`、前端逻辑在 `src/components/layout/BaseLayout.astro`。
 
 ### UI 动效升级
 
