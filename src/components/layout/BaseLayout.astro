@@ -496,7 +496,8 @@ const initialCss = buildCss(initialSettings);
         document.addEventListener('error', (e) => {
           const t = e.target as HTMLImageElement | null;
           if (!t || !(t instanceof HTMLImageElement)) return;
-          const src = t.currentSrc || t.getAttribute('src') || '';
+          // 用 t.src（绝对 URL）判断：currentSrc 可能在失败时被清空，getAttribute 会读到相对路径
+          const src = t.currentSrc || t.src || '';
           if (!src || !/^https?:\/\//i.test(src)) return;
           if (src.includes('/api/v1/img-proxy')) {
             // 代理也失败：隐藏图片占位，避免破图破坏布局
