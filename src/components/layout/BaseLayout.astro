@@ -458,7 +458,11 @@ const initialCss = buildCss(initialSettings);
               const timer = window.setTimeout(() => ctrl.abort(), 8000);
               try {
                 // api.furry.ist 在部分地区直连会触发证书/安全警告（被墙/SNI 干扰），强制走本站代理
-                const res = await window.fetchWithProxy(API_URL, { headers: { Accept: 'application/json' }, signal: ctrl.signal }, { forceProxy: true });
+                // 刷新时追加时间戳参数绕过 text-proxy 的 KV 缓存（否则 24h 内永远命中同一句，换一句失效）；首载不带参数命中缓存秒开
+                const fetchUrl = force
+                  ? API_URL + (API_URL.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now()
+                  : API_URL;
+                const res = await window.fetchWithProxy(fetchUrl, { headers: { Accept: 'application/json' }, signal: ctrl.signal }, { forceProxy: true });
                 if (!res.ok) throw new Error('http ' + res.status);
                 const data = await res.json();
                 const d = (data && typeof data === 'object' && data.data && typeof data.data === 'object') ? data.data : data;
