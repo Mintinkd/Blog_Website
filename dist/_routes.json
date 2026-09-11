@@ -14,6 +14,7 @@
     "/_assets/*",
     "/.assetsignore",
     "/bg-placeholder.svg",
+    "/favicon-off.svg",
     "/favicon.png",
     "/favicon.svg",
     "/robots.txt",
