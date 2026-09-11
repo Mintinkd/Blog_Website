@@ -156,7 +156,14 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
 }
 
 export async function createArticle(env: Env, data: CreateArticleRequest, auth_result?: AuthResult): Promise<Article> {
-  const slug = generateSlug(data.title);
+  let slug = (data.slug && data.slug.trim()) ? data.slug.trim() : generateSlug(data.title);
+  if (!slug) slug = generateSlug(data.title);
+  // 唯一性兜底：冲突时追加 -n 后缀
+  const slugBase = slug;
+  let n = 2;
+  while (await env.DB.prepare('SELECT id FROM articles WHERE slug = ?').bind(slug).first()) {
+    slug = `${slugBase}-${n++}`;
+  }
   const now = new Date().toISOString();
   const published_at = data.status === 'published' ? now : null;
 
@@ -205,6 +212,7 @@ export async function updateArticle(env: Env, id: number, data: UpdateArticleReq
   const values: unknown[] = [];
 
   if (data.title !== undefined) { sets.push('title = ?'); values.push(data.title); }
+  if (data.slug !== undefined) { sets.push('slug = ?'); values.push(data.slug); }
   if (data.content !== undefined) { sets.push('content = ?'); values.push(data.content); }
   if (data.summary !== undefined) { sets.push('summary = ?'); values.push(data.summary); }
   if (data.cover_image !== undefined) { sets.push('cover_image = ?'); values.push(data.cover_image); }

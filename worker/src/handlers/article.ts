@@ -29,13 +29,29 @@ export async function handleListArticles(request: Request, env: Env, params: Rec
   return paginatedResponse(result.items, result.total, page, page_size);
 }
 
-export async function handleGetArticle(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleGetArticle(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { slug } = params;
   const { getArticleBySlug, incrementViewCount } = await import('../services/article_service');
 
   const article = await getArticleBySlug(env, slug);
   if (!article) {
     return notFound('Article not found');
+  }
+
+  // 未发布文章：仅管理员或作者本人可访问（后台编辑拉取/草稿预览），其余一律 404
+  if (article.status !== 'published') {
+    let allowed = false;
+    if (authResult) {
+      if (authResult.role === 'admin') {
+        allowed = true;
+      } else if (article.author_id != null) {
+        const row = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+        allowed = !!row && row.id === article.author_id;
+      }
+    }
+    if (!allowed) {
+      return notFound('Article not found');
+    }
   }
 
   const cookieHeader = request.headers.get('cookie') || undefined;
@@ -62,10 +78,23 @@ export async function handleCreateArticle(request: Request, env: Env, params: Re
     return error(ErrorCodes.VALIDATION_FAILED, result.errors.map(e => e.message).join('; '));
   }
 
+  let slug: string | undefined;
+  if (body.slug !== undefined && String(body.slug).trim() !== '') {
+    slug = String(body.slug).trim();
+    if (!isValidSlug(slug)) {
+      return error(ErrorCodes.VALIDATION_FAILED, '链接标识格式无效：仅支持小写字母、数字、中文与连字符');
+    }
+    const dup = await env.DB.prepare('SELECT id FROM articles WHERE slug = ?').bind(slug).first();
+    if (dup) {
+      return error(ErrorCodes.CONFLICT, '链接标识已被占用，请更换');
+    }
+  }
+
   const { createArticle } = await import('../services/article_service');
   const article = await createArticle(env, {
     title: String(body.title),
     content: String(body.content),
+    slug,
     category_id: body.category_id ? Number(body.category_id) : null,
     tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
     status: (body.status === 'published' ? 'published' : 'draft') as 'draft' | 'published',
@@ -89,10 +118,23 @@ export async function handleUpdateArticle(request: Request, env: Env, params: Re
 
   const body = await request.json() as Record<string, unknown>;
 
+  let slug: string | undefined;
+  if (body.slug !== undefined && String(body.slug).trim() !== '') {
+    slug = String(body.slug).trim();
+    if (!isValidSlug(slug)) {
+      return error(ErrorCodes.VALIDATION_FAILED, '链接标识格式无效：仅支持小写字母、数字、中文与连字符');
+    }
+    const dup = await env.DB.prepare('SELECT id FROM articles WHERE slug = ? AND id <> ?').bind(slug, Number(id)).first();
+    if (dup) {
+      return error(ErrorCodes.CONFLICT, '链接标识已被占用，请更换');
+    }
+  }
+
   const { updateArticle } = await import('../services/article_service');
   const article = await updateArticle(env, Number(id), {
     title: body.title ? String(body.title) : undefined,
     content: body.content ? String(body.content) : undefined,
+    slug,
     category_id: body.category_id ? Number(body.category_id) : (body.category_id === '' || body.category_id === null ? null : undefined),
     tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
     status: body.status ? (body.status as 'draft' | 'published') : undefined,

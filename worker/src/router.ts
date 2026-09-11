@@ -84,7 +84,7 @@ addRoute('PUT', '/users/:id', async (req, env, _ctx, params) => handleUpdateUser
 addRoute('DELETE', '/users/:id', async (req, env, _ctx, params) => handleDeleteUser(req, env, params), true, true);
 
 addRoute('GET', '/articles', async (req, env, _ctx, params) => handleListArticles(req, env, params));
-addRoute('GET', '/articles/:slug', async (req, env, _ctx, params) => handleGetArticle(req, env, params));
+addRoute('GET', '/articles/:slug', async (req, env, _ctx, params, auth) => handleGetArticle(req, env, params, auth));
 addRoute('POST', '/articles', async (req, env, _ctx, params, auth) => handleCreateArticle(req, env, params, auth), true);
 addRoute('PUT', '/articles/:id', async (req, env, _ctx, params, auth) => handleUpdateArticle(req, env, params, auth), true);
 addRoute('DELETE', '/articles/:id', async (req, env, _ctx, params, auth) => handleDeleteArticle(req, env, params, auth), true);
@@ -173,6 +173,10 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
         return forbidden('权限不足，仅管理员可执行此操作');
       }
       authResult = result.user;
+    } else if (request.headers.get('Authorization')) {
+      // 公开路由可选鉴权：携带合法 token 时解析出来，供草稿预览等场景使用；无 token/无效 token 不影响公开访问
+      const result = await authMiddleware(request, env);
+      if (!(result instanceof Response)) authResult = result.user;
     }
 
     return await matched.handler(request, env, ctx, matched.params, authResult);

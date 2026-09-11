@@ -44,6 +44,7 @@ export interface ArticleDetail extends ArticleListItem {
 export interface CreateArticleRequest {
   title: string;
   content: string;
+  slug?: string;
   category_id: number | null;
   tags?: string[];
   status?: 'draft' | 'published';
@@ -54,6 +55,7 @@ export interface CreateArticleRequest {
 export interface UpdateArticleRequest {
   title?: string;
   content?: string;
+  slug?: string;
   category_id?: number | null;
   tags?: string[];
   status?: 'draft' | 'published';
