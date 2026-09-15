@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>媒体卡片渲染测试（生产代码提取）</title>
+<style>
+:root {
+  --color-bg-secondary: #ffffff;
+  --color-border: #e8e8ed;
+  --color-border-light: #f0f0f5;
+  --color-accent: #49b1f5;
+  --color-accent-hover: #3a9de8;
+  --color-accent-light: #e8f4fd;
+  --color-accent-subtle: rgba(73, 177, 245, 0.08);
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #5d5d64;
+  --color-text-tertiary: #76767e;
+  --radius-lg: 16px;
+  --radius-sm: 12px;
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+[data-theme="dark"] {
+  --color-bg-secondary: #1c1c1e;
+  --color-border: #38383a;
+  --color-border-light: #15151a;
+  --color-accent: #7cb8f0;
+  --color-accent-hover: #a6d4f8;
+  --color-accent-light: #123a5c;
+  --color-accent-subtle: rgba(124, 184, 240, 0.12);
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #a1a1a6;
+  --color-text-tertiary: #6e6e73;
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f2f5f9;
+  color: var(--color-text-primary);
+  line-height: 1.7;
+  padding: 24px 16px 60px;
+  transition: background .3s, color .3s;
+}
+[data-theme="dark"] body { background: #151a21; }
+.toolbar {
+  max-width: 760px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--color-text-secondary);
+}
+.toolbar button {
+  padding: 8px 16px; border-radius: 999px; border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary); color: var(--color-text-primary);
+  cursor: pointer; font-family: inherit; font-size: 13px;
+}
+.prose-wrap {
+  max-width: 760px; margin: 0 auto;
+  background: color-mix(in srgb, var(--color-bg-secondary) 90%, transparent);
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+  padding: 2rem; box-shadow: var(--shadow-md);
+}
+.prose p { margin: 0 0 1rem; font-size: 1rem; }
+.prose p:last-child { margin-bottom: 0; }
+.prose a { color: var(--color-accent); text-decoration: none; }
+.prose a:hover { text-decoration: underline; }
+/* ===== 文章媒体卡片（音频/视频链接增强） ===== */
+.md-media {
+  margin: 1.4rem 0;
+  background: color-mix(in srgb, var(--color-bg-secondary) 90%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+/* ---- 音频卡片 ---- */
+.md-audio {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.9rem 1rem;
+}
+.md-audio-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--color-accent), #5b8cff);
+  color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+.md-audio-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.md-audio-main {
+  flex: 1;
+  min-width: 0;
+}
+.md-audio-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.md-audio-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+  max-height: 1.3em;
+  overflow: hidden;
+  transition: max-height 0.22s ease, opacity 0.18s ease, margin 0.2s ease;
+}
+.md-audio.is-playing .md-audio-meta {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+.md-audio-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 6px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.28s ease, opacity 0.22s ease;
+}
+.md-audio.is-playing .md-audio-bar {
+  max-height: 24px;
+  opacity: 1;
+}
+.md-audio-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+  cursor: pointer;
+}
+.md-audio-track i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--color-accent), #5b8cff);
+  border-radius: 999px;
+}
+.md-audio-time {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.md-play,
+.md-rate {
+  flex: none;
+  height: 44px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.md-play {
+  position: relative;
+  width: 44px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--color-accent) 40%, transparent);
+  transition: background 0.2s, transform 0.2s;
+}
+.md-play:hover {
+  background: var(--color-accent-hover);
+  transform: scale(1.05);
+}
+.md-play svg {
+  position: absolute;
+  width: 17px;
+  height: 17px;
+  transition: opacity 0.15s, transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.md-play .p-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+.md-play .s-icon {
+  opacity: 0;
+  transform: scale(0.4) rotate(-45deg);
+}
+.md-audio.is-playing .md-play .p-icon {
+  opacity: 0;
+  transform: scale(0.4) rotate(45deg);
+}
+.md-audio.is-playing .md-play .s-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+.md-rate {
+  min-width: 52px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--color-border);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.md-rate:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+/* ---- 视频卡片 ---- */
+.md-video-cover {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background:
+    radial-gradient(120% 140% at 20% 0%, rgba(91, 140, 255, 0.5), transparent 55%),
+    radial-gradient(120% 140% at 85% 100%, rgba(73, 177, 245, 0.6), transparent 60%),
+    linear-gradient(135deg, #1c2433, #24334a);
+}
+.md-video-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 25% 25%;
+  opacity: 0.5;
+}
+.md-video-play {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2b3547;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s, background 0.2s, color 0.2s;
+}
+.md-video-play:hover {
+  transform: scale(1.1);
+  background: var(--color-accent);
+  color: #fff;
+}
+.md-video-play svg {
+  width: 25px;
+  height: 25px;
+  margin-left: 3px;
+}
+.md-video-label {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.md-video-title {
+  padding: 0.7rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid var(--color-border-light);
+}
+.md-video-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  background: #000;
+}
+
+@media (max-width: 480px) {
+  .md-audio {
+    padding: 0.8rem 0.85rem;
+  }
+  .md-audio-icon {
+    width: 38px;
+    height: 38px;
+  }
+  .md-video-play {
+    width: 54px;
+    height: 54px;
+  }
+  .md-video-play svg {
+    width: 22px;
+    height: 22px;
+  }
+  .md-play,
+  .md-rate {
+    height: 44px;
+  }
+}
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <span>文章内容渲染测试 · 媒体链接自动转为卡片（样式/JS 直接提取自 [slug].astro）</span>
+    <button id="themeBtn" type="button">切换深浅主题</button>
+  </div>
+  <div class="prose-wrap">
+    <div class="prose article-content">
+      <p>测试音频链接：<a href="https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3">课堂录音 · 第 03 讲（demo）</a></p>
+      <p>测试 B 站链接：<a href="https://www.bilibili.com/video/BV1GJ411x7h7">【罗翔】我们为什么要学习法律？</a></p>
+      <p>测试视频文件链接：<a href="https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4">演示视频（mp4）</a></p>
+      <p>普通链接不受影响：<a href="/about/">关于页面</a> 与 <a href="https://example.com/article">外部文章</a> 保持原样。</p>
+    </div>
+  </div>
+<script>
+/* ===== 媒体链接增强：音频/视频链接 → 专属卡片 ===== */
+  const MD_AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac|aac)([?#].*)?$/i;
+  const MD_VIDEO_RE = /\.(mp4|webm|mov|m3u8)([?#].*)?$/i;
+  const MD_BILI_RE = /bilibili\.com\/video\/(BV[\w]+)/i;
+  const MD_YT_RE = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/i;
+  const MD_RATES = [1, 1.5, 2, 0.5];
+
+  function mdFmt(s) {
+    if (!isFinite(s)) return '--:--';
+    const m = Math.floor(s / 60);
+    const ss = Math.floor(s % 60);
+    return (m < 10 ? '0' + m : '' + m) + ':' + (ss < 10 ? '0' + ss : '' + ss);
+  }
+
+  function buildAudioCard(url, title) {
+    const el = document.createElement('div');
+    el.className = 'md-media md-audio';
+    el.innerHTML = `
+      <span class="md-audio-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.5V6l10-2.2v10.2"/><circle cx="6.8" cy="17.5" r="2.8"/><circle cx="16.8" cy="14" r="2.8"/></svg></span>
+      <div class="md-audio-main">
+        <div class="md-audio-title"></div>
+        <div class="md-audio-meta">音频 · <span class="md-dur">--:--</span></div>
+        <div class="md-audio-bar">
+          <div class="md-audio-track"></i></div>
+          <span class="md-audio-time"><span class="md-cur">00:00</span> / <span class="md-dur2">--:--</span></span>
+        </div>
+      </div>
+      <button class="md-rate" type="button" aria-label="播放倍速">1.0x</button>
+      <button class="md-play" type="button" aria-label="播放">
+        <svg class="p-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        <svg class="s-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+      </button>`;
+    (el.querySelector('.md-audio-title')).textContent = title;
+
+    const audio = document.createElement('audio');
+    audio.src = url;
+    audio.preload = 'metadata';
+    el.prepend(audio);
+
+    const playBtn = el.querySelector('.md-play');
+    const rateBtn = el.querySelector('.md-rate');
+    const track = el.querySelector('.md-audio-track');
+    const fill = track.querySelector('i');
+    const cur = el.querySelector('.md-cur');
+    const durEls = el.querySelectorAll('.md-dur, .md-dur2');
+    let rateIdx = 0;
+
+    audio.addEventListener('loadedmetadata', () => {
+      durEls.forEach((d) => (d.textContent = mdFmt(audio.duration)));
+    });
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration) {
+        fill.style.width = (audio.currentTime / audio.duration) * 100 + '%';
+      }
+      cur.textContent = mdFmt(audio.currentTime);
+    });
+    audio.addEventListener('ended', () => el.classList.remove('is-playing'));
+
+    playBtn.addEventListener('click', () => {
+      if (audio.paused) void audio.play();
+      else audio.pause();
+      el.classList.toggle('is-playing');
+    });
+    rateBtn.addEventListener('click', () => {
+      rateIdx = (rateIdx + 1) % MD_RATES.length;
+      audio.playbackRate = MD_RATES[rateIdx];
+      rateBtn.textContent = MD_RATES[rateIdx] + 'x';
+    });
+
+    const seek = (clientX) => {
+      if (!audio.duration) return;
+      const rect = track.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      audio.currentTime = pct * audio.duration;
+      fill.style.width = pct * 100 + '%';
+      cur.textContent = mdFmt(audio.currentTime);
+    };
+    let dragging = false;
+    track.addEventListener('click', (e) => seek((e).clientX));
+    track.addEventListener('pointerdown', (e) => {
+      dragging = true;
+      track.setPointerCapture(e.pointerId);
+      seek(e.clientX);
+    });
+    track.addEventListener('pointermove', (e) => {
+      if (dragging) seek(e.clientX);
+    });
+    ['pointerup', 'pointercancel'].forEach((ev) =>
+      track.addEventListener(ev, () => { dragging = false; })
+    );
+
+    return el;
+  }
+
+  function buildVideoCard(title, factory) {
+    const el = document.createElement('div');
+    el.className = 'md-media md-video';
+    el.innerHTML = `
+      <div class="md-video-cover">
+        <span class="md-video-label">视频</span>
+        <button class="md-video-play" type="button" aria-label="播放">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        </button>
+      </div>
+      <div class="md-video-title"></div>`;
+    (el.querySelector('.md-video-title')).textContent = title;
+
+    const cover = el.querySelector('.md-video-cover');
+    const playBtn = el.querySelector('.md-video-play');
+    const play = () => {
+      const frame = factory();
+      frame.className = 'md-video-frame';
+      cover.replaceWith(frame);
+    };
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      play();
+    });
+    cover.addEventListener('click', play);
+    return el;
+  }
+
+  function enhanceMediaLinks(root) {
+    const links = Array.from(root.querySelectorAll('.prose a[href]'));
+    links.forEach((a) => {
+      if (a.dataset.mdEnhanced) return;
+      const href = (a.getAttribute('href') || '').trim();
+      if (!/^https?:\/\//i.test(href)) return;
+
+      let kind = null;
+      let embedUrl = '';
+      if (MD_AUDIO_RE.test(href)) kind = 'audio';
+      else if (MD_VIDEO_RE.test(href)) kind = 'video-file';
+      else {
+        const bm = href.match(MD_BILI_RE);
+        if (bm) {
+          kind = 'bili';
+          embedUrl = `https://player.bilibili.com/player.html?bvid=${bm[1]}&autoplay=1&high_quality=1`;
+        } else {
+          const ym = href.match(MD_YT_RE);
+          if (ym) {
+            kind = 'yt';
+            embedUrl = `https://www.youtube.com/embed/${ym[1]}?autoplay=1`;
+          }
+        }
+      }
+      if (!kind) return;
+      a.dataset.mdEnhanced = '1';
+
+      const rawTitle = (a.textContent || '').trim();
+      const title = rawTitle || decodeURIComponent(href.split('/').pop()?.split(/[?#]/)[0] || '媒体链接');
+
+      let card;
+      if (kind === 'audio') {
+        card = buildAudioCard(href, title);
+      } else if (kind === 'video-file') {
+        card = buildVideoCard(title, () => {
+          const v = document.createElement('video');
+          v.src = href;
+          v.controls = true;
+          v.autoplay = true;
+          v.preload = 'metadata';
+          return v;
+        });
+      } else {
+        card = buildVideoCard(title, () => {
+          const f = document.createElement('iframe');
+          f.src = embedUrl;
+          f.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+          f.allowFullscreen = true;
+          return f;
+        });
+      }
+      a.replaceWith(card);
+    });
+  }
+enhanceMediaLinks(document.querySelector('.article-content'));
+document.getElementById('themeBtn').addEventListener('click', function () {
+  var root = document.documentElement;
+  root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+</script>
+</body>
+</html>
