@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>语音 / 视频链接 UI 预览 · Zen's Blog</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2349b1f5'/%3E%3Cpath d='M9 17V8l9-2v8' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='7' cy='17' r='2.4' fill='white'/%3E%3Ccircle cx='16' cy='14' r='2.4' fill='white'/%3E%3C/svg%3E">
+<style>
+/* ===== 主题 token（与博客 variables.css 对齐） ===== */
+:root {
+  --accent: #49b1f5;
+  --accent-hover: #3a9de0;
+  --accent-soft: rgba(73, 177, 245, 0.14);
+  --bg: #f2f5f9;
+  --bg-pattern: radial-gradient(1200px 500px at 15% -10%, rgba(73,177,245,0.16), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, rgba(90,140,255,0.10), transparent 55%);
+  --surface: #ffffff;
+  --card-bg: rgba(255, 255, 255, 0.74);
+  --card-border: rgba(120, 130, 140, 0.20);
+  --text-1: #1f2329;
+  --text-2: #5d5d64;
+  --text-3: #76767e;
+  --shadow: 0 6px 24px rgba(30, 50, 80, 0.08);
+  --shadow-hover: 0 10px 32px rgba(30, 50, 80, 0.14);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --track: rgba(120, 130, 140, 0.18);
+  --on-accent: #ffffff;
+}
+[data-theme="dark"] {
+  --accent: #49b1f5;
+  --accent-hover: #6cc2f8;
+  --accent-soft: rgba(73, 177, 245, 0.16);
+  --bg: #151a21;
+  --bg-pattern: radial-gradient(1200px 500px at 15% -10%, rgba(73,177,245,0.14), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, rgba(90,140,255,0.08), transparent 55%);
+  --surface: #1d242e;
+  --card-bg: rgba(28, 34, 44, 0.74);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --text-1: #e8ecf2;
+  --text-2: #a8b0bc;
+  --text-3: #7d8794;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.30);
+  --shadow-hover: 0 10px 32px rgba(0, 0, 0, 0.42);
+  --track: rgba(255, 255, 255, 0.14);
+  --on-accent: #ffffff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  background: var(--bg);
+  background-image: var(--bg-pattern);
+  background-attachment: fixed;
+  color: var(--text-1);
+  line-height: 1.6;
+  transition: background-color .3s, color .3s;
+  -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; }
+
+/* ===== 顶栏 ===== */
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 36px; }
+.header h1 { font-size: 26px; font-weight: 700; letter-spacing: .2px; }
+.header .sub { color: var(--text-2); font-size: 14px; margin-top: 4px; }
+.theme-toggle {
+  flex: none; display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 999px; cursor: pointer;
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  color: var(--text-1); font-size: 13px; font-family: inherit; min-height: 44px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: border-color .2s, transform .2s;
+}
+.theme-toggle:hover { border-color: var(--accent); transform: translateY(-1px); }
+.theme-toggle svg { width: 15px; height: 15px; }
+
+/* ===== 区块 ===== */
+.section { margin-bottom: 44px; }
+.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.section-head .tag {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  background: var(--accent-soft); padding: 3px 10px; border-radius: 999px;
+  letter-spacing: .5px;
+}
+.section-head h2 { font-size: 18px; font-weight: 650; }
+.section-note { color: var(--text-3); font-size: 13px; margin-bottom: 20px; padding-left: 2px; }
+.section-note code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px; background: var(--accent-soft); color: var(--accent);
+  padding: 1px 6px; border-radius: 6px;
+}
+
+/* ===== 卡片通用 ===== */
+.media-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  overflow: hidden;
+  transition: box-shadow .25s, border-color .25s, transform .25s;
+}
+.media-card + .media-card { margin-top: 16px; }
+.media-card:hover { box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--accent) 45%, var(--card-border)); transform: translateY(-2px); }
+
+/* ===== 语音卡片 ===== */
+.audio-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.audio-icon {
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #5b8cff));
+  color: var(--on-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.audio-icon svg { width: 20px; height: 20px; }
+.audio-main { flex: 1; min-width: 0; }
+.audio-title {
+  font-size: 14.5px; font-weight: 600; color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.audio-sub .sep { opacity: .6; }
+
+/* 进度条（播放时展开） */
+.audio-progress {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .28s ease, opacity .22s ease;
+}
+.audio-card.is-playing .audio-progress { max-height: 30px; opacity: 1; }
+.audio-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12.5px; color: var(--text-3); max-height: 22px; overflow: hidden; transition: max-height .22s ease, opacity .18s ease; }
+.audio-card.is-playing .audio-sub { max-height: 0; margin-top: 0; opacity: 0; }
+.audio-progress .bar {
+  flex: 1; height: 5px; border-radius: 999px; background: var(--track);
+  overflow: hidden; cursor: pointer;
+}
+.audio-progress .bar-fill {
+  height: 100%; width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #5b8cff));
+  transition: width .15s linear;
+}
+.audio-progress .time { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.play-btn {
+  position: relative;
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
+  border: none; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 42%, transparent);
+  transition: background .2s, transform .2s;
+}
+.play-btn:hover { background: var(--accent-hover); transform: scale(1.06); }
+.play-btn:active { transform: scale(.97); }
+.play-btn svg { width: 18px; height: 18px; position: absolute; transition: opacity .16s, transform .22s cubic-bezier(.34,1.4,.64,1); }
+.play-btn .icon-play { opacity: 1; transform: scale(1) rotate(0deg); }
+.play-btn .icon-pause { opacity: 0; transform: scale(.4) rotate(-45deg); }
+.audio-card.is-playing .play-btn .icon-play { opacity: 0; transform: scale(.4) rotate(45deg); }
+.audio-card.is-playing .play-btn .icon-pause { opacity: 1; transform: scale(1) rotate(0deg); }
+
+/* 倍速按钮 */
+.rate-btn {
+  flex: none; min-width: 52px; height: 30px; padding: 0 9px;
+  border-radius: 999px; border: 1px solid var(--card-border);
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12.5px; font-weight: 650; font-family: inherit; cursor: pointer;
+  font-variant-numeric: tabular-nums; letter-spacing: .2px;
+  transition: background .2s, border-color .2s, transform .2s, opacity .2s;
+}
+.rate-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+.rate-btn:active { transform: scale(.96); }
+.audio-card .rate-btn { height: 44px; min-width: 56px; }
+.rate-btn[disabled] { opacity: .55; cursor: default; }
+.rate-btn[disabled]:hover { border-color: var(--card-border); transform: none; }
+
+/* ===== 视频卡片 ===== */
+.video-cover {
+  position: relative; aspect-ratio: 16 / 9; width: 100%;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(120% 140% at 20% 0%, rgba(91, 140, 255, 0.55), transparent 55%),
+    radial-gradient(120% 140% at 85% 100%, rgba(73, 177, 245, 0.65), transparent 60%),
+    linear-gradient(135deg, #1c2433 0%, #24334a 100%);
+  cursor: pointer;
+}
+.video-cover .grid-lines { position: absolute; inset: 0; opacity: .14; }
+.video-cover .grid-lines svg { width: 100%; height: 100%; }
+.video-play {
+  position: relative; width: 66px; height: 66px; border-radius: 50%;
+  display: grid; place-items: center; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.92); color: #2b3547;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  transition: transform .2s, background .2s, color .2s;
+}
+.video-play:hover { transform: scale(1.1); background: var(--accent); color: #fff; }
+.video-play:active { transform: scale(.98); }
+.video-play svg { width: 26px; height: 26px; margin-left: 3px; }
+.video-duration {
+  position: absolute; right: 12px; bottom: 12px;
+  font-size: 12px; font-weight: 600; color: #fff;
+  background: rgba(0, 0, 0, 0.55); padding: 2px 8px; border-radius: 8px;
+  font-variant-numeric: tabular-nums; letter-spacing: .3px;
+}
+.video-info { display: flex; align-items: center; gap: 12px; padding: 13px 16px; }
+.video-info .type-badge {
+  flex: none; font-size: 11.5px; font-weight: 600;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 2px 9px; border-radius: 999px; letter-spacing: .3px;
+}
+.video-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.video-meta { flex: none; font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* 播放中（演示态） */
+.video-player {
+  position: relative; aspect-ratio: 16 / 9; width: 100%;
+  background: #0d1117; display: none; place-items: center;
+}
+.video-card.is-playing .video-cover { display: none; }
+.video-card.is-playing .video-player { display: grid; }
+.video-player .demo-note {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  font-size: 11px; color: rgba(255,255,255,.85);
+  background: rgba(0,0,0,.5); padding: 2px 9px; border-radius: 999px;
+  letter-spacing: .3px;
+}
+.video-player .screen {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: rgba(255,255,255,.85);
+}
+.video-player .screen > svg { width: 54px; height: 54px; opacity: .85; transition: opacity .2s; }
+.video-player .center-play {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) scale(.5);
+  width: 62px; height: 62px; border-radius: 50%; border: none; cursor: pointer;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.94); color: #2b3547;
+  box-shadow: 0 8px 28px rgba(0,0,0,.35);
+  opacity: 0; pointer-events: none;
+  transition: transform .22s cubic-bezier(.34,1.4,.64,1), opacity .2s, background .2s, color .2s;
+}
+.video-player .center-play svg { width: 24px; height: 24px; margin-left: 3px; }
+.video-player .center-play:hover { background: var(--accent); color: #fff; }
+.video-player.is-paused .center-play { opacity: 1; transform: translate(-50%,-50%) scale(1); pointer-events: auto; }
+.video-player.is-paused .screen > svg { opacity: 0; }
+.video-player .player-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  background: linear-gradient(transparent, rgba(0,0,0,.75));
+}
+.video-player .player-bar .pbtn { position: relative; width: 20px; height: 20px; color: #fff; cursor: pointer; }
+.video-player .player-bar .pbtn svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transition: opacity .15s, transform .2s cubic-bezier(.34,1.4,.64,1); }
+.video-player .player-bar .pbtn .picon-pause { opacity: 1; transform: scale(1); }
+.video-player .player-bar .pbtn .picon-play { opacity: 0; transform: scale(.4) rotate(-45deg); }
+.video-player.is-paused .player-bar .pbtn .picon-pause { opacity: 0; transform: scale(.4) rotate(45deg); }
+.video-player.is-paused .player-bar .pbtn .picon-play { opacity: 1; transform: scale(1) rotate(0deg); }
+.video-player .player-bar .track { flex: 1; height: 4px; border-radius: 999px; background: rgba(255,255,255,.22); overflow: hidden; }
+.video-player .player-bar .track i { display: block; height: 100%; width: 0%; background: var(--accent); border-radius: 999px; }
+.video-player .player-bar .ptime { font-size: 12px; color: rgba(255,255,255,.8); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ===== 底部说明 ===== */
+.design-note {
+  margin-top: 8px; padding: 20px 22px;
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: var(--radius); backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+}
+.design-note h3 { font-size: 15px; font-weight: 650; margin-bottom: 12px; }
+.design-note ul { list-style: none; }
+.design-note li { display: flex; gap: 10px; font-size: 13.5px; color: var(--text-2); padding: 7px 0; }
+.design-note li::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 8px; }
+.design-note .swatches { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.design-note .swatch { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-3); }
+.design-note .swatch i { width: 18px; height: 18px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+.footer-note { margin-top: 28px; text-align: center; font-size: 12px; color: var(--text-3); }
+
+@media (max-width: 520px) {
+  .page { padding: 28px 14px 48px; }
+  .header h1 { font-size: 22px; }
+  .theme-toggle { padding: 8px 11px; }
+  .video-play { width: 56px; height: 56px; }
+  .video-play svg { width: 22px; height: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===== 顶栏 ===== -->
+  <header class="header">
+    <div>
+      <h1>文章媒体链接 · 专属 UI 预览</h1>
+      <p class="sub">语音链接与视频链接的卡片式渲染方案，贴合安知鱼主题（#49b1f5 · 磨砂衬底 · 深浅双主题）</p>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题">
+      <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+      <span id="themeLabel">深色</span>
+    </button>
+  </header>
+
+  <!-- ===== 语音链接 UI ===== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="tag">语音链接</span>
+      <h2>Audio Card</h2>
+    </div>
+    <p class="section-note">识别 <code>.mp3</code> <code>.wav</code> <code>.ogg</code> <code>.m4a</code> <code>.flac</code> <code>.aac</code> 及语音外链，渲染为可播放的音频卡片。</p>
+
+    <div class="media-card audio-card" id="audioCard1">
+      <audio id="demoAudio" src="assets/demo-audio.mp3" preload="metadata"></audio>
+      <div class="audio-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.5V6l10-2.2v10.2"/><circle cx="6.8" cy="17.5" r="2.8"/><circle cx="16.8" cy="14" r="2.8"/></svg>
+      </div>
+      <div class="audio-main">
+        <div class="audio-title" id="audioTitle1">课堂录音 · 第 03 讲 函数极限（demo-audio.mp3）</div>
+        <div class="audio-sub"><span>39 KB · MP3</span><span class="sep">·</span><span id="audioDur1">00:00</span></div>
+        <div class="audio-progress">
+          <div class="bar" id="audioBar1"><div class="bar-fill" id="audioFill1"></div></div>
+          <span class="time"><span id="audioCur1">00:00</span> / <span id="audioDur2">00:00</span></span>
+        </div>
+      </div>
+      <button class="rate-btn" id="audioRate1" type="button" aria-label="播放倍速">1.0x</button>
+      <button class="play-btn" id="audioBtn1" type="button" aria-label="播放">
+        <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+      </button>
+    </div>
+
+    <div class="media-card audio-card">
+      <div class="audio-icon" style="background: linear-gradient(135deg, #8a63d2, #49b1f5);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.5V6l10-2.2v10.2"/><circle cx="6.8" cy="17.5" r="2.8"/><circle cx="16.8" cy="14" r="2.8"/></svg>
+      </div>
+      <div class="audio-main">
+        <div class="audio-title">Podcast · 我与 AI 共事的一年（节选）_m4a</div>
+        <div class="audio-sub"><span>8.4 MB · M4A</span><span class="sep">·</span><span>12:36</span></div>
+      </div>
+      <button class="rate-btn" type="button" aria-label="播放倍速" disabled>1.0x</button>
+      <button class="play-btn" type="button" aria-label="播放" disabled style="opacity:.55;cursor:default;">
+        <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- ===== 视频链接 UI ===== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="tag">视频链接</span>
+      <h2>Video Card</h2>
+    </div>
+    <p class="section-note">识别 <code>.mp4</code> <code>.webm</code> <code>.mov</code> <code>.m3u8</code> 及视频平台外链，渲染为 16:9 视频卡片，点击封面播放。</p>
+
+    <div class="media-card video-card" id="videoCard1">
+      <div class="video-cover" id="videoCover1" role="button" tabindex="0" aria-label="播放视频">
+        <div class="grid-lines" aria-hidden="true">
+          <svg viewBox="0 0 100 56.25" preserveAspectRatio="none"><path d="M0 14.06h100M0 28.13h100M0 42.19h100M25 0v56.25M50 0v56.25M75 0v56.25" stroke="white" stroke-width=".3"/></svg>
+        </div>
+        <button class="video-play" type="button" aria-hidden="true" tabindex="-1">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        </button>
+        <span class="video-duration">01:24</span>
+      </div>
+      <div class="video-player" id="videoPlayer1">
+        <span class="demo-note">演示播放 · 集成时替换为真实视频源</span>
+        <div class="screen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5C3 5.1 4.1 4 5.5 4h13C19.9 4 21 5.1 21 6.5v11c0 1.4-1.1 2.5-2.5 2.5h-13C4.1 20 3 18.9 3 17.5z"/><path d="M10 9.2l5 2.8-5 2.8z" fill="currentColor" stroke="none"/></svg>
+          <button class="center-play" id="videoCenterPlay1" type="button" aria-label="继续播放">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+          </button>
+        </div>
+        <div class="player-bar">
+          <div class="pbtn" id="playerPause1" role="button" tabindex="0" aria-label="暂停">
+            <svg class="picon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+            <svg class="picon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+          </div>
+          <div class="track" id="videoTrack1"><i id="playerFill1"></i></div>
+          <button class="rate-btn" id="videoRate1" type="button" aria-label="播放倍速">1.0x</button>
+          <span class="ptime"><span id="playerTime1">00:08</span> / 01:24</span>
+        </div>
+      </div>
+      <div class="video-info">
+        <span class="type-badge">视频</span>
+        <div class="video-title">AI 分享会 · 演示视频（demo）_mp4</div>
+        <span class="video-meta">28 MB</span>
+      </div>
+    </div>
+
+    <div class="media-card video-card">
+      <div class="video-cover" role="button" tabindex="0" aria-label="播放视频">
+        <div class="grid-lines" aria-hidden="true">
+          <svg viewBox="0 0 100 56.25" preserveAspectRatio="none"><path d="M0 14.06h100M0 28.13h100M0 42.19h100M25 0v56.25M50 0v56.25M75 0v56.25" stroke="white" stroke-width=".3"/></svg>
+        </div>
+        <button class="video-play" type="button" aria-hidden="true" tabindex="-1">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+        </button>
+        <span class="video-duration">00:32</span>
+      </div>
+      <div class="video-info">
+        <span class="type-badge">Bilibili</span>
+        <div class="video-title">【罗翔】我们为什么要学习法律？_哔哩哔哩</div>
+        <span class="video-meta">外链 · iframe</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 设计说明 ===== -->
+  <div class="design-note">
+    <h3>与博客视觉对齐的设计要点</h3>
+    <ul>
+      <li>主色沿用安知鱼蓝 <b style="color:var(--accent)">#49b1f5</b>，卡片使用半透明磨砂衬底 + 1px 边框 + 16px 圆角，与全局 .main-content 一致</li>
+      <li>深浅双主题自动跟随站点主题；播放按钮/进度条均用主色，hover 有轻微上浮反馈</li>
+      <li>语音卡：识别音频后缀 → 图标 + 标题 + 播放按钮，播放时展开进度条与时长</li>
+      <li>视频卡：16:9 封面 + 中央播放键 + 时长角标，点击后嵌入播放器（平台外链走 iframe）</li>
+      <li>移动端：单列全宽，按钮不小于 44px 触控目标</li>
+    </ul>
+    <div class="swatches">
+      <span class="swatch"><i style="background:#49b1f5"></i>主色 #49b1f5</span>
+      <span class="swatch"><i style="background:linear-gradient(135deg,#1c2433,#24334a)"></i>视频封面</span>
+      <span class="swatch"><i style="background:var(--track)"></i>进度轨道</span>
+    </div>
+  </div>
+
+  <p class="footer-note">预览用示例音频来自 MDN CC0 素材（assets/demo-audio.mp3）· 视频为演示播放 · 正式集成时替换为真实链接</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 主题切换（localStorage 持久化） ---------- */
+  var root = document.documentElement;
+  var saved = null;
+  try { saved = localStorage.getItem('preview-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  var toggle = document.getElementById('themeToggle');
+  var label = document.getElementById('themeLabel');
+  var iconSun = document.getElementById('iconSun');
+  function syncTheme() {
+    var dark = root.getAttribute('data-theme') === 'dark';
+    label.textContent = dark ? '浅色' : '深色';
+    iconSun.style.display = dark ? 'none' : 'inline';
+  }
+  syncTheme();
+  toggle.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('preview-theme', next); } catch (e) {}
+    syncTheme();
+  });
+
+  /* ---------- 音频播放 ---------- */
+  var audio = document.getElementById('demoAudio');
+  var card1 = document.getElementById('audioCard1');
+  var btn1 = document.getElementById('audioBtn1');
+  var fill1 = document.getElementById('audioFill1');
+  var cur1 = document.getElementById('audioCur1');
+  var dur1 = document.getElementById('audioDur1');
+  var dur2 = document.getElementById('audioDur2');
+
+  function fmt(s) {
+    if (!isFinite(s)) return '00:00';
+    var m = Math.floor(s / 60), ss = Math.floor(s % 60);
+    return (m < 10 ? '0' + m : '' + m) + ':' + (ss < 10 ? '0' + ss : '' + ss);
+  }
+  audio.addEventListener('loadedmetadata', function () {
+    var d = fmt(audio.duration);
+    dur1.textContent = d; dur2.textContent = d;
+  });
+  audio.addEventListener('timeupdate', function () {
+    fill1.style.width = (audio.currentTime / audio.duration * 100) + '%';
+    cur1.textContent = fmt(audio.currentTime);
+  });
+  audio.addEventListener('ended', function () {
+    card1.classList.remove('is-playing');
+  });
+  btn1.addEventListener('click', function () {
+    if (audio.paused) { audio.play(); } else { audio.pause(); }
+    card1.classList.toggle('is-playing');
+  });
+  /* 进度条：点击 + 拖动 seek（pointer 事件，支持鼠标/触摸） */
+  var bar1 = document.getElementById('audioBar1');
+  var audioDragging = false;
+  function audioSeekTo(e) {
+    var rect = bar1.getBoundingClientRect();
+    var pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = pct * audio.duration;
+    fill1.style.width = (pct * 100) + '%';
+    cur1.textContent = fmt(audio.currentTime);
+  }
+  bar1.addEventListener('click', function (e) { if (audio.duration) audioSeekTo(e); });
+  bar1.addEventListener('pointerdown', function (e) {
+    audioDragging = true;
+    bar1.setPointerCapture(e.pointerId);
+    audioSeekTo(e);
+  });
+  bar1.addEventListener('pointermove', function (e) { if (audioDragging) audioSeekTo(e); });
+  ['pointerup', 'pointercancel'].forEach(function (ev) {
+    bar1.addEventListener(ev, function () { audioDragging = false; });
+  });
+
+  /* 播放倍速循环 */
+  var RATES = [1, 1.5, 2, 0.5];
+  var audioRateBtn = document.getElementById('audioRate1');
+  var audioRateIdx = 0;
+  audioRateBtn.addEventListener('click', function () {
+    audioRateIdx = (audioRateIdx + 1) % RATES.length;
+    var r = RATES[audioRateIdx];
+    audio.playbackRate = r;
+    audioRateBtn.textContent = r + 'x';
+  });
+
+  /* ---------- 视频播放（演示） ---------- */
+  var vCard = document.getElementById('videoCard1');
+  var vCover = document.getElementById('videoCover1');
+  var vPlayer = document.getElementById('videoPlayer1');
+  var vFill = document.getElementById('playerFill1');
+  var vTime = document.getElementById('playerTime1');
+  var vTrack = document.getElementById('videoTrack1');
+  var vCenter = document.getElementById('videoCenterPlay1');
+  var vRateBtn = document.getElementById('videoRate1');
+  var vPlaying = false, vTimer = null, vSec = 8, vRate = 1;
+  var total = 84;
+
+  function vTick() {
+    vSec += 1;
+    if (vSec > total) { vSec = 0; }
+    vFill.style.width = (vSec / total * 100) + '%';
+    vTime.textContent = fmt(vSec);
+  }
+  function vPlay() {
+    vCard.classList.add('is-playing');
+    vPlayer.classList.remove('is-paused');
+    vPlaying = true;
+    vTimer = setInterval(vTick, 1000 / vRate);
+  }
+  function vPause() {
+    vPlaying = false;
+    if (vTimer) clearInterval(vTimer);
+    vPlayer.classList.add('is-paused');
+  }
+  function vToggle() {
+    if (vPlaying) { vPause(); } else { vPlay(); }
+  }
+  function vSeekTo(e) {
+    var rect = vTrack.getBoundingClientRect();
+    var pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    vSec = Math.round(pct * total);
+    vFill.style.width = (vSec / total * 100) + '%';
+    vTime.textContent = fmt(vSec);
+  }
+  vCover.addEventListener('click', vToggle);
+  vCover.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vToggle(); } });
+  document.getElementById('playerPause1').addEventListener('click', vToggle);
+  document.getElementById('playerPause1').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vToggle(); } });
+  vCenter.addEventListener('click', vToggle);
+  vTrack.addEventListener('click', function (e) { vSeekTo(e); });
+  var vDragging = false;
+  vTrack.addEventListener('pointerdown', function (e) { vDragging = true; vTrack.setPointerCapture(e.pointerId); vSeekTo(e); });
+  vTrack.addEventListener('pointermove', function (e) { if (vDragging) vSeekTo(e); });
+  ['pointerup', 'pointercancel'].forEach(function (ev) { vTrack.addEventListener(ev, function () { vDragging = false; }); });
+
+  var vRateIdx = 0;
+  vRateBtn.addEventListener('click', function () {
+    vRateIdx = (vRateIdx + 1) % RATES.length;
+    vRate = RATES[vRateIdx];
+    vRateBtn.textContent = vRate + 'x';
+    if (vPlaying) { clearInterval(vTimer); vTimer = setInterval(vTick, 1000 / vRate); }
+  });
+
+  /* 第二张视频卡（外链 iframe 形态）：点击给反馈，不真跳转 */
+  var covers = document.querySelectorAll('.video-card:not(.is-playing) .video-cover');
+  covers.forEach(function (c) {
+    if (c.id === 'videoCover1') return;
+    c.addEventListener('click', function () {
+      var note = document.createElement('div');
+      note.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.82);color:#fff;padding:12px 22px;border-radius:12px;font-size:14px;z-index:99;';
+      note.textContent = '演示：平台外链将以内嵌 iframe 播放器渲染';
+      document.body.appendChild(note);
+      setTimeout(function () { note.remove(); }, 2200);
+    });
+  });
+})();
+</script>
+</body>
+</html>
