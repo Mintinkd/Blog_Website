@@ -42,7 +42,7 @@ if (isProdOrigin) {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 800);
-    const res = await fetch(`${Astro.url.origin}/api/v1/settings`, { signal: ctrl.signal });
+    const res = await fetch(`${Astro.url.origin}/api/v1/settings/public`, { signal: ctrl.signal });
     clearTimeout(t);
     const data = await res.json();
     if (data?.code === 0 && data.data) initialSettings = data.data;
@@ -270,12 +270,19 @@ const initialCss = buildCss(initialSettings);
         })();
       });
 
-      (async function() {
+      // 站点配置（站点名/副标题/描述）：整个 ClientRouter 会话只 fetch 一次并缓存，
+      // 每次 astro:page-load 把缓存重新应用到新 DOM——导航后 header/footer/hero 会被
+      // 替换为 SSR 默认文案（"Blog"），不重应用就会出现 logo/页脚/hero 文案丢失
+      let cachedSiteConfig: any = null;
+      async function applySiteConfig() {
         try {
-          const res = await fetch('/api/v1/config');
-          const data = await res.json();
-          if (data.code !== 0 || !data.data) return;
-          const cfg = data.data;
+          if (!cachedSiteConfig) {
+            const res = await fetch('/api/v1/config');
+            const data = await res.json();
+            if (data.code !== 0 || !data.data) return;
+            cachedSiteConfig = data.data;
+          }
+          const cfg = cachedSiteConfig;
 
           const logoText = document.getElementById('site-logo-text');
           if (logoText && cfg.site_title) logoText.textContent = cfg.site_title;
@@ -286,20 +293,21 @@ const initialCss = buildCss(initialSettings);
           const titleEl = document.querySelector('title[data-site-title]');
           if (titleEl) {
             const current = titleEl.textContent || '';
+            // 仅首页 SSR 标题需要替换为站点名；其他页面（含文章页动态设置的 "xxx | Blog"）保持现状
             if (current === '首页' && cfg.site_title) {
               titleEl.textContent = cfg.site_title;
-            } else if (cfg.site_title) {
-              titleEl.textContent = current.replace('Blog', cfg.site_title);
             }
           }
 
+          // 守卫用"内容是否为空"而非 data-page-set：与文章页 loadArticle 填充摘要存在竞态，
+          // 谁后完成都不会覆盖对方已写入的有效内容
           const metaDesc = document.querySelector('meta[name="description"]');
-          if (metaDesc && !metaDesc.getAttribute('data-page-set') && cfg.site_description) {
+          if (metaDesc && !metaDesc.getAttribute('content') && cfg.site_description) {
             metaDesc.setAttribute('content', cfg.site_description);
           }
 
           const ogDesc = document.querySelector('meta[property="og:description"]');
-          if (ogDesc && !metaDesc?.getAttribute('data-page-set') && cfg.site_description) {
+          if (ogDesc && !ogDesc.getAttribute('content') && cfg.site_description) {
             ogDesc.setAttribute('content', cfg.site_description);
           }
 
@@ -312,7 +320,8 @@ const initialCss = buildCss(initialSettings);
           const heroDesc = document.getElementById('hero-site-desc');
           if (heroDesc && cfg.site_description) heroDesc.textContent = cfg.site_description;
         } catch {}
-      })();
+      }
+      document.addEventListener('astro:page-load', () => applySiteConfig());
 
       // 拉取并套用后台可视化配置（配色/布局/背景/功能开关/文案覆盖）
       (async () => {
@@ -336,14 +345,23 @@ const initialCss = buildCss(initialSettings);
         } catch {}
       })();
 
-      const backToTop = document.getElementById('back-to-top');
-      if (backToTop) {
-        const onScroll = () => {
-          backToTop.classList.toggle('show', window.scrollY > 600);
+      // 回到顶部：ClientRouter 导航后按钮是新 DOM 元素。scroll 监听只在 window 挂一次，
+      // 回调内实时查找按钮；点击走 document 事件委托，跨页始终有效
+      if (!(window as any).__backToTopBound) {
+        (window as any).__backToTopBound = true;
+        const toggleBackToTop = () => {
+          const btn = document.getElementById('back-to-top');
+          if (btn) btn.classList.toggle('show', window.scrollY > 600);
         };
-        onScroll();
-        window.addEventListener('scroll', onScroll, { passive: true });
-        backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        toggleBackToTop();
+        window.addEventListener('scroll', toggleBackToTop, { passive: true });
+        document.addEventListener('astro:page-load', toggleBackToTop);
+        document.addEventListener('click', (e) => {
+          const t = e.target as HTMLElement;
+          if (t.closest && t.closest('#back-to-top')) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        });
       }
 
       // ===== 全局悬浮一言组件：可拖动 + 位置记忆 + 跨页复原 =====

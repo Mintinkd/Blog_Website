@@ -8,10 +8,24 @@ import { successResponse, error, ErrorCodes } from '../utils/response';
  * - 所有个性化设置（配色 / 布局 / 背景 / 功能开关 / 文案覆盖）统一存为
  *   site_config 表中一个 JSON blob（key = 'site_settings'），便于整体导出/导入/恢复默认。
  * - 读取时与 DEFAULT_SETTINGS 深度合并，缺失字段自动补默认，未知字段被过滤（防注入）。
- * - 这些设置不含任何密钥，'/settings' 作为公开接口供前台运行时拉取并实时套用。
+ * - 渗透报告 004 修复：'/settings' 完整视图收为管理员鉴权；前台运行时改走
+ *   '/settings/public' 白名单投影 —— 只放行「页面渲染本就需要展示」的字段。
+ *   今后新增任何敏感配置项时默认不公开，必须显式加入 PUBLIC_KEYS 才会暴露。
  */
 
 const SETTINGS_KEY = 'site_settings';
+
+/** 允许匿名公开的顶级字段白名单（均为纯展示性配置，不含密钥） */
+const PUBLIC_KEYS = ['theme', 'layout', 'background', 'features', 'motion', 'copy'] as const;
+
+/** 完整 settings -> 公开投影：未知/未来新增字段默认剔除 */
+export function toPublicSettings(s: SiteSettings): Partial<SiteSettings> {
+  const out: Record<string, unknown> = {};
+  for (const key of PUBLIC_KEYS) {
+    if (key in s) out[key] = s[key as keyof SiteSettings];
+  }
+  return out as Partial<SiteSettings>;
+}
 
 export interface ThemeColors {
   accent: string;
@@ -161,6 +175,12 @@ async function save(env: Env, settings: SiteSettings): Promise<void> {
 export async function handleGetSettings(_req: Request, env: Env): Promise<Response> {
   const settings = await loadStored(env);
   return successResponse(settings);
+}
+
+/** 公开投影（匿名可访问）：仅白名单字段，未来新增敏感字段不会意外泄露 */
+export async function handleGetPublicSettings(_req: Request, env: Env): Promise<Response> {
+  const settings = await loadStored(env);
+  return successResponse(toPublicSettings(settings));
 }
 
 export async function handleUpdateSettings(req: Request, env: Env): Promise<Response> {

@@ -228,7 +228,7 @@ let listenersBound = false;
 
 export async function initSettings(): Promise<void> {
   try {
-    const res = await fetch('/api/v1/settings');
+    const res = await fetch('/api/v1/settings/public');
     const data = await res.json();
     if (data.code === 0 && data.data) {
       applySettings(data.data as SiteSettings);

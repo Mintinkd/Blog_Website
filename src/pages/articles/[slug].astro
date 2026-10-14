@@ -45,6 +45,7 @@ const { slug } = Astro.params;
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
   import { getCategoryColor, categoryBadgeVars, categoryGradVars, categoryNameVars } from '../../utils/categoryColors';
+  import { escapeHtml, escapeAttr, safePathSegment } from '../../utils/escape.ts';
   import { createApp } from 'vue';
 
   async function mountVueComponents(articleId: number, likeCount: number) {
@@ -85,35 +86,40 @@ const { slug } = Astro.params;
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) metaDesc.setAttribute('content', article.summary || article.title);
 
-        let bodyHtml = article.content_html || '';
-        if (!bodyHtml && article.content) {
+        let bodyHtml = '';
+        if (article.content_html) {
+          // 服务端预渲染 HTML 不直接信任，统一过 DOMPurify（与 renderMarkdown 同一消毒口径）
+          const { default: DOMPurify } = await import('dompurify');
+          bodyHtml = DOMPurify.sanitize(article.content_html);
+        } else if (article.content) {
           const { renderMarkdown } = await import('../../utils/markdown.ts');
           bodyHtml = renderMarkdown(article.content);
         }
 
-        const escAttr = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        // 渗透报告 I2 修复：API 文本字段一律转义后再拼 innerHTML（escAttr 保留兼容，统一走 escapeAttr）
+        const escAttr = escapeAttr;
         const catColor = getCategoryColor(article.category?.slug, article.category?.name);
         const badgeVars = article.category ? categoryBadgeVars(catColor) : '';
         const banner = article.cover_image
           ? `<div class="article-banner"><img src="${escAttr(article.cover_image)}" alt="" /></div>`
-          : `<div class="article-banner article-banner-grad" style="${categoryGradVars(catColor)}"><span class="banner-cat-name" style="${categoryNameVars(catColor)}">${article.category?.name || '✦'}</span></div>`;
+          : `<div class="article-banner article-banner-grad" style="${categoryGradVars(catColor)}"><span class="banner-cat-name" style="${categoryNameVars(catColor)}">${escapeHtml(article.category?.name || '✦')}</span></div>`;
 
         container.innerHTML = `
           <header class="article-header" data-reveal-stagger>
             ${banner}
             <div class="article-meta-top" data-reveal="fade-up">
-              ${article.category ? `<a href="/categories/${article.category.slug}" class="article-category" style="${badgeVars}">${article.category.name}</a>` : ''}
+              ${article.category ? `<a href="/categories/${safePathSegment(article.category.slug)}" class="article-category" style="${badgeVars}">${escapeHtml(article.category.name)}</a>` : ''}
               <span class="article-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
             </div>
-            <h1 class="article-title" data-reveal="fade-up">${article.title}</h1>
-            ${article.summary ? `<p class="article-summary" data-reveal="fade-up">${article.summary}</p>` : ''}
+            <h1 class="article-title" data-reveal="fade-up">${escapeHtml(article.title)}</h1>
+            ${article.summary ? `<p class="article-summary" data-reveal="fade-up">${escapeHtml(article.summary)}</p>` : ''}
             <div class="article-meta-bottom" data-reveal="fade-up">
               <span class="meta-item">${article.view_count} ${t('article.views')}</span>
               <span class="meta-item">${article.like_count} ${t('article.likes')}</span>
               <span class="meta-item">${article.reading_time || 1} ${t('article.minutes_read')}</span>
             </div>
             <div class="article-tags" data-reveal="fade-up">
-              ${(article.tags || []).map((tag: any) => `<a href="/tags/${tag.slug}" class="article-tag">${tag.name}</a>`).join('')}
+              ${(article.tags || []).map((tag: any) => `<a href="/tags/${safePathSegment(tag.slug)}" class="article-tag">${escapeHtml(tag.name)}</a>`).join('')}
             </div>
           </header>
           <div class="article-content prose">${bodyHtml}</div>
@@ -345,7 +351,8 @@ const { slug } = Astro.params;
     });
   }
 
-  loadArticle();
+  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
+  document.addEventListener('astro:page-load', () => loadArticle());
 
   document.addEventListener('locale-changed', () => loadArticle());
 </script>

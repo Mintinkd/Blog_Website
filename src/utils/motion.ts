@@ -91,15 +91,19 @@ export function initMagnetic(): void {
 
 /* ---------- 3. 阅读进度条 ---------- */
 
+// scroll 监听只挂一次（每次 page-load 会重复调用本函数，重复绑定会累积监听器）
+let scrollProgressBound = false;
+
 export function initScrollProgress(selector = '.scroll-progress'): void {
   if (motionLevel() === 0) return;
-  const bar = document.querySelector<HTMLElement>(selector);
-  if (!bar) return;
 
   let raf = 0;
   const onScroll = () => {
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
+    raf =requestAnimationFrame(() => {
+      // 实时查询：导航后进度条是新 DOM 元素，不能缓存引用
+      const bar = document.querySelector<HTMLElement>(selector);
+      if (!bar) return;
       const h = document.documentElement;
       const max = h.scrollHeight - h.clientHeight;
       const scrolled = max > 0 ? h.scrollTop / max : 0;
@@ -108,6 +112,11 @@ export function initScrollProgress(selector = '.scroll-progress'): void {
     });
   };
 
+  if (scrollProgressBound) {
+    onScroll();
+    return;
+  }
+  scrollProgressBound = true;
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
 }
@@ -115,13 +124,13 @@ export function initScrollProgress(selector = '.scroll-progress'): void {
 /* ---------- 4. 视差（仅作用于装饰层 / 背景层） ---------- */
 
 let parallaxBound = false;
+// 可变元素集合：scroll 监听只挂一次，但每次 page-load 重新收集导航后的新装饰层/背景层
+let parallaxEls: HTMLElement[] = [];
 
 export function initParallax(selector = '[data-parallax]'): void {
   if (motionLevel() < 2 || isMobile()) return; // off/reduced/移动端 不启用视差
-  if (parallaxBound) return;                   // 防止 ClientRouter 跨页重复绑定 scroll 监听
-  parallaxBound = true;
-  const els = Array.from(document.querySelectorAll<HTMLElement>(selector + ', [data-parallax-fixed]'));
-  if (!els.length) return;
+  // 每次调用都重新收集：ClientRouter 导航后 [data-parallax] / [data-parallax-fixed] 是新 DOM
+  parallaxEls = Array.from(document.querySelectorAll<HTMLElement>(selector + ', [data-parallax-fixed]'));
 
   let raf = 0;
   const onScroll = () => {
@@ -130,13 +139,13 @@ export function initParallax(selector = '[data-parallax]'): void {
       const root = document.documentElement;
       // 配置中心视差开关关闭：清除任何残留位移
       if (root.getAttribute('data-parallax') === 'off') {
-        els.forEach((el) => (el.style.transform = ''));
+        parallaxEls.forEach((el) => (el.style.transform = ''));
         return;
       }
       const scrollY = window.scrollY || (window as any).pageYOffset || 0;
       const speedVar = getComputedStyle(root).getPropertyValue('--parallax-speed').trim();
       const baseSpeed = parseFloat(speedVar) || 0.04;
-      els.forEach((el) => {
+      parallaxEls.forEach((el) => {
         let offset: number;
         if (el.hasAttribute('data-parallax-fixed')) {
           // 固定背景层：位移 = 滚动进度(0~1) × 视口高 × speed，上限受 .site-bg 的 inset 余量约束，绝不露边
@@ -155,9 +164,13 @@ export function initParallax(selector = '[data-parallax]'): void {
     });
   };
 
-  window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', onScroll, { passive: true });
-  onScroll();
+  if (!parallaxBound) {
+    // 防止 ClientRouter 跨页重复绑定 scroll 监听
+    parallaxBound = true;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+  }
+  if (parallaxEls.length) onScroll();
 }
 
 /* ---------- 5. View Transitions 包装（供主题/语言切换调用） ---------- */

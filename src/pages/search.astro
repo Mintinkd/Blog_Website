@@ -195,11 +195,16 @@ import SearchBox from '../islands/SearchBox.vue';
     document.querySelector('.search-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  document.getElementById('search-tags')?.addEventListener('click', onTaxonomyClick);
-  document.getElementById('search-categories')?.addEventListener('click', onTaxonomyClick);
+  function initSearchPage() {
+    // 事件绑定也要在每次导航后重挂：新页面的标签/分类容器是新 DOM 元素
+    document.getElementById('search-tags')?.addEventListener('click', onTaxonomyClick);
+    document.getElementById('search-categories')?.addEventListener('click', onTaxonomyClick);
+    loadSearchTags();
+    loadSearchCategories();
+  }
 
-  loadSearchTags();
-  loadSearchCategories();
+  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
+  document.addEventListener('astro:page-load', initSearchPage);
   document.addEventListener('locale-changed', () => {
     loadSearchTags();
     loadSearchCategories();

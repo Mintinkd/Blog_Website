@@ -48,17 +48,47 @@ function buildLikeClause(tokens: string[], fields: string[]): { clause: string; 
   return { clause, params };
 }
 
+function escapeHtml(s: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return s.replace(/[&<>"']/g, (m) => map[m]);
+}
+
+/**
+ * 生成 <mark> 高亮前先整体 HTML 转义：
+ * 标题/摘要中的任意 HTML（如 <img onerror=...>）将被中和，
+ * 只有转义后的纯文本才会被包上 <mark>，前端 v-html 渲染安全。
+ */
 function highlightText(text: string, tokens: string[]): string {
   if (!text) return '';
-  let result = text;
+  let result = escapeHtml(text);
   for (const token of tokens) {
-    result = result.replace(new RegExp(escapeRegExp(token), 'gi'), '<mark>$&</mark>');
+    const escapedToken = escapeHtml(token);
+    if (!escapedToken) continue;
+    result = result.replace(new RegExp(escapeRegExp(escapedToken), 'gi'), '<mark>$&</mark>');
   }
   return result;
 }
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * FTS snippet() 直接拼接原文与 <mark>，原文中的 HTML 未转义。
+ * 先暂存 mark 标签 -> 整体转义 -> 恢复 mark，确保 snippet 中只含安全标签。
+ */
+function sanitizeSnippet(html: string): string {
+  if (!html) return '';
+  const OPEN = '\u0000MARK_OPEN\u0000';
+  const CLOSE = '\u0000MARK_CLOSE\u0000';
+  const tmp = String(html).replace(/<mark>/gi, OPEN).replace(/<\/mark>/gi, CLOSE);
+  return escapeHtml(tmp).split(OPEN).join('<mark>').split(CLOSE).join('</mark>');
 }
 
 export async function handleSearch(request: Request, env: Env): Promise<Response> {
@@ -97,8 +127,13 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
     `).bind(`"${escaped_q}"`).first<{ total: number }>();
 
     if ((ftsCount?.total || 0) > 0) {
+      const items = ftsResults.results.map((row: Record<string, unknown>) => ({
+        ...row,
+        title_highlight: sanitizeSnippet(String(row.title_highlight || '')),
+        content_highlight: sanitizeSnippet(String(row.content_highlight || '')),
+      }));
       return successResponse({
-        items: ftsResults.results,
+        items,
         total: ftsCount?.total || 0,
         page,
         page_size,

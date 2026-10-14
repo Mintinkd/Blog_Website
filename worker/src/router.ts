@@ -1,4 +1,5 @@
-import { corsMiddleware } from './middleware/cors';
+import { corsMiddleware, withCors } from './middleware/cors';
+import { withSecurityHeaders } from './middleware/security_headers';
 import { rateLimitMiddleware } from './middleware/rate_limit';
 import { authMiddleware } from './middleware/auth';
 import type { AuthResult } from './middleware/auth';
@@ -12,7 +13,7 @@ import { handleSearch } from './handlers/search';
 import { handleToggleLike, handleLikeStatus } from './handlers/like';
 import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia } from './handlers/media';
 import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
-import { handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
+import { handleGetPublicSettings, handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
 import { handleImgProxy } from './handlers/img_proxy';
 import { handleTextProxy } from './handlers/text_proxy';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
@@ -126,7 +127,9 @@ addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env),
 addRoute('PUT', '/config', async (req, env) => handleUpdateConfig(req, env), true, true);
 
 // 全站可视化配置中心
-addRoute('GET', '/settings', async (req, env) => handleGetSettings(req, env));
+// 渗透报告 004 修复：/settings 完整视图收为管理员鉴权；前台只走 /settings/public 白名单投影
+addRoute('GET', '/settings/public', async (req, env) => handleGetPublicSettings(req, env));
+addRoute('GET', '/settings', async (req, env) => handleGetSettings(req, env), true, true);
 addRoute('GET', '/settings/all', async (req, env) => handleGetSettings(req, env), true, true);
 addRoute('PUT', '/settings', async (req, env) => handleUpdateSettings(req, env), true, true);
 addRoute('POST', '/settings/reset', async (req, env) => handleResetSettings(req, env), true, true);
@@ -155,22 +158,25 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
 
   try {
     const corsResponse = corsMiddleware(request);
-    if (corsResponse) return corsResponse;
+    if (corsResponse) return withSecurityHeaders(corsResponse);
 
     const rateLimitResponse = await rateLimitMiddleware(request, env, ctx);
-    if (rateLimitResponse) return rateLimitResponse;
+    if (rateLimitResponse) return withSecurityHeaders(withCors(rateLimitResponse, request));
 
     const matched = matchRoute(method, pathname);
     if (!matched) {
-      return Response.json({ code: 404, message: `API not found: ${method} ${pathname}`, data: null }, { status: 404 });
+      return withSecurityHeaders(withCors(
+        Response.json({ code: 404, message: `API not found: ${method} ${pathname}`, data: null }, { status: 404 }),
+        request
+      ));
     }
 
     let authResult: AuthResult | undefined;
     if (matched.requireAuth) {
       const result = await authMiddleware(request, env);
-      if (result instanceof Response) return result;
+      if (result instanceof Response) return withSecurityHeaders(withCors(result, request));
       if (matched.requireAdmin && result.user.role !== 'admin') {
-        return forbidden('权限不足，仅管理员可执行此操作');
+        return withSecurityHeaders(withCors(forbidden('权限不足，仅管理员可执行此操作'), request));
       }
       authResult = result.user;
     } else if (request.headers.get('Authorization')) {
@@ -179,10 +185,14 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
       if (!(result instanceof Response)) authResult = result.user;
     }
 
-    return await matched.handler(request, env, ctx, matched.params, authResult);
+    const response = await matched.handler(request, env, ctx, matched.params, authResult);
+    return withSecurityHeaders(withCors(response, request));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Router error:', errMsg);
-    return Response.json({ code: 500, message: errMsg, data: null }, { status: 500 });
+    return withSecurityHeaders(withCors(
+      Response.json({ code: 500, message: errMsg, data: null }, { status: 500 }),
+      request
+    ));
   }
 }

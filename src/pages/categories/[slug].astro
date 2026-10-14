@@ -53,6 +53,7 @@ const { slug } = Astro.params;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
+  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadArticles(page = 1) {
     const container = document.querySelector('.article-list-inner');
@@ -78,16 +79,16 @@ const { slug } = Astro.params;
 
         container.innerHTML = items.map((article: any) => `
           <article class="list-card">
-            <a href="/articles/${article.slug}" class="list-card-link">
+            <a href="/articles/${safePathSegment(article.slug)}" class="list-card-link">
               <div class="list-card-body">
                 <div class="list-card-meta">
                   <span class="list-card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
                 </div>
-                <h3 class="list-card-title">${article.title}</h3>
-                ${article.summary ? `<p class="list-card-summary">${article.summary}</p>` : ''}
+                <h3 class="list-card-title">${escapeHtml(article.title)}</h3>
+                ${article.summary ? `<p class="list-card-summary">${escapeHtml(article.summary)}</p>` : ''}
                 <div class="list-card-footer">
                   <div class="list-card-tags">
-                    ${(article.tags || []).slice(0, 3).map((tag: any) => `<span class="list-card-tag">${tag.name}</span>`).join('')}
+                    ${(article.tags || []).slice(0, 3).map((tag: any) => `<span class="list-card-tag">${escapeHtml(tag.name)}</span>`).join('')}
                   </div>
                   <span class="list-card-stats">${article.view_count || 0} ${t('article.read')}</span>
                 </div>
@@ -119,7 +120,8 @@ const { slug } = Astro.params;
     }
   }
 
-  loadArticles();
+  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
+  document.addEventListener('astro:page-load', () => loadArticles());
 
   document.addEventListener('locale-changed', () => loadArticles());
 </script>

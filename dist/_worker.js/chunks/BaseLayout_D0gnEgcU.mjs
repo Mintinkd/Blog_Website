@@ -202,7 +202,7 @@ const $$BaseLayout = createComponent(async ($$result, $$props, $$slots) => {
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 800);
-      const res = await fetch(`${Astro2.url.origin}/api/v1/settings`, { signal: ctrl.signal });
+      const res = await fetch(`${Astro2.url.origin}/api/v1/settings/public`, { signal: ctrl.signal });
       clearTimeout(t);
       const data = await res.json();
       if (data?.code === 0 && data.data) initialSettings = data.data;

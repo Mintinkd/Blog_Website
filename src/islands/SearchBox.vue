@@ -28,9 +28,9 @@
       <TransitionGroup name="result" tag="div" class="search-results-list">
         <div v-for="item in results" :key="item.id" class="search-result-item">
           <h3 class="result-title">
-            <a :href="`/articles/${item.slug}`" v-html="item.title_highlight || item.title"></a>
+            <a :href="`/articles/${safePathSegment(item.slug)}`" v-html="sanitizeHighlight(item.title_highlight || item.title)"></a>
           </h3>
-          <p class="result-excerpt" v-html="item.content_highlight || item.summary"></p>
+          <p class="result-excerpt" v-html="sanitizeHighlight(item.content_highlight || item.summary)"></p>
           <span class="result-date">{{ formatDate(item.published_at || item.created_at) }}</span>
         </div>
       </TransitionGroup>
@@ -49,6 +49,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
+import { sanitizeHighlight, safePathSegment } from '../utils/escape';
 
 const query = ref('');
 const results = ref<any[]>([]);

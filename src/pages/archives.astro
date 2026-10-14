@@ -63,6 +63,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <script>
   import { t, getLocale } from '../utils/i18n.ts';
+  import { escapeHtml, safePathSegment } from '../utils/escape.ts';
 
   async function loadArchives() {
     const container = document.getElementById('archives-list');
@@ -110,7 +111,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
             for (const article of grouped[year][month]) {
               const date = new Date(article.published_at || article.created_at);
               const dateStr = `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-              html += `<li data-reveal="fade-up"><span class="archive-date">${dateStr}</span><a href="/articles/${article.slug}">${article.title}</a></li>`;
+              html += `<li data-reveal="fade-up"><span class="archive-date">${dateStr}</span><a href="/articles/${safePathSegment(article.slug)}">${escapeHtml(article.title)}</a></li>`;
             }
             html += '</ul></div>';
           }
@@ -126,7 +127,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     }
   }
 
-  loadArchives();
+  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
+  document.addEventListener('astro:page-load', () => loadArchives());
 
   document.addEventListener('locale-changed', () => loadArchives());
 </script>
