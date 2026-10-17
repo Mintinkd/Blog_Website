@@ -129,6 +129,72 @@ function getDefaultSettings() {
     }
   };
 }
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+const SIZE_RE = /^\d{1,4}(px|rem|em|%)$/;
+const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
+const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
+function pickStr(v, re, fallback) {
+  return typeof v === "string" && re.test(v) ? v : fallback;
+}
+function pickNum(v, min, max, fallback) {
+  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
+}
+function pickBool(v, fallback) {
+  return typeof v === "boolean" ? v : fallback;
+}
+function pickCopy(src) {
+  const out = {};
+  if (src && typeof src === "object" && !Array.isArray(src)) {
+    for (const [k, v] of Object.entries(src)) {
+      if (typeof v === "string" && v.length <= 2e3) out[k] = v;
+    }
+  }
+  return out;
+}
+function sanitizeSettings(input) {
+  const d = getDefaultSettings();
+  const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const theme = { light: { ...d.theme.light }, dark: { ...d.theme.dark } };
+  for (const mode of ["light", "dark"]) {
+    const src = s.theme && typeof s.theme === "object" && !Array.isArray(s.theme) ? s.theme[mode] : void 0;
+    if (src && typeof src === "object" && !Array.isArray(src)) {
+      for (const k of Object.keys(d.theme[mode])) {
+        theme[mode][k] = pickStr(src[k], HEX_COLOR_RE, d.theme[mode][k]);
+      }
+    }
+  }
+  const ly = s.layout && typeof s.layout === "object" && !Array.isArray(s.layout) ? s.layout : {};
+  const layout = {
+    contentMaxWidth: pickStr(ly.contentMaxWidth, SIZE_RE, d.layout.contentMaxWidth),
+    headerHeight: pickStr(ly.headerHeight, SIZE_RE, d.layout.headerHeight),
+    radiusSm: pickStr(ly.radiusSm, SIZE_RE, d.layout.radiusSm),
+    radiusMd: pickStr(ly.radiusMd, SIZE_RE, d.layout.radiusMd),
+    radiusLg: pickStr(ly.radiusLg, SIZE_RE, d.layout.radiusLg)
+  };
+  const bgs = s.background && typeof s.background === "object" && !Array.isArray(s.background) ? s.background : {};
+  const bgImage = typeof bgs.bgImage === "string" && (LOCAL_PATH_RE.test(bgs.bgImage) || HTTPS_URL_RE.test(bgs.bgImage)) ? bgs.bgImage : d.background.bgImage;
+  const background = {
+    bgImage,
+    bgOpacity: pickNum(bgs.bgOpacity, 0, 1, d.background.bgOpacity),
+    bgBlur: pickNum(bgs.bgBlur, 0, 30, d.background.bgBlur),
+    bgBrightness: pickNum(bgs.bgBrightness, 0.7, 1.3, d.background.bgBrightness)
+  };
+  const fsrc = s.features && typeof s.features === "object" && !Array.isArray(s.features) ? s.features : {};
+  const features = { ...d.features };
+  for (const k of Object.keys(d.features)) {
+    features[k] = pickBool(fsrc[k], d.features[k]);
+  }
+  const msrc = s.motion && typeof s.motion === "object" && !Array.isArray(s.motion) ? s.motion : {};
+  const intensity = msrc.intensity;
+  const motion = {
+    intensity: intensity === "normal" || intensity === "reduced" || intensity === "off" ? intensity : d.motion.intensity,
+    parallax: pickBool(msrc.parallax, d.motion.parallax),
+    parallaxSpeed: pickNum(msrc.parallaxSpeed, 0, 0.1, d.motion.parallaxSpeed)
+  };
+  const copySrc = s.copy && typeof s.copy === "object" && !Array.isArray(s.copy) ? s.copy : {};
+  const copy = { zh: pickCopy(copySrc.zh), en: pickCopy(copySrc.en) };
+  return { theme, layout, background, features, copy, motion };
+}
 function kebab(k) {
   return k.replace(/([A-Z])/g, (m) => "-" + m.toLowerCase());
 }
@@ -146,7 +212,7 @@ function buildOverlay(bg, opacity) {
   const a2 = Math.min(1, mask + 0.05);
   return `linear-gradient(180deg, rgba(${r}, ${g}, ${b}, ${a1}) 0%, rgba(${r}, ${g}, ${b}, ${a2}) 100%)`;
 }
-function buildCss(s) {
+function cssFrom(s) {
   const L = s.theme.light;
   const D = s.theme.dark;
   const ly = s.layout;
@@ -176,6 +242,13 @@ function buildCss(s) {
     }
   }
   return lines.join("\n");
+}
+function buildCss(s) {
+  try {
+    return cssFrom(sanitizeSettings(s));
+  } catch {
+    return cssFrom(getDefaultSettings());
+  }
 }
 
 var __freeze = Object.freeze;

@@ -152,6 +152,65 @@ function deepMerge<T>(base: T, override: any): T {
   return out;
 }
 
+/* ── P1-6 / issue #11：设置值字段白名单（写入侧拒绝非法值，400） ──
+ * 规则与 src/utils/settings.ts 的 sanitizeSettings 保持一致（双端同一套）。
+ * 背景图仅放行站内相对路径或 https 外链，字符集排除引号/尖括号/反斜杠/圆括号，
+ * 从根上杜绝 CSS 字符串逃逸、</style> 提前闭合与 url() 外联注入（报告 M1）。 */
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+const SIZE_RE = /^\d{1,4}(px|rem|em|%)$/;
+const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
+const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
+
+function isSafeUrl(v: unknown): v is string {
+  return typeof v === 'string' && (LOCAL_PATH_RE.test(v) || HTTPS_URL_RE.test(v));
+}
+
+function isNumberInRange(v: unknown, min: number, max: number): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+}
+
+/** 返回非法字段路径列表；空数组 = 全部合法 */
+export function validateSettings(s: SiteSettings): string[] {
+  const bad: string[] = [];
+  const req = (ok: boolean, path: string) => {
+    if (!ok) bad.push(path);
+  };
+  const d = getDefaultSettings();
+
+  for (const mode of ['light', 'dark'] as const) {
+    const t = (s.theme as unknown as Record<string, unknown> | undefined)?.[mode] as Record<string, unknown> | undefined;
+    for (const k of Object.keys(d.theme[mode]) as (keyof ThemeColors)[]) {
+      const v = t && typeof t === 'object' ? t[k] : undefined;
+      req(typeof v === 'string' && HEX_COLOR_RE.test(v), `theme.${mode}.${k}`);
+    }
+  }
+  for (const k of Object.keys(d.layout) as (keyof SiteSettings['layout'])[]) {
+    const v = s.layout?.[k];
+    req(typeof v === 'string' && SIZE_RE.test(v), `layout.${k}`);
+  }
+  req(isSafeUrl(s.background?.bgImage), 'background.bgImage');
+  req(isNumberInRange(s.background?.bgOpacity, 0, 1), 'background.bgOpacity');
+  req(isNumberInRange(s.background?.bgBlur, 0, 30), 'background.bgBlur');
+  req(isNumberInRange(s.background?.bgBrightness, 0.7, 1.3), 'background.bgBrightness');
+  for (const k of Object.keys(d.features) as (keyof SiteSettings['features'])[]) {
+    req(typeof s.features?.[k] === 'boolean', `features.${k}`);
+  }
+  req(s.motion?.intensity === 'normal' || s.motion?.intensity === 'reduced' || s.motion?.intensity === 'off', 'motion.intensity');
+  req(typeof s.motion?.parallax === 'boolean', 'motion.parallax');
+  req(isNumberInRange(s.motion?.parallaxSpeed, 0, 0.1), 'motion.parallaxSpeed');
+  for (const loc of ['zh', 'en'] as const) {
+    const m = (s.copy as unknown as Record<string, unknown> | undefined)?.[loc];
+    if (!isObj(m)) {
+      bad.push(`copy.${loc}`);
+      continue;
+    }
+    const badKey = Object.entries(m).find(([, v]) => typeof v !== 'string' || (v as string).length > 2000);
+    if (badKey) bad.push(`copy.${loc}.${badKey[0]}`);
+  }
+  return bad;
+}
+
 async function loadStored(env: Env): Promise<SiteSettings> {
   const row = await env.DB.prepare('SELECT value FROM site_config WHERE key = ?').bind(SETTINGS_KEY).first();
   const raw = row && (row as any).value ? (row as any).value : null;
@@ -187,6 +246,10 @@ export async function handleUpdateSettings(req: Request, env: Env): Promise<Resp
   try {
     const body = await req.json();
     const merged = deepMerge(getDefaultSettings(), body);
+    const invalid = validateSettings(merged);
+    if (invalid.length) {
+      return error(ErrorCodes.VALIDATION_FAILED, '非法设置值（已拒绝保存）：' + invalid.join('；'));
+    }
     await save(env, merged);
     return successResponse(merged, '设置已保存');
   } catch (e) {
@@ -214,6 +277,10 @@ export async function handleImportSettings(req: Request, env: Env): Promise<Resp
   try {
     const body = await req.json();
     const merged = deepMerge(getDefaultSettings(), body);
+    const invalid = validateSettings(merged);
+    if (invalid.length) {
+      return error(ErrorCodes.VALIDATION_FAILED, '非法设置值（已拒绝导入）：' + invalid.join('；'));
+    }
     await save(env, merged);
     return successResponse(merged, '配置导入成功');
   } catch (e) {
