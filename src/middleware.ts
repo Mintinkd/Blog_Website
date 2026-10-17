@@ -10,12 +10,13 @@ import { defineMiddleware } from 'astro:middleware';
  * 说明：script-src/style-src 需要 'unsafe-inline'（主题初始化内联脚本、
  * 动态 settings 内联 <style>、HTML style 属性）；img-src/media-src 放行 https:
  * 以兼容外链封面图与文章内音视频（后续封面图全面本站托管后可收敛）。
+ * frame-src 仅放行 B 站/YouTube 播放器域（文章页媒体卡片注入 iframe 所需）。
  */
 const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy':
     "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; " +
-    "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "connect-src 'self'; frame-src https://player.bilibili.com https://www.youtube.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
