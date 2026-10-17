@@ -1,5 +1,5 @@
 import { Env } from '../index';
-import { successResponse, error, ErrorCodes, forbidden } from '../utils/response';
+import { successResponse, error, ErrorCodes, forbidden, unauthorized, notFound } from '../utils/response';
 import { validate } from '../utils/validator';
 import { sanitizeHtml, escapeHtml } from '../utils/sanitizer';
 import { SubmitCommentRequest } from '../models/comment';
@@ -50,7 +50,7 @@ export async function handleSubmitComment(request: Request, env: Env, ctx: Execu
 
   const articleExists = await env.DB.prepare('SELECT id FROM articles WHERE id = ?').bind(article_id).first();
   if (!articleExists) {
-    return error(ErrorCodes.NOT_FOUND, 'Article not found');
+    return notFound('Article not found');
   }
 
   await env.DB.prepare(`
@@ -80,6 +80,9 @@ export async function handleListAllComments(request: Request, env: Env, ctx: Exe
     if (user) {
       whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';
       bindParams.push(user.id);
+    } else {
+      // 审查报告 H2 修复：用户无法解析时 fail-closed，不再回退为「不过滤」
+      whereClause += whereClause ? ' AND 1 = 0' : 'WHERE 1 = 0';
     }
   }
 
@@ -95,28 +98,51 @@ export async function handleListAllComments(request: Request, env: Env, ctx: Exe
   return successResponse(comments.results);
 }
 
-export async function handleApproveComment(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+/** 审查报告 H2 修复：评论管理（审批/否决/删除）须为管理员或评论所属文章的作者；否则返回错误响应 */
+async function ensureCommentManageable(env: Env, commentId: string, authResult?: AuthResult): Promise<Response | null> {
+  if (!authResult) return unauthorized('Authentication required');
+
+  const row = await env.DB.prepare('SELECT article_id FROM comments WHERE id = ?').bind(commentId).first<{ article_id: number }>();
+  if (!row) return notFound('Comment not found');
+
+  const { checkArticleOwnership } = await import('../services/article_service');
+  const owned = await checkArticleOwnership(env, row.article_id, authResult);
+  if (!owned) return forbidden('仅可管理自己文章下的评论');
+
+  return null;
+}
+
+export async function handleApproveComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { id } = params;
+  const denied = await ensureCommentManageable(env, id, authResult);
+  if (denied) return denied;
+
   const result = await env.DB.prepare("UPDATE comments SET status = 'approved' WHERE id = ?").bind(id).run();
-  if (result.meta.changes === 0) return error(ErrorCodes.NOT_FOUND, 'Comment not found');
+  if (result.meta.changes === 0) return notFound('Comment not found');
 
   await env.DB.prepare('UPDATE articles SET comment_count = (SELECT COUNT(*) FROM comments WHERE article_id = (SELECT article_id FROM comments WHERE id = ?) AND status = ?) WHERE id = (SELECT article_id FROM comments WHERE id = ?)').bind(id, 'approved', id).run();
 
   return successResponse(null, 'Comment approved');
 }
 
-export async function handleRejectComment(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleRejectComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { id } = params;
+  const denied = await ensureCommentManageable(env, id, authResult);
+  if (denied) return denied;
+
   const result = await env.DB.prepare("UPDATE comments SET status = 'rejected' WHERE id = ?").bind(id).run();
-  if (result.meta.changes === 0) return error(ErrorCodes.NOT_FOUND, 'Comment not found');
+  if (result.meta.changes === 0) return notFound('Comment not found');
 
   return successResponse(null, 'Comment rejected');
 }
 
-export async function handleDeleteComment(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleDeleteComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { id } = params;
+  const denied = await ensureCommentManageable(env, id, authResult);
+  if (denied) return denied;
+
   const result = await env.DB.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
-  if (result.meta.changes === 0) return error(ErrorCodes.NOT_FOUND, 'Comment not found');
+  if (result.meta.changes === 0) return notFound('Comment not found');
 
   return successResponse(null, 'Comment deleted');
 }

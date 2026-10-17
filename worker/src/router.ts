@@ -102,9 +102,9 @@ addRoute('DELETE', '/tags/:id', async (req, env, _ctx, params) => handleDeleteTa
 addRoute('GET', '/articles/:article_id/comments', async (req, env, _ctx, params) => handleListComments(req, env, params));
 addRoute('POST', '/articles/:article_id/comments', async (req, env, ctx, params) => handleSubmitComment(req, env, ctx, params));
 addRoute('GET', '/comments', async (req, env, _ctx, params, auth) => handleListAllComments(req, env, _ctx, params, auth), true);
-addRoute('PUT', '/comments/:id/approve', async (req, env, _ctx, params) => handleApproveComment(req, env, params), true);
-addRoute('PUT', '/comments/:id/reject', async (req, env, _ctx, params) => handleRejectComment(req, env, params), true);
-addRoute('DELETE', '/comments/:id', async (req, env, _ctx, params) => handleDeleteComment(req, env, params), true);
+addRoute('PUT', '/comments/:id/approve', async (req, env, _ctx, params, auth) => handleApproveComment(req, env, params, auth), true);
+addRoute('PUT', '/comments/:id/reject', async (req, env, _ctx, params, auth) => handleRejectComment(req, env, params, auth), true);
+addRoute('DELETE', '/comments/:id', async (req, env, _ctx, params, auth) => handleDeleteComment(req, env, params, auth), true);
 
 addRoute('GET', '/search', async (req, env) => handleSearch(req, env));
 
