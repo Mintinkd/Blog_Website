@@ -113,7 +113,7 @@ addRoute('GET', '/articles/:article_id/like-status', async (req, env, _ctx, para
 
 addRoute('POST', '/media/upload', async (req, env, _ctx, params, auth) => handleUploadMedia(req, env, _ctx, params, auth), true);
 addRoute('GET', '/media', async (req, env, _ctx, params, auth) => handleListMedia(req, env, _ctx, params, auth), true);
-addRoute('DELETE', '/media/:id', async (req, env, _ctx, params) => handleDeleteMedia(req, env, params), true);
+addRoute('DELETE', '/media/:id', async (req, env, _ctx, params, auth) => handleDeleteMedia(req, env, params, auth), true);
 addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeMedia(req, env, params));
 
 // 外链图片智能代理（前端 img 直连失败时自动降级到本站代理，带安全校验与 KV TTL 缓存）

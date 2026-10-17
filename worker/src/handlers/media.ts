@@ -1,5 +1,5 @@
 import { Env } from '../index';
-import { successResponse, error, ErrorCodes, notFound, forbidden } from '../utils/response';
+import { successResponse, error, ErrorCodes, notFound, forbidden, unauthorized } from '../utils/response';
 import { validate, isValidUrl } from '../utils/validator';
 import type { AuthResult } from '../middleware/auth';
 
@@ -74,6 +74,9 @@ export async function handleListMedia(request: Request, env: Env, ctx: Execution
     if (user) {
       whereClause = 'WHERE uploaded_by = ?';
       queryParams.push(user.id);
+    } else {
+      // 审查报告 H2 修复：用户无法解析时 fail-closed，不再回退为「不过滤」
+      whereClause = 'WHERE 1 = 0';
     }
   }
 
@@ -94,13 +97,21 @@ export async function handleListMedia(request: Request, env: Env, ctx: Execution
   });
 }
 
-export async function handleDeleteMedia(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+/** 审查报告 H2 修复：媒体删除须为管理员或上传者本人；越权时 KV 对象与元数据均保持不动 */
+export async function handleDeleteMedia(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const { id } = params;
 
-  const media = await env.DB.prepare('SELECT * FROM media_assets WHERE id = ?').bind(id).first<Record<string, unknown>>();
+  if (!authResult) return unauthorized('Authentication required');
+
+  const media = await env.DB.prepare('SELECT kv_key, uploaded_by FROM media_assets WHERE id = ?').bind(id).first<{ kv_key: string; uploaded_by: number | null }>();
   if (!media) return notFound('Media not found');
 
-  await env.MEDIA.delete(media.kv_key as string);
+  if (authResult.role !== 'admin') {
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    if (!user || media.uploaded_by !== user.id) return forbidden('仅可删除自己上传的媒体');
+  }
+
+  await env.MEDIA.delete(media.kv_key);
   await env.DB.prepare('DELETE FROM media_assets WHERE id = ?').bind(id).run();
 
   return successResponse(null, 'Media deleted');
