@@ -199,3 +199,10 @@ UPDATE media_assets SET uploaded_by = (SELECT id FROM users WHERE role = 'admin'
 -- Migration: Add created_by to categories and tags
 ALTER TABLE categories ADD COLUMN created_by INTEGER REFERENCES users(id);
 ALTER TABLE tags ADD COLUMN created_by INTEGER REFERENCES users(id);
+
+-- Migration: users 加「须改密」标记与登录失败锁定（P1-5 / issue #8）
+ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN locked_until TEXT;
+-- 存量部署：仍在使用种子口令（SHA-256("password")）的账号标记为须改密
+UPDATE users SET must_change_password = 1 WHERE password_hash = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';

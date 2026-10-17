@@ -4,7 +4,7 @@ import { rateLimitMiddleware } from './middleware/rate_limit';
 import { authMiddleware } from './middleware/auth';
 import type { AuthResult } from './middleware/auth';
 import { forbidden } from './utils/response';
-import { handleLogin, handleRefresh, handleListUsers, handleCreateUser, handleUpdateUser, handleDeleteUser } from './handlers/auth_handler';
+import { handleLogin, handleRefresh, handleChangePassword, handleListUsers, handleCreateUser, handleUpdateUser, handleDeleteUser } from './handlers/auth_handler';
 import { handleListArticles, handleGetArticle, handleCreateArticle, handleUpdateArticle, handleDeleteArticle } from './handlers/article';
 import { handleListCategories, handleCreateCategory, handleUpdateCategory, handleDeleteCategory } from './handlers/category';
 import { handleListTags, handleCreateTag, handleDeleteTag } from './handlers/tag';
@@ -33,6 +33,10 @@ interface Route {
 }
 
 const routes: Route[] = [];
+
+// P1-5 / issue #8：仍在使用初始口令的账号，改密前拒绝管理端写操作（白名单内除外）
+const WRITE_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+const MUST_CHANGE_PASSWORD_EXEMPT_PATHS = new Set(['/auth/refresh', '/auth/change-password']);
 
 function addRoute(method: string, path: string, handler: Handler, requireAuth = false, requireAdmin = false): void {
   const paramNames: string[] = [];
@@ -79,6 +83,7 @@ addRoute('GET', '/health', async (_req, env) => {
 
 addRoute('POST', '/auth/login', async (req, env) => handleLogin(req, env));
 addRoute('POST', '/auth/refresh', async (req, env, ctx, params) => handleRefresh(req, env), true);
+addRoute('POST', '/auth/change-password', async (req, env, _ctx, _params, auth) => handleChangePassword(req, env, auth), true);
 addRoute('GET', '/users', async (req, env) => handleListUsers(req, env), true, true);
 addRoute('POST', '/users', async (req, env) => handleCreateUser(req, env), true, true);
 addRoute('PUT', '/users/:id', async (req, env, _ctx, params) => handleUpdateUser(req, env, params), true, true);
@@ -177,6 +182,9 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
       if (result instanceof Response) return withSecurityHeaders(withCors(result, request));
       if (matched.requireAdmin && result.user.role !== 'admin') {
         return withSecurityHeaders(withCors(forbidden('权限不足，仅管理员可执行此操作'), request));
+      }
+      if (result.user.mustChangePassword && WRITE_METHODS.has(method) && !MUST_CHANGE_PASSWORD_EXEMPT_PATHS.has(pathname)) {
+        return withSecurityHeaders(withCors(forbidden('账号仍在使用初始口令，请先修改口令后再执行管理操作'), request));
       }
       authResult = result.user;
     } else if (request.headers.get('Authorization')) {

@@ -4,6 +4,8 @@ import { unauthorized, forbidden } from '../utils/response';
 export interface AuthResult {
   username: string;
   role: 'admin' | 'editor';
+  /** 账号仍在使用初始/默认口令（P1-5 / issue #8），未改密前管理端写操作被拒 */
+  mustChangePassword: boolean;
 }
 
 interface JwtPayload {
@@ -94,12 +96,21 @@ export async function verifyToken(token: string, secret: string): Promise<JwtPay
   }
 }
 
-export async function getUserRole(username: string, env: Env): Promise<string | null> {
+/** P1-5 / issue #8：鉴权时一并取回「须改密」标记，供路由层拦截管理写操作 */
+async function getUserAuth(username: string, env: Env): Promise<{ role: string; mustChangePassword: boolean } | null> {
   try {
-    const row = await env.DB.prepare('SELECT role FROM users WHERE username = ?').bind(username).first<{ role: string }>();
-    return row?.role || null;
+    const row = await env.DB.prepare('SELECT role, must_change_password FROM users WHERE username = ?').bind(username).first<{ role: string; must_change_password: number }>();
+    if (!row) return null;
+    return { role: row.role, mustChangePassword: Boolean(row.must_change_password) };
   } catch {
-    return null;
+    // 新增列尚未迁移时降级为旧列（须改密强制仅在迁移后生效）
+    try {
+      const row = await env.DB.prepare('SELECT role FROM users WHERE username = ?').bind(username).first<{ role: string }>();
+      if (!row) return null;
+      return { role: row.role, mustChangePassword: false };
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -116,12 +127,12 @@ export async function authMiddleware(request: Request, env: Env): Promise<{ user
     return unauthorized('Invalid or expired token');
   }
 
-  const role = await getUserRole(payload.username, env);
-  if (!role) {
+  const auth = await getUserAuth(payload.username, env);
+  if (!auth) {
     return forbidden('User role not found');
   }
 
-  return { user: { username: payload.username, role: role as 'admin' | 'editor' } };
+  return { user: { username: payload.username, role: auth.role as 'admin' | 'editor', mustChangePassword: auth.mustChangePassword } };
 }
 
 async function getJwtSecretFromDb(env: Env): Promise<string> {

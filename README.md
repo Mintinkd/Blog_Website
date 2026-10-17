@@ -175,6 +175,7 @@ D1 (SQLite) 共 9 张表：
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/auth/refresh` | 刷新Token |
+| POST | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下为唯一可用的写接口） |
 | POST | `/articles` | 创建文章（自动设置author_id） |
 | PUT | `/articles/:id` | 更新文章（editor仅自己的） |
 | DELETE | `/articles/:id` | 删除文章（editor仅自己的） |
@@ -182,12 +183,12 @@ D1 (SQLite) 共 9 张表：
 | PUT | `/categories/:id` | 更新分类（editor仅自己的） |
 | POST | `/tags` | 创建标签（自动设置created_by） |
 | GET | `/comments` | 评论列表（editor仅自己文章的） |
-| PUT | `/comments/:id/approve` | 审核通过 |
-| PUT | `/comments/:id/reject` | 审核拒绝 |
-| DELETE | `/comments/:id` | 删除评论 |
+| PUT | `/comments/:id/approve` | 审核通过（editor仅自己文章的） |
+| PUT | `/comments/:id/reject` | 审核拒绝（editor仅自己文章的） |
+| DELETE | `/comments/:id` | 删除评论（editor仅自己文章的） |
 | POST | `/media/upload` | 上传媒体（自动设置uploaded_by） |
 | GET | `/media` | 媒体列表（editor仅自己的） |
-| DELETE | `/media/:id` | 删除媒体 |
+| DELETE | `/media/:id` | 删除媒体（editor仅自己上传的） |
 
 #### 编辑锁接口
 
@@ -367,9 +368,11 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 > **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
 
+> **已有部署升级**：schema.sql 文件尾部的迁移语句仅供增量执行一次；对已有库请单独执行新增的迁移语句，勿重复执行全文（会因 `duplicate column` 报错）。
+
 ### 首次设置
 
-数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，密码: `changeme`），**请首次登录后立即修改密码**。
+数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，初始口令为 schema.sql 中的种子值）；首次登录响应会返回 `must_change_password: true` 并强制要求改密，未完成改密前管理端写操作会被拒绝（改密接口：`POST /auth/change-password`）。
 
 JWT 密钥在首次登录时自动生成，无需手动配置。
 
