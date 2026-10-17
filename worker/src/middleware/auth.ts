@@ -66,29 +66,30 @@ export async function verifyToken(token: string, secret: string): Promise<JwtPay
 
   const [header, payload, signature] = parts;
 
-  const key = await crypto.subtle.importKey(
-    'raw',
-    await hashKey(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['verify']
-  );
-
-  const signatureBytes = Uint8Array.from(base64UrlDecode(signature), (c) => c.charCodeAt(0));
-  const isValid = await crypto.subtle.verify(
-    'HMAC',
-    key,
-    signatureBytes,
-    new TextEncoder().encode(`${header}.${payload}`)
-  );
-
-  if (!isValid) return null;
-
   try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      await hashKey(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    const signatureBytes = Uint8Array.from(base64UrlDecode(signature), (c) => c.charCodeAt(0));
+    const isValid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      signatureBytes,
+      new TextEncoder().encode(`${header}.${payload}`)
+    );
+
+    if (!isValid) return null;
+
     const decoded = JSON.parse(base64UrlDecode(payload)) as JwtPayload;
     if (decoded.exp < Math.floor(Date.now() / 1000)) return null;
     return decoded;
   } catch {
+    // 畸形 token（非法 base64/JSON 等）一律按无效处理，避免向上抛出 500
     return null;
   }
 }
