@@ -113,6 +113,7 @@ import SearchBox from '../islands/SearchBox.vue';
 
 <script>
   import { t } from '../utils/i18n.ts';
+  import { safePathSegment } from '../utils/escape.ts';
 
   function esc(s: string): string {
     return String(s)
@@ -137,7 +138,7 @@ import SearchBox from '../islands/SearchBox.vue';
         }
         tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = tags.map((tag: any) => `
-          <a href="/tags/${tag.slug}" class="taxonomy-item"
+          <a href="/tags/${safePathSegment(tag.slug)}" class="taxonomy-item"
              data-type="tag" data-slug="${esc(tag.slug)}" data-name="${esc(tag.name)}">
             <span>${esc(tag.name)}</span>
             <span class="taxonomy-count">${tag.article_count || 0}</span>
@@ -165,7 +166,7 @@ import SearchBox from '../islands/SearchBox.vue';
         }
         categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = categories.map((cat: any) => `
-          <a href="/categories/${cat.slug}" class="taxonomy-item"
+          <a href="/categories/${safePathSegment(cat.slug)}" class="taxonomy-item"
              data-type="category" data-slug="${esc(cat.slug)}" data-name="${esc(cat.name)}">
             <span>${esc(cat.name)}</span>
             <span class="taxonomy-count">${cat.article_count || 0}</span>

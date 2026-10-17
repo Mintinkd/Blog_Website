@@ -69,7 +69,8 @@ export const prerender = false;
 </style>
 
 <script>
-  import { t, getLocale } from '../../utils/i18n.ts';
+  import { t } from '../../utils/i18n.ts';
+  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadTags() {
     const container = document.getElementById('tags-cloud');
@@ -89,9 +90,10 @@ export const prerender = false;
         // 按文章数降序
         tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
 
+        // 审查报告 H1 修复：标签文本与路径一律转义后再拼 innerHTML（不再依赖服务端 slug 格式约束）
         container.innerHTML = tags.map((tag: any) => `
-          <a href="/tags/${tag.slug}" class="tag-item">
-            <span>${tag.name}</span>
+          <a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">
+            <span>${escapeHtml(tag.name)}</span>
             <span class="tag-count">${tag.article_count || 0}</span>
           </a>
         `).join('');
