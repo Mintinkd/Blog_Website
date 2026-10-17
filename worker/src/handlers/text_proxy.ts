@@ -1,16 +1,16 @@
 import { Env } from '../index';
 import {
-  BLOCKED_HOST_RE,
-  WORKERS_DEV_RE,
-  isBlockedIp,
   clientIp,
   sha1Hex,
   MAX_FILE_SIZE,
-  MAX_URL_LEN,
+  MAX_REDIRECTS,
   CACHE_TTL,
   FETCH_TIMEOUT_MS,
   RATE_WINDOW_MS,
   RATE_MAX,
+  validateTargetUrl,
+  fetchWithValidatedRedirects,
+  readBodyWithLimit,
 } from './img_proxy';
 
 /**
@@ -19,9 +19,10 @@ import {
  * 与 img-proxy 同构，面向 fetch 拉取的文字型内容：
  * 1. 触发方式：前端 fetch 外部 URL 直连失败（网络/CORS/非 2xx）时，
  *    自动改请求本站 /api/v1/text-proxy?url=<原地址>，由本 handler 兜底拉取。
- * 2. 安全性：与 img-proxy 同一套校验（http/https、URL 长度、内网/保留 IP、
- *    内部域名/workers.dev 递归、请求头净化、每 IP 限流、大小上限）。
- *    MIME 白名单只放行文字类（text/*、json、xml），不放行图片/二进制。
+ * 2. 安全性（P1-8 / issue #14 加固）：与 img-proxy 共用同一套实现 ——
+ *    http/https 与长度校验、内网/保留 IP（含 IPv4-mapped 形式）与内部域名拦截、
+ *    manual 重定向逐跳复核、请求头净化、每 IP 限流、流式读取超限即中止、
+ *    总超时覆盖全程。MIME 白名单只放行文字类（text/*、json、xml），不放行图片/二进制。
  * 3. 缓存自动过期删除：KV TTL 24h 到期自动清理。
  * 4. CORS：响应带 Access-Control-Allow-Origin: *，前端 fetch 可直接读取；
  *    同时处理 OPTIONS 预检。
@@ -59,25 +60,11 @@ export async function handleTextProxy(request: Request, env: Env, ctx: Execution
   const url = new URL(request.url);
   const target = url.searchParams.get('url') || '';
 
-  if (!target || target.length > MAX_URL_LEN) {
-    return corsify(Response.json({ code: 400, message: 'url 参数缺失或过长', data: null }, { status: 400 }));
+  const validation = validateTargetUrl(target);
+  if (!validation.ok) {
+    return corsify(Response.json({ code: validation.status, message: validation.message, data: null }, { status: validation.status }));
   }
-
-  let tu: URL;
-  try {
-    tu = new URL(target);
-  } catch {
-    return corsify(Response.json({ code: 400, message: 'url 参数不是合法地址', data: null }, { status: 400 }));
-  }
-
-  if (tu.protocol !== 'https:' && tu.protocol !== 'http:') {
-    return corsify(Response.json({ code: 400, message: '仅支持 http/https', data: null }, { status: 400 }));
-  }
-
-  const host = tu.hostname.toLowerCase();
-  if (BLOCKED_HOST_RE.test(host) || WORKERS_DEV_RE.test(host) || isBlockedIp(host)) {
-    return corsify(Response.json({ code: 403, message: '目标地址被禁止代理', data: null }, { status: 403 }));
-  }
+  const tu = validation.url;
 
   // 每 IP 限流（独立键，与图片代理互不影响）
   const ip = clientIp(request);
@@ -103,54 +90,65 @@ export async function handleTextProxy(request: Request, env: Env, ctx: Execution
     }));
   }
 
-  // 拉取目标（净化请求头：去 Referer/Cookie）
+  // 拉取目标：manual 重定向逐跳校验；总超时覆盖重定向 + 响应头 + 响应体读取全程
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  let upstream: Response;
   try {
-    upstream = await fetch(tu.toString(), {
+    const fetched = await fetchWithValidatedRedirects(tu, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
         Accept: 'application/json,text/plain,text/html,application/xml,text/xml,*/*;q=0.8',
       },
-      redirect: 'follow',
       signal: ctrl.signal,
     });
-  } catch {
-    return corsify(Response.json({ code: 502, message: '上游内容拉取失败', data: null }, { status: 502 }));
+
+    if (fetched.kind === 'blocked') {
+      return corsify(Response.json({ code: 403, message: '重定向目标被禁止代理', data: null }, { status: 403 }));
+    }
+    if (fetched.kind === 'too_many_redirects') {
+      return corsify(Response.json({ code: 502, message: `重定向次数超过 ${MAX_REDIRECTS} 次`, data: null }, { status: 502 }));
+    }
+    if (fetched.kind === 'fetch_failed') {
+      return corsify(Response.json({ code: 502, message: '上游内容拉取失败', data: null }, { status: 502 }));
+    }
+    const upstream = fetched.response;
+
+    if (!upstream.ok) {
+      return corsify(Response.json({ code: upstream.status, message: `上游返回 ${upstream.status}`, data: null }, { status: 502 }));
+    }
+
+    const contentType = (upstream.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+    if (!ALLOWED_TEXT_MIME.includes(contentType)) {
+      return corsify(Response.json({ code: 415, message: '目标不是受支持的文字类型', data: null }, { status: 415 }));
+    }
+
+    const declaredLen = parseInt(upstream.headers.get('Content-Length') || '0', 10);
+    if (declaredLen > MAX_FILE_SIZE) {
+      return corsify(Response.json({ code: 413, message: '内容超过 10MB 限制', data: null }, { status: 413 }));
+    }
+
+    const read = await readBodyWithLimit(upstream, MAX_FILE_SIZE);
+    if (read.kind === 'too_large') {
+      return corsify(Response.json({ code: 413, message: '内容超过 10MB 限制', data: null }, { status: 413 }));
+    }
+    if (read.kind === 'read_failed') {
+      return corsify(Response.json({ code: 502, message: '上游内容拉取失败', data: null }, { status: 502 }));
+    }
+    const body = read.body;
+
+    ctx.waitUntil(
+      env.MEDIA.put(cacheKey, body, { expirationTtl: CACHE_TTL, metadata: { ct: contentType } })
+    );
+
+    return corsify(new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': `public, max-age=${CACHE_TTL}`,
+        'X-Text-Proxy': 'cache-miss',
+      },
+    }));
   } finally {
     clearTimeout(timer);
   }
-
-  if (!upstream.ok) {
-    return corsify(Response.json({ code: upstream.status, message: `上游返回 ${upstream.status}`, data: null }, { status: 502 }));
-  }
-
-  const contentType = (upstream.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-  if (!ALLOWED_TEXT_MIME.includes(contentType)) {
-    return corsify(Response.json({ code: 415, message: '目标不是受支持的文字类型', data: null }, { status: 415 }));
-  }
-
-  const declaredLen = parseInt(upstream.headers.get('Content-Length') || '0', 10);
-  if (declaredLen > MAX_FILE_SIZE) {
-    return corsify(Response.json({ code: 413, message: '内容超过 10MB 限制', data: null }, { status: 413 }));
-  }
-
-  const body = await upstream.arrayBuffer();
-  if (body.byteLength > MAX_FILE_SIZE) {
-    return corsify(Response.json({ code: 413, message: '内容超过 10MB 限制', data: null }, { status: 413 }));
-  }
-
-  ctx.waitUntil(
-    env.MEDIA.put(cacheKey, body, { expirationTtl: CACHE_TTL, metadata: { ct: contentType } })
-  );
-
-  return corsify(new Response(body, {
-    status: 200,
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': `public, max-age=${CACHE_TTL}`,
-      'X-Text-Proxy': 'cache-miss',
-    },
-  }));
 }
