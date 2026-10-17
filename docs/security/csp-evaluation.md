@@ -1,0 +1,37 @@
+# CSP 'unsafe-inline' 收敛评估与落地（审查报告 M3 / issue #10）
+
+日期：2026-10-17　相关：`src/middleware.ts`、`public/_headers`、`scripts/patch-csp.mjs`、`astro.config.mjs`
+
+## 结论
+
+| 指令 | 处置 | 说明 |
+|------|------|------|
+| `script-src` | **已收紧（落地）** | 生产产物不再含 `'unsafe-inline'`，改为 `'self'` + 内联脚本 sha256 列表 |
+| `style-src` | 保留 `'unsafe-inline'` | 动态 settings 内联样式与模板 style 属性无法静态 hash；评估与替代路径见下 |
+
+## script-src 落地方式
+
+产物中存在且仅存在三类可执行内联脚本（全站一致）：主题初始化脚本（`BaseLayout.astro` 的 `is:inline`）、Astro 运行时 shim（客户端指令加载器、ClientRouter 引导）。其余 `<script>` 均由 Astro 打包为同源外链模块。
+
+- 自动化：`astro.config.mjs` 注册 `astro:build:done` 钩子，调用 `scripts/patch-csp.mjs`，扫描 `dist/**/*.html` 提取内联脚本 sha256（自动去重），将 `dist/_headers` 与 `dist/_worker.js`（SSR 中间件编译产物）中的基线指令替换为 hash 列表；
+- 自校验（构建失败即报错）：产物中不得残留基线 token；静态与 SSR 两份 CSP 必须逐字符一致；
+- 维护约定：新增 `is:inline` 脚本由构建自动纳管（无需人工登记）；**禁止**使用内联事件处理器（`onclick="..."` 等）与 `javascript:` URL——当前代码库经全量检索均无此类用法，收紧后二者将被 CSP 拦截，如有新增必须改为 `addEventListener` / `Vue @click`；
+- 源码（`src/middleware.ts`、`public/_headers`）保留基线形态含 `'unsafe-inline'`，仅服务于 astro dev 等开发场景；生产以构建产物为准（文件内注释已同步说明）。
+
+## style-src 保留 'unsafe-inline' 的原因
+
+1. `BaseLayout` 每请求内联注入由 settings 生成的 CSS（`<style id="dynamic-settings">`），内容随站点配置动态变化，构建期无法 hash；
+2. 模板与动态 HTML 使用大量 `style="..."` 属性；CSP3 下放行需 `'unsafe-hashes'` + 逐条 sha256，维护面巨大且本身即弱化；
+3. Element Plus 等运行时注入样式。
+
+风险与替代：
+
+- 样式注入的现实风险为渲染篡改与 CSS exfil（需配合选择器探测），不产生脚本执行；XSS 的主要遏制面是 script-src（已收紧）；
+- 后续迭代方向：动态 settings 样式改为外链样式表（如 `/api/v1/settings.css`），模板内联 style 属性逐步收敛为 class。
+
+## 验证方式
+
+1. `npm run build`：构建日志输出 `[csp] script-src 已收紧：…`、`[csp] 静态与 SSR 两份 CSP 逐字符一致：OK`；
+2. 抽查产物：`dist/_headers` 与 `dist/_worker.js/_astro-internal_middleware.mjs` 中 script-src 为 `'self' 'sha256-…'` 列表，无 `'unsafe-inline'`；
+3. `npx wrangler pages dev dist` 后浏览器打开主要页面（首页/文章列表/文章详情/搜索/归档/关于/后台），控制台无 CSP 拦截报错、主题切换等内联脚本正常执行；
+4. 语义对照：无 `'unsafe-inline'` 且无对应 hash 的内联脚本（如注入的 `onerror` 载荷）在产物中不再具备执行能力。

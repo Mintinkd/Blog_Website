@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import { fileURLToPath } from 'node:url';
 import vue from '@astrojs/vue';
 import sitemap from '@astrojs/sitemap';
 import cloudflare from '@astrojs/cloudflare';
@@ -45,6 +46,17 @@ export default defineConfig({
       filter: (page) => !page.includes('/admin/'),
       customPages: articleUrls,
     }),
+    {
+      // P1-5 / issue #10：构建完成后把 script-src 的 'unsafe-inline' 替换为
+      // dist 内联脚本 sha256 列表（产物层面收紧，源码保留开发态基线）
+      name: 'patch-csp-hashes',
+      hooks: {
+        'astro:build:done': async ({ dir }) => {
+          const { patchCsp } = await import('./scripts/patch-csp.mjs');
+          patchCsp(fileURLToPath(dir));
+        },
+      },
+    },
   ],
   build: {
     assets: '_assets',
