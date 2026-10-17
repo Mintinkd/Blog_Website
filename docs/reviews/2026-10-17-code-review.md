@@ -108,14 +108,14 @@ README:192-199 写编辑锁路径 `/articles/:id/lock`，前端与 Worker 实际
 
 ### 后端部分（worker/**、配置、CI）
 
-> 总体评估：代码整体基本功较好——D1 查询几乎全部参数化、JWT 用 WebCrypto HMAC 手写实现（无算法混淆面）、CORS/安全头在 fae355d 后已收敛、上传与代理均有白名单。主要短板集中在三处：**默认凭据与口令学（SHA-256 无盐、changeme、无锁定）**、**editor 授权矩阵不完整（评论/媒体缺失所有权校验）**、**列表接口 status 默认值失效导致草稿元数据匿名泄露**；代理的 SSRF 校验存在重定向绕过与"先下载后限大小"。无 RCE/命令注入路径。
+> 总体评估：代码整体基本功较好——D1 查询几乎全部参数化、JWT 用 WebCrypto HMAC 手写实现（无算法混淆面）、CORS/安全头在 fae355d 后已收敛、上传与代理均有白名单。主要短板集中在三处：**默认凭据与口令学（SHA-256 无盐、默认口令 password、无锁定）**、**editor 授权矩阵不完整（评论/媒体缺失所有权校验）**、**列表接口 status 默认值失效导致草稿元数据匿名泄露**；代理的 SSRF 校验存在重定向绕过与"先下载后限大小"。无 RCE/命令注入路径。
 
 #### Critical
 
-**C1【已确认】默认管理员口令 changeme + 无慢哈希 + 无强制改密/锁定**【已复核 schema.sql:188】
+**C1【已确认】默认管理员口令（实测为 password；schema 注释误标 changeme）+ 无慢哈希 + 无强制改密/锁定**【已复核 schema.sql:188】
 - 位置：`worker/schema.sql:188`、`worker/src/handlers/auth_handler.ts:13-18,33`
-- 证据：`INSERT ... ('admin','5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',...)`（即 SHA-256("changeme")）；`return crypto.subtle.digest('SHA-256', data)`（无盐单轮）。
-- 可利用性：公网先试 changeme 即可拿 admin；即改密，任何一次 DB/导出泄露（`/admin/export` 含哈希）都可离线秒破；登录限流 120/min/IP、无锁定、无验证码。
+- 证据：`INSERT ... ('admin','5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',...)`（本地实测：该哈希 = SHA-256("password")，schema 注释误标 changeme）；`return crypto.subtle.digest('SHA-256', data)`（无盐单轮）。
+- 可利用性：公网先试 password 即可拿 admin；即改密，任何一次 DB/导出泄露（`/admin/export` 含哈希）都可离线秒破；登录限流 120/min/IP、无锁定、无验证码。
 - 修复：首登强制改密；改 bcrypt/argon2 或至少 PBKDF2+随机盐；失败锁定。
 
 #### High
@@ -294,7 +294,7 @@ f.src = embedUrl;  // https://player.bilibili.com/... 或 youtube.com/embed/...
 
 ### 安全轴小结
 
-后端 18 项发现（Critical 1 / High 3 / Medium 5 / Low 5 / Info 4），前端 9 项（High 1 / Medium 3 / Low 5）。最严重为两条可直达后台接管的路径：**默认凭据链**（changeme + SHA-256 无盐 + 无锁定，C1）与 **`/tags` 页存储型 XSS**（低权 editor 即可窃取同源 `admin_token`，H1）；其次 editor 越权（评论/媒体 BOLA，H2）与代理 SSRF 绕过（H3）。
+后端 18 项发现（Critical 1 / High 3 / Medium 5 / Low 5 / Info 4），前端 9 项（High 1 / Medium 3 / Low 5）。最严重为两条可直达后台接管的路径：**默认凭据链**（默认口令 password + SHA-256 无盐 + 无锁定，C1）与 **`/tags` 页存储型 XSS**（低权 editor 即可窃取同源 `admin_token`，H1）；其次 editor 越权（评论/媒体 BOLA，H2）与代理 SSRF 绕过（H3）。
 
 ---
 

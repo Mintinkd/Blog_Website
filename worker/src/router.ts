@@ -84,7 +84,7 @@ addRoute('POST', '/users', async (req, env) => handleCreateUser(req, env), true,
 addRoute('PUT', '/users/:id', async (req, env, _ctx, params) => handleUpdateUser(req, env, params), true, true);
 addRoute('DELETE', '/users/:id', async (req, env, _ctx, params) => handleDeleteUser(req, env, params), true, true);
 
-addRoute('GET', '/articles', async (req, env, _ctx, params) => handleListArticles(req, env, params));
+addRoute('GET', '/articles', async (req, env, _ctx, params, auth) => handleListArticles(req, env, params, auth));
 addRoute('GET', '/articles/:slug', async (req, env, _ctx, params, auth) => handleGetArticle(req, env, params, auth));
 addRoute('POST', '/articles', async (req, env, _ctx, params, auth) => handleCreateArticle(req, env, params, auth), true);
 addRoute('PUT', '/articles/:id', async (req, env, _ctx, params, auth) => handleUpdateArticle(req, env, params, auth), true);

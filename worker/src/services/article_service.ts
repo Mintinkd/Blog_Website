@@ -23,7 +23,7 @@ interface ListArticlesOptions {
   page_size: number;
   category_slug?: string;
   tag_slug?: string;
-  status?: string;
+  status?: 'published' | 'draft' | 'all';
   auth_result?: AuthResult;
   author_id?: number;
 }
@@ -40,9 +40,13 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
   let whereClause = '';
   const params: unknown[] = [];
 
-  if (status && status !== 'all') {
+  // 审查报告 H1 修复：published 为默认过滤（不再被空串绕过）；draft/all 由 handler 保证已登录
+  if (status === 'draft') {
     whereClause = 'WHERE a.status = ?';
-    params.push(status);
+    params.push('draft');
+  } else if (status !== 'all') {
+    whereClause = 'WHERE a.status = ?';
+    params.push('published');
   }
 
   if (category_slug) {
@@ -55,11 +59,14 @@ export async function listArticles(env: Env, options: ListArticlesOptions): Prom
     params.push(tag_slug);
   }
 
-  if (auth_result && auth_result.role === 'editor') {
+  // editor：非公开视图（draft/all）仅可见自己的文章；无法解析用户时 fail-closed
+  if (auth_result && auth_result.role === 'editor' && status !== 'published') {
     const userId = await getUserIdByUsername(env, auth_result.username);
     if (userId) {
       whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';
       params.push(userId);
+    } else {
+      whereClause += whereClause ? ' AND 1 = 0' : 'WHERE 1 = 0';
     }
   } else if (author_id) {
     whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';

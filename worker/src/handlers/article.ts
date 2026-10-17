@@ -1,5 +1,5 @@
 import { Env } from '../index';
-import { successResponse, paginatedResponse, notFound, error, forbidden, ErrorCodes } from '../utils/response';
+import { successResponse, paginatedResponse, notFound, error, forbidden, unauthorized, ErrorCodes } from '../utils/response';
 import { validate, isValidSlug } from '../utils/validator';
 import { sanitizeHtml } from '../utils/sanitizer';
 import { generateSlug } from '../services/article_service';
@@ -20,9 +20,18 @@ export async function handleListArticles(request: Request, env: Env, params: Rec
   }
   const category_slug = url.searchParams.get('category_slug') || '';
   const tag_slug = url.searchParams.get('tag_slug') || '';
-  const status = url.searchParams.get('status') || '';
   const author_id_param = url.searchParams.get('author_id');
   const author_id = author_id_param ? Number(author_id_param) : undefined;
+
+  // 审查报告 H1 修复：status 枚举校验 + 非 published 一律要求登录（匿名只可见已发布）
+  const statusParam = url.searchParams.get('status');
+  if (statusParam !== null && !['published', 'draft', 'all'].includes(statusParam)) {
+    return error(ErrorCodes.VALIDATION_FAILED, '无效的 status 参数（仅支持 published / draft / all）');
+  }
+  const status = (statusParam ?? 'published') as 'published' | 'draft' | 'all';
+  if (status !== 'published' && !authResult) {
+    return unauthorized('查看非已发布文章需要登录');
+  }
 
   const { listArticles } = await import('../services/article_service');
   const result = await listArticles(env, { page, page_size, category_slug, tag_slug, status, auth_result: authResult, author_id });
