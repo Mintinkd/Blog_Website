@@ -8,7 +8,56 @@ const ALLOWED_MIME_TYPES = [
   'application/pdf',
 ];
 
+/** P1-8 / issue #13：扩展名白名单（与 MIME 一一对应，上传时双向校验） */
+const ALLOWED_EXTENSIONS: Record<string, string[]> = {
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/png': ['png'],
+  'image/gif': ['gif'],
+  'image/webp': ['webp'],
+  'image/svg+xml': ['svg'],
+  'application/pdf': ['pdf'],
+};
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+/** 读取字节区间为 ASCII 字符串（用于魔数比较） */
+function ascii(bytes: Uint8Array, start: number, end: number): string {
+  let s = '';
+  for (let i = start; i < end && i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+
+/**
+ * P1-8 / issue #13：魔数嗅探 —— 不再信任客户端自报 MIME。
+ * 返回白名单内的实际类型；无法识别时返回 null（调用方一律拒绝）。
+ */
+function sniffMime(bytes: Uint8Array): string | null {
+  const b = bytes;
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 6 && (ascii(b, 0, 6) === 'GIF87a' || ascii(b, 0, 6) === 'GIF89a')) return 'image/gif';
+  if (b.length >= 12 && ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 12) === 'WEBP') return 'image/webp';
+  if (b.length >= 5 && ascii(b, 0, 5) === '%PDF-') return 'application/pdf';
+  // SVG 为文本格式：容许 BOM/前导空白，须以 <svg / <?xml（随后出现 <svg）/ <!doctype svg 开头
+  const head = new TextDecoder('utf-8')
+    .decode(b.slice(0, 1024))
+    .replace(/^\uFEFF/, '')
+    .trimStart()
+    .toLowerCase();
+  if (head.startsWith('<svg')) return 'image/svg+xml';
+  if (head.startsWith('<?xml') && head.indexOf('<svg') >= 0 && head.indexOf('<svg') < 512) return 'image/svg+xml';
+  if (head.startsWith('<!doctype svg')) return 'image/svg+xml';
+  return null;
+}
+
+/** Content-Disposition 文件名安全化（防响应头注入；非 ASCII 走 RFC 5987 filename*） */
+function contentDisposition(filename: string): string {
+  const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\\/\r\n]/g, '_').slice(0, 100) || 'file';
+  const encoded = encodeURIComponent(filename)
+    .replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+    .slice(0, 300);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
 
 export async function handleUploadMedia(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
   const formData = await request.formData();
@@ -26,14 +75,25 @@ export async function handleUploadMedia(request: Request, env: Env, ctx: Executi
     return error(ErrorCodes.VALIDATION_FAILED, `File type ${file.type} is not allowed`);
   }
 
+  // P1-8 / issue #13：扩展名白名单 + 魔数校验（客户端自报 MIME 不可信）
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const allowedExts = ALLOWED_EXTENSIONS[file.type] || [];
+  if (!allowedExts.includes(ext)) {
+    return error(ErrorCodes.VALIDATION_FAILED, `文件扩展名 .${ext || '(无)'} 与类型 ${file.type} 不匹配（允许：${allowedExts.join('/') || '无'}）`);
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const sniffed = sniffMime(new Uint8Array(arrayBuffer));
+  if (sniffed !== file.type) {
+    return error(ErrorCodes.VALIDATION_FAILED, `文件内容与声明类型不符（声明 ${file.type}，内容识别为 ${sniffed || '未知'}），已拒绝`);
+  }
+
   const now = new Date();
   const year = now.getFullYear().toString();
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const ext = file.name.split('.').pop() || 'bin';
   const uuid = crypto.randomUUID();
   const kv_key = `media/${year}/${month}/${uuid}.${ext}`;
 
-  const arrayBuffer = await file.arrayBuffer();
   await env.MEDIA.put(kv_key, arrayBuffer, {
     metadata: { original_name: file.name, mime_type: file.type },
   });
@@ -127,9 +187,17 @@ export async function handleServeMedia(request: Request, env: Env, params: Recor
   const metadata = await env.MEDIA.getWithMetadata(key);
   const meta = metadata.metadata as { mime_type?: string; original_name?: string } | null;
 
-  const mimeType = meta?.mime_type || guessMimeType(key);
+  // P1-8 / issue #13：防止「直接打开媒体链接」获得同源脚本执行能力 ——
+  // 白名单外类型降级为二进制流，一律 attachment 下载；<img> 等子资源请求
+  // 按浏览器规则会忽略 Content-Disposition，站内内嵌引用不受影响。
+  const rawMime = meta?.mime_type || guessMimeType(key);
+  const mimeType = ALLOWED_MIME_TYPES.includes(rawMime) ? rawMime : 'application/octet-stream';
+  const filename = meta?.original_name || key.split('/').pop() || 'file';
+
   const headers = new Headers({
     'Content-Type': mimeType,
+    'Content-Disposition': contentDisposition(filename),
+    'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'public, max-age=31536000, immutable',
   });
 
