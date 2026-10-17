@@ -151,7 +151,7 @@ D1 (SQLite) 共 9 张表：
 |------|------|------|
 | GET | `/health` | 健康检查 |
 | POST | `/auth/login` | 登录（返回JWT token和用户信息） |
-| GET | `/articles` | 文章列表（支持分页、分类、标签过滤、status=all） |
+| GET | `/articles` | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录） |
 | GET | `/articles/:slug` | 文章详情 |
 | GET | `/categories` | 分类列表 |
 | GET | `/tags` | 标签列表 |
