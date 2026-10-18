@@ -188,10 +188,15 @@ export async function handleServeMedia(request: Request, env: Env, params: Recor
   const meta = metadata.metadata as { mime_type?: string; original_name?: string } | null;
 
   // P1-8 / issue #13：防止「直接打开媒体链接」获得同源脚本执行能力 ——
-  // 白名单外类型降级为二进制流，一律 attachment 下载；<img> 等子资源请求
-  // 按浏览器规则会忽略 Content-Disposition，站内内嵌引用不受影响。
+  // 判定结果非白名单时不给可渲染类型；<img> 等子资源请求按浏览器规则会
+  // 忽略 Content-Disposition，站内内嵌引用不受影响。
+  // issue #20：存量资产回退 —— 白名单判定落空（元数据缺失 / 历史非白名单类型）时，
+  // 对已取回的字节按上传侧同一套魔数嗅探规则识别；命中白名单则以其真实 MIME 返回
+  // （处置策略不变：attachment + nosniff），仍无法识别则维持 octet-stream 强制下载。
   const rawMime = meta?.mime_type || guessMimeType(key);
-  const mimeType = ALLOWED_MIME_TYPES.includes(rawMime) ? rawMime : 'application/octet-stream';
+  // 白名单命中路径不嗅探，行为与开销不变。
+  const mimeType = ALLOWED_MIME_TYPES.includes(rawMime) ? rawMime
+    : sniffMime(new Uint8Array(value)) || 'application/octet-stream';
   const filename = meta?.original_name || key.split('/').pop() || 'file';
 
   const headers = new Headers({
