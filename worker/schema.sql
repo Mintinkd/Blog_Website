@@ -185,6 +185,9 @@ CREATE TABLE IF NOT EXISTS users (
 -- the login API will auto-migrate them to this users table on first login.
 -- If starting fresh, default password is: password (the hash below is SHA-256("password"); first login forces a change)
 -- IMPORTANT: Change password after first login!
+-- 单一来源：TS 侧为 worker/src/utils/seed.ts（DEFAULT_SEED_PASSWORD /
+-- INITIAL_ADMIN_PASSWORD_HASH）。SQL 文件无法 import TS，下方字面量属已接受的重复
+-- —— 改种子口令时 TS 与本文件必须同步修改（契约面同步规则，见 CODING_STANDARDS.md）。
 INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', '管理员', 'admin');
 
 -- Migration: Add author_id to articles
@@ -204,5 +207,6 @@ ALTER TABLE tags ADD COLUMN created_by INTEGER REFERENCES users(id);
 ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN locked_until TEXT;
--- 存量部署：仍在使用种子口令（SHA-256("password")）的账号标记为须改密
+-- 存量部署：仍在使用种子口令（SHA-256("password")，TS 单一来源同 worker/src/utils/seed.ts）
+-- 的账号标记为须改密；字面量为已接受的 TS 拷贝，改种子口令时与本文件的种子 INSERT、seed.ts 三处同改。
 UPDATE users SET must_change_password = 1 WHERE password_hash = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
