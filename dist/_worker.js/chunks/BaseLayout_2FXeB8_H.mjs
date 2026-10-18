@@ -71,6 +71,58 @@ const $$ScrollProgress = createComponent(($$result, $$props, $$slots) => {
   return renderTemplate`${maybeRenderHead()}<div class="scroll-progress" role="progressbar" aria-label="阅读进度" aria-hidden="true"></div>`;
 }, "C:/Users/Lenovo/IDEProjects/Website/src/components/common/ScrollProgress.astro", void 0);
 
+const PATTERNS = {
+  hexColor: new RegExp("^#[0-9a-fA-F]{3,8}$"),
+  size: new RegExp("^\\d{1,4}(px|rem|em|%)$"),
+  /** 站内相对路径（媒体库/静态资源） */
+  localPath: new RegExp("^\\/[A-Za-z0-9\\-._~/%]+$"),
+  /** 仅 https 外链；字符集排除引号/尖括号/反斜杠/圆括号，杜绝 CSS 字符串逃逸与标签闭合 */
+  httpsUrl: new RegExp("^https:\\/\\/[A-Za-z0-9\\-._~:/?#@!$&*+,;=%]+$")
+};
+const SETTINGS_RULES = {
+  "theme.light.accent": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.accentHover": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.bgPrimary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.bgSecondary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.bgTertiary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.textPrimary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.textSecondary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.textTertiary": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.border": { kind: "string", patterns: ["hexColor"] },
+  "theme.light.borderLight": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.accent": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.accentHover": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.bgPrimary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.bgSecondary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.bgTertiary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.textPrimary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.textSecondary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.textTertiary": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.border": { kind: "string", patterns: ["hexColor"] },
+  "theme.dark.borderLight": { kind: "string", patterns: ["hexColor"] },
+  "layout.contentMaxWidth": { kind: "string", patterns: ["size"] },
+  "layout.headerHeight": { kind: "string", patterns: ["size"] },
+  "layout.radiusSm": { kind: "string", patterns: ["size"] },
+  "layout.radiusMd": { kind: "string", patterns: ["size"] },
+  "layout.radiusLg": { kind: "string", patterns: ["size"] },
+  "background.bgImage": { kind: "string", patterns: ["localPath", "httpsUrl"] },
+  "background.bgOpacity": { kind: "number", min: 0, max: 1 },
+  "background.bgBlur": { kind: "number", min: 0, max: 30 },
+  "background.bgBrightness": { kind: "number", min: 0.7, max: 1.3 },
+  "features.comments": { kind: "bool" },
+  "features.likes": { kind: "bool" },
+  "features.friendLinks": { kind: "bool" },
+  "features.search": { kind: "bool" },
+  "features.rss": { kind: "bool" },
+  "features.darkMode": { kind: "bool" },
+  "features.i18n": { kind: "bool" },
+  "motion.intensity": { kind: "enum", values: ["normal", "reduced", "off"] },
+  "motion.parallax": { kind: "bool" },
+  "motion.parallaxSpeed": { kind: "number", min: 0, max: 0.1 },
+  "copy.zh": { kind: "copy", cap: 2e3 },
+  "copy.en": { kind: "copy", cap: 2e3 }
+};
+
 function getDefaultSettings() {
   return {
     theme: {
@@ -129,82 +181,58 @@ function getDefaultSettings() {
     }
   };
 }
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
-const SIZE_RE = /^\d{1,4}(px|rem|em|%)$/;
-const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
-const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
-function pickStr(v, re, fallback) {
-  return typeof v === "string" && re.test(v) ? v : fallback;
+function isPlainObject(v) {
+  return !!v && typeof v === "object" && !Array.isArray(v);
 }
-function pickNum(v, min, max, fallback) {
-  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
+function readValue(src, path) {
+  let cur = src;
+  for (const key of path.split(".")) {
+    cur = isPlainObject(cur) ? cur[key] : void 0;
+  }
+  return cur;
 }
-function pickBool(v, fallback) {
-  return typeof v === "boolean" ? v : fallback;
+function writeLeaf(out, path, value) {
+  let cur = out;
+  const segs = path.split(".");
+  for (const key of segs.slice(0, segs.length - 1)) {
+    cur = cur[key];
+  }
+  cur[segs[segs.length - 1]] = value;
 }
-function pickCopy(src) {
+function pickCopy(src, cap) {
   const out = {};
-  if (src && typeof src === "object" && !Array.isArray(src)) {
+  if (isPlainObject(src)) {
     for (const [k, v] of Object.entries(src)) {
-      if (typeof v === "string" && v.length <= 2e3) out[k] = v;
+      if (typeof v === "string" && v.length <= cap) out[k] = v;
     }
   }
   return out;
 }
+function applyLeaf(rule, v, fallback) {
+  switch (rule.kind) {
+    case "string":
+      return typeof v === "string" && rule.patterns.some((name) => PATTERNS[name].test(v)) ? v : fallback;
+    case "number":
+      return typeof v === "number" && Number.isFinite(v) && v >= rule.min && v <= rule.max ? v : fallback;
+    case "enum":
+      return typeof v === "string" && rule.values.includes(v) ? v : fallback;
+    case "bool":
+      return typeof v === "boolean" ? v : fallback;
+    case "copy":
+      return pickCopy(v, rule.cap);
+  }
+}
 function sanitizeSettings(input) {
-  const d = getDefaultSettings();
-  const s = input && typeof input === "object" && !Array.isArray(input) ? input : {};
-  const theme = { light: { ...d.theme.light }, dark: { ...d.theme.dark } };
-  for (const mode of ["light", "dark"]) {
-    const src = s.theme && typeof s.theme === "object" && !Array.isArray(s.theme) ? s.theme[mode] : void 0;
-    if (src && typeof src === "object" && !Array.isArray(src)) {
-      for (const k of Object.keys(d.theme[mode])) {
-        theme[mode][k] = pickStr(src[k], HEX_COLOR_RE, d.theme[mode][k]);
-      }
-    }
+  const out = getDefaultSettings();
+  const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  for (const [path, rule] of Object.entries(SETTINGS_RULES)) {
+    writeLeaf(
+      out,
+      path,
+      applyLeaf(rule, readValue(src, path), readValue(out, path))
+    );
   }
-  const ly = s.layout && typeof s.layout === "object" && !Array.isArray(s.layout) ? s.layout : {};
-  const layout = {
-    contentMaxWidth: pickStr(
-      ly.contentMaxWidth,
-      SIZE_RE,
-      d.layout.contentMaxWidth
-    ),
-    headerHeight: pickStr(ly.headerHeight, SIZE_RE, d.layout.headerHeight),
-    radiusSm: pickStr(ly.radiusSm, SIZE_RE, d.layout.radiusSm),
-    radiusMd: pickStr(ly.radiusMd, SIZE_RE, d.layout.radiusMd),
-    radiusLg: pickStr(ly.radiusLg, SIZE_RE, d.layout.radiusLg)
-  };
-  const bgs = s.background && typeof s.background === "object" && !Array.isArray(s.background) ? s.background : {};
-  const bgImage = typeof bgs.bgImage === "string" && (LOCAL_PATH_RE.test(bgs.bgImage) || HTTPS_URL_RE.test(bgs.bgImage)) ? bgs.bgImage : d.background.bgImage;
-  const background = {
-    bgImage,
-    bgOpacity: pickNum(bgs.bgOpacity, 0, 1, d.background.bgOpacity),
-    bgBlur: pickNum(bgs.bgBlur, 0, 30, d.background.bgBlur),
-    bgBrightness: pickNum(
-      bgs.bgBrightness,
-      0.7,
-      1.3,
-      d.background.bgBrightness
-    )
-  };
-  const fsrc = s.features && typeof s.features === "object" && !Array.isArray(s.features) ? s.features : {};
-  const features = { ...d.features };
-  for (const k of Object.keys(
-    d.features
-  )) {
-    features[k] = pickBool(fsrc[k], d.features[k]);
-  }
-  const msrc = s.motion && typeof s.motion === "object" && !Array.isArray(s.motion) ? s.motion : {};
-  const intensity = msrc.intensity;
-  const motion = {
-    intensity: intensity === "normal" || intensity === "reduced" || intensity === "off" ? intensity : d.motion.intensity,
-    parallax: pickBool(msrc.parallax, d.motion.parallax),
-    parallaxSpeed: pickNum(msrc.parallaxSpeed, 0, 0.1, d.motion.parallaxSpeed)
-  };
-  const copySrc = s.copy && typeof s.copy === "object" && !Array.isArray(s.copy) ? s.copy : {};
-  const copy = { zh: pickCopy(copySrc.zh), en: pickCopy(copySrc.en) };
-  return { theme, layout, background, features, copy, motion };
+  return out;
 }
 function kebab(k) {
   return k.replace(/([A-Z])/g, (m) => "-" + m.toLowerCase());
@@ -216,9 +244,22 @@ function hexToRgb(hex) {
   const n = parseInt((h + "000000").slice(0, 6), 16);
   return [n >> 16 & 255, n >> 8 & 255, n & 255];
 }
+function numericRangeAt(path) {
+  const rule = SETTINGS_RULES[path];
+  if (rule.kind !== "number") {
+    throw new Error("参照的规则不是 number 形状：" + path);
+  }
+  return { min: rule.min, max: rule.max };
+}
+const BG_OPACITY_RANGE = numericRangeAt("background.bgOpacity");
+const BG_BLUR_RANGE = numericRangeAt("background.bgBlur");
+const BG_BRIGHTNESS_RANGE = numericRangeAt("background.bgBrightness");
 function buildOverlay(bg, opacity) {
   const [r, g, b] = hexToRgb(bg);
-  const o = Math.max(0, Math.min(1, Number(opacity) || 0));
+  const o = Math.max(
+    BG_OPACITY_RANGE.min,
+    Math.min(BG_OPACITY_RANGE.max, Number(opacity) || 0)
+  );
   const mask = Math.max(0, Math.min(1, (1 - o) * 0.55));
   const a1 = Math.max(0, mask - 0.05);
   const a2 = Math.min(1, mask + 0.05);
@@ -238,10 +279,10 @@ function cssFrom(s) {
   lines.push(`  --radius-lg: ${ly.radiusLg} !important;`);
   lines.push(`  --bg-image: url("${bg.bgImage}") !important;`);
   lines.push(
-    `  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`
+    `  --bg-blur: ${Math.max(BG_BLUR_RANGE.min, Math.min(BG_BLUR_RANGE.max, Number(bg.bgBlur) || 0))}px !important;`
   );
   lines.push(
-    `  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`
+    `  --bg-brightness: ${Math.max(BG_BRIGHTNESS_RANGE.min, Math.min(BG_BRIGHTNESS_RANGE.max, Number(bg.bgBrightness) || 1))} !important;`
   );
   lines.push("}");
   lines.push('[data-theme="light"] {');
