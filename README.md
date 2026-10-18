@@ -84,6 +84,7 @@
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
 │   ├── schema.sql               # 数据库Schema
+│   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核等）
 │   └── src/
 │       ├── index.ts             # Worker入口
 │       ├── router.ts            # 路由注册与分发
@@ -169,7 +170,7 @@ D1 (SQLite) 共 9 张表：
 | GET | `/friend-links` | 友情链接 |
 | GET | `/config` | 公开站点配置 |
 | GET | `/settings` | 公开可视化配置（前台运行时套用） |
-| GET | `/img-proxy?url=` | 外链图片代理（前端 img 直连失败自动降级；SSRF/域名/限流校验，KV TTL 24h 缓存） |
+| GET | `/img-proxy?url=` | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存） |
 | GET | `/text-proxy?url=` | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；text/json/xml 白名单 + CORS 头） |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
@@ -295,7 +296,7 @@ D1 (SQLite) 共 9 张表：
 
 - **图片通道** `/api/v1/img-proxy?url=`：前端全局监听 `<img>` 加载失败（`document` 捕获阶段 error 事件）→ 自动把 `src` 切换为代理地址；代理成功显示原图，代理也失败则隐藏占位（不显示破图）。仅本站之外的图片触发，同源图片不代理。
 - **文字通道** `/api/v1/text-proxy?url=`：前端提供全局 `window.fetchWithProxy(url, opts)`——直连成功原样返回；失败（网络 / CORS / 非 2xx）自动改请求代理地址。返回标准 `Response`，调用方仅作文本 / JSON 解析。悬浮一言组件已接入。
-- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、仅白名单 MIME（图片通道 image/*，文字通道 text/* + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**保持严格 TLS 证书校验**，不做全局绕过。
+- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、**域名解析后 IP 复核**（DoH A/AAAA，任一结果落入受限段即拒绝；解析失败 / 超时 / 无记录 fail-closed 拒绝；每一跳重定向均复核）、仅白名单 MIME（图片通道 image/*，文字通道 text/* + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**保持严格 TLS 证书校验**，不做全局绕过。
 - **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
 - **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
 - 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`、前端逻辑在 `src/components/layout/BaseLayout.astro`。
@@ -363,6 +364,8 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行。
+
 ### 初始化数据库
 
 ```bash
@@ -408,7 +411,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 安装依赖 → 构建Astro站点
+1. 安装依赖 → Worker 类型检查与测试 → 构建Astro站点
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 

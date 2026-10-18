@@ -11,6 +11,8 @@ import { Env } from '../index';
  *    - 统一 validateTargetUrl 校验：拒绝内网/保留地址（IPv4 私有段、IPv6 回环/
  *      未指定/唯一本地/链路本地、IPv4-mapped 与 IPv4-compatible 的十六进制形式、
  *      localhost、内部域名、workers.dev 递归代理等）；
+ *    - 解析后 IP 复核（issue #19）：域名经 DoH（A/AAAA）解析，任一结果落入受限段即拒绝；
+ *      解析失败/超时/无记录 fail-closed 拒绝；每一跳重定向同样复核（TOCTOU 说明见函数注释）；
  *    - 重定向不自动跟随（redirect: 'manual'），每一跳都复用同一校验，超跳数报错；
  *    - 请求头净化：去掉 Referer/Cookie，防被当作中间人带出敏感上下文；
  *    - 仅允许图片 Content-Type，响应体流式读取、超 10MB 即取消上游（不整块入内存）；
@@ -159,11 +161,73 @@ export function validateTargetUrl(raw: string): UrlValidation {
 export type ProxyFetchResult =
   | { kind: 'ok'; response: Response }
   | { kind: 'blocked' }
+  | { kind: 'resolution_failed' }
   | { kind: 'too_many_redirects' }
   | { kind: 'fetch_failed' };
 
+// issue #19：解析后 IP 复核所用的 DoH（DNS over HTTPS）JSON 端点与单查询超时
+const DOH_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+const DOH_TIMEOUT_MS = 3_000;
+
+/** 主机是否为 IP 字面量（IPv4 点分 / IPv6 含冒号，URL 中带方括号） */
+function isIpLiteralHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, '');
+  return /^[0-9.]+$/.test(h) || h.includes(':');
+}
+
+/** DoH 查询单个记录类型；成功且 Status=0 返回记录数据，其余情况返回 null */
+async function queryDoh(host: string, type: 'A' | 'AAAA', signal: AbortSignal): Promise<string[] | null> {
+  try {
+    const res = await fetch(`${DOH_ENDPOINT}?name=${encodeURIComponent(host)}&type=${type}`, {
+      headers: { accept: 'application/dns-json' },
+      signal,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { Status?: number; Answer?: { type?: number; data?: string }[] };
+    if (data.Status !== 0) return null;
+    const wantType = type === 'A' ? 1 : 28;
+    return (data.Answer || [])
+      .filter((r) => r.type === wantType && typeof r.data === 'string')
+      .map((r) => r.data as string);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * issue #19：解析后 IP 复核。对需要 DNS 解析的主机做 DoH A/AAAA 查询，
+ * 任一结果落入受限段（复用 isBlockedIp 语义）即拒绝；IP 字面量无需解析。
+ *
+ * 注：DoH 结果与 fetch 建连时的实际解析之间存在 TOCTOU 窗口（DNS 可变更/轮换）。
+ * 本复核只保证「校验时」解析结果安全；Workers 运行时无法把 fetch 绑定到已校验 IP，
+ * 连接级绑定为 #19 明确的范围外事项。
+ */
+async function resolveAndCheckTarget(host: string, signal?: AbortSignal | null): Promise<'ok' | 'blocked' | 'failed'> {
+  if (isIpLiteralHost(host)) return isBlockedIp(host) ? 'blocked' : 'ok';
+
+  const dnsSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(DOH_TIMEOUT_MS)])
+    : AbortSignal.timeout(DOH_TIMEOUT_MS);
+  const [a, aaaa] = await Promise.all([
+    queryDoh(host, 'A', dnsSignal),
+    queryDoh(host, 'AAAA', dnsSignal),
+  ]);
+
+  // 任一查询失败/超时，或解析结果为空：fail-closed，明确拒绝而非放行
+  if (a === null || aaaa === null) return 'failed';
+  const ips = [...a, ...aaaa];
+  if (ips.length === 0) return 'failed';
+
+  for (const ip of ips) {
+    if (isBlockedIp(ip)) return 'blocked';
+  }
+  return 'ok';
+}
+
 /**
  * issue #14：redirect: 'manual' 手动逐跳跟随；每一跳都复用 validateTargetUrl。
+ * issue #19：每一跳（含首跳）拉取前先做解析后 IP 复核——命中受限段返回 kind: 'blocked'，
+ * 解析失败/超时返回 kind: 'resolution_failed'。
  * 重定向目标落入黑名单/校验不通过时立即停止（kind: 'blocked'），不发起后续请求；
  * 跳数超过 MAX_REDIRECTS 返回 kind: 'too_many_redirects'。
  */
@@ -171,6 +235,11 @@ export async function fetchWithValidatedRedirects(initial: URL, init: RequestIni
   let current = initial;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    // issue #19：每次拉取前对主机做解析后 IP 复核（含首跳与每一跳重定向）
+    const resolution = await resolveAndCheckTarget(current.hostname, init.signal);
+    if (resolution === 'blocked') return { kind: 'blocked' };
+    if (resolution === 'failed') return { kind: 'resolution_failed' };
+
     let res: Response;
     try {
       res = await fetch(current.toString(), { ...init, redirect: 'manual' });
@@ -290,6 +359,9 @@ export async function handleImgProxy(request: Request, env: Env, ctx: ExecutionC
 
     if (fetched.kind === 'blocked') {
       return Response.json({ code: 403, message: '重定向目标被禁止代理', data: null }, { status: 403 });
+    }
+    if (fetched.kind === 'resolution_failed') {
+      return Response.json({ code: 502, message: '目标域名解析失败，已拒绝代理', data: null }, { status: 502 });
     }
     if (fetched.kind === 'too_many_redirects') {
       return Response.json({ code: 502, message: `重定向次数超过 ${MAX_REDIRECTS} 次`, data: null }, { status: 502 });

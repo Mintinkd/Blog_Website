@@ -19,10 +19,11 @@ import {
  * 与 img-proxy 同构，面向 fetch 拉取的文字型内容：
  * 1. 触发方式：前端 fetch 外部 URL 直连失败（网络/CORS/非 2xx）时，
  *    自动改请求本站 /api/v1/text-proxy?url=<原地址>，由本 handler 兜底拉取。
- * 2. 安全性（P1-8 / issue #14 加固）：与 img-proxy 共用同一套实现 ——
+ * 2. 安全性（P1-8 / issue #14、#19 加固）：与 img-proxy 共用同一套实现 ——
  *    http/https 与长度校验、内网/保留 IP（含 IPv4-mapped 形式）与内部域名拦截、
- *    manual 重定向逐跳复核、请求头净化、每 IP 限流、流式读取超限即中止、
- *    总超时覆盖全程。MIME 白名单只放行文字类（text/*、json、xml），不放行图片/二进制。
+ *    解析后 IP 复核（DoH A/AAAA，失败/超时 fail-closed）、manual 重定向逐跳复核、
+ *    请求头净化、每 IP 限流、流式读取超限即中止、总超时覆盖全程。
+ *    MIME 白名单只放行文字类（text/*、json、xml），不放行图片/二进制。
  * 3. 缓存自动过期删除：KV TTL 24h 到期自动清理。
  * 4. CORS：响应带 Access-Control-Allow-Origin: *，前端 fetch 可直接读取；
  *    同时处理 OPTIONS 预检。
@@ -104,6 +105,9 @@ export async function handleTextProxy(request: Request, env: Env, ctx: Execution
 
     if (fetched.kind === 'blocked') {
       return corsify(Response.json({ code: 403, message: '重定向目标被禁止代理', data: null }, { status: 403 }));
+    }
+    if (fetched.kind === 'resolution_failed') {
+      return corsify(Response.json({ code: 502, message: '目标域名解析失败，已拒绝代理', data: null }, { status: 502 }));
     }
     if (fetched.kind === 'too_many_redirects') {
       return corsify(Response.json({ code: 502, message: `重定向次数超过 ${MAX_REDIRECTS} 次`, data: null }, { status: 502 }));
