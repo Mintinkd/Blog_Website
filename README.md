@@ -78,6 +78,8 @@
 │       ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │       ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+├── scripts/
+│   └── patch-csp.mjs           # 构建后 CSP 收紧（astro:build:done 自动调用，注入内联脚本 sha256）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
@@ -119,7 +121,9 @@
 └── docs/                         # 设计与功能文档
     ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
-    └── SITE_SETTINGS.md         # 可视化配置中心说明
+    ├── SITE_SETTINGS.md         # 可视化配置中心说明
+    └── security/
+        └── csp-evaluation.md    # CSP 收紧评估（script-src 内联哈希 / style-src 取舍）
 ```
 
 ## 数据库设计
@@ -128,7 +132,7 @@ D1 (SQLite) 共 9 张表：
 
 | 表名 | 说明 |
 |------|------|
-| `users` | 用户账户（管理员/编辑者，SHA-256密码哈希，角色权限） |
+| `users` | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限） |
 | `categories` | 文章分类（含 created_by 所有权） |
 | `tags` | 标签（含 created_by 所有权） |
 | `articles` | 文章（含Markdown原文和HTML渲染结果，author_id作者，category_id默认1） |
@@ -174,8 +178,8 @@ D1 (SQLite) 共 9 张表：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/auth/refresh` | 刷新Token |
-| POST | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下为唯一可用的写接口） |
+| POST | `/auth/refresh` | 刷新Token（须改密状态下仍可调用，用于令牌续期） |
+| POST | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
 | POST | `/articles` | 创建文章（自动设置author_id） |
 | PUT | `/articles/:id` | 更新文章（editor仅自己的） |
 | DELETE | `/articles/:id` | 删除文章（editor仅自己的） |
@@ -372,7 +376,7 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 ### 首次设置
 
-数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，初始口令为 schema.sql 中的种子值）；首次登录响应会返回 `must_change_password: true` 并强制要求改密，未完成改密前管理端写操作会被拒绝（改密接口：`POST /auth/change-password`）。
+数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，初始口令为 schema.sql 中的种子值）；首次登录响应会返回 `must_change_password: true` 并强制要求改密，未完成改密前除 `POST /auth/refresh`（令牌续期）与 `POST /auth/change-password`（改密）外的写操作均会被拒绝。
 
 JWT 密钥在首次登录时自动生成，无需手动配置。
 
