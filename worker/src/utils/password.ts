@@ -54,6 +54,9 @@ export interface PasswordVerifyResult {
   needsUpgrade: boolean;
 }
 
+/** 固定盐（#17）：仅供「同代价」补偿计算（未知账号假验证、旧格式校验补偿），不参与任何真实凭据的存储与校验 */
+const COST_FILLER_SALT = new Uint8Array(PBKDF2_SALT_BYTES);
+
 export async function verifyPassword(password: string, stored: string): Promise<PasswordVerifyResult> {
   if (stored.startsWith(`${PBKDF2_SCHEME}$`)) {
     const parts = stored.split('$');
@@ -72,5 +75,15 @@ export async function verifyPassword(password: string, stored: string): Promise<
   // 旧格式兼容：无盐单轮 SHA-256，仅用于校验存量哈希，不再写入
   const legacy = toHex(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(password))));
   const ok = timingSafeEqual(legacy, stored.toLowerCase());
+  // #17：旧格式校验远快于 PBKDF2——补一次同代价派生，失败耗时不得明显快于新格式（账号存在性耗时不可区分）
+  await derivePbkdf2(password, COST_FILLER_SALT, PBKDF2_ITERATIONS);
   return { ok, needsUpgrade: ok };
+}
+
+/**
+ * 假验证（#17）：对不存在的账号执行与 verifyPassword 同代价的 PBKDF2 计算（同迭代数），
+ * 抹平「账号是否存在」的响应耗时差。结果不参与任何判定，直接丢弃。
+ */
+export async function fakeVerifyPassword(password: string): Promise<void> {
+  await derivePbkdf2(password, COST_FILLER_SALT, PBKDF2_ITERATIONS);
 }

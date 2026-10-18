@@ -2,7 +2,8 @@ import { Env } from '../index';
 import { successResponse, error, ErrorCodes, unauthorized, rateLimited } from '../utils/response';
 import { verifyToken, generateToken } from '../middleware/auth';
 import type { AuthResult } from '../middleware/auth';
-import { hashPassword, verifyPassword } from '../utils/password';
+import { hashPassword, verifyPassword, fakeVerifyPassword } from '../utils/password';
+import type { PasswordVerifyResult } from '../utils/password';
 import { isMissingColumnError } from '../utils/d1_compat';
 
 // P1-5 / issue #8：初始/默认口令检测与登录失败锁定
@@ -26,6 +27,11 @@ function lockedRemainingMs(lockedUntil: string | null): number {
   const until = new Date(lockedUntil).getTime();
   if (Number.isNaN(until)) return 0;
   return Math.max(0, until - Date.now());
+}
+
+/** 锁定反馈（#17）：仅凭据正确时调用，失败路径不得暴露锁定状态 */
+function lockedFeedback(remainMs: number): Response {
+  return rateLimited(`账号已锁定，请 ${Math.ceil(remainMs / 60000)} 分钟后再试`);
 }
 
 interface UserAuthRow {
@@ -67,21 +73,20 @@ async function loadUserAuthRow(env: Env, username: string): Promise<UserAuthRow 
   return { ...row, must_change_password: row.must_change_password ?? 0, failed_login_attempts: row.failed_login_attempts ?? 0, locked_until: row.locked_until ?? null };
 }
 
-/** 记一次登录失败；达到阈值即写入锁定截止时间并返回 true */
-async function registerLoginFailure(env: Env, userId: number, currentAttempts: number): Promise<boolean> {
+/** 记一次登录失败；达到阈值即写入锁定截止时间（#17：阈值触发不再单独响应，失败路径统一 401） */
+async function registerLoginFailure(env: Env, userId: number, currentAttempts: number): Promise<void> {
   const attempts = (currentAttempts || 0) + 1;
   try {
     if (attempts >= MAX_LOGIN_ATTEMPTS) {
       const lockedUntil = new Date(Date.now() + LOCK_DURATION_MS).toISOString();
       await env.DB.prepare('UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?').bind(attempts, lockedUntil, userId).run();
-      return true;
+      return;
     }
     await env.DB.prepare('UPDATE users SET failed_login_attempts = ? WHERE id = ?').bind(attempts, userId).run();
   } catch (e) {
     // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前，功能不可用）允许跳过；其余异常向上抛，不得静默丢失计数
     if (!isMissingColumnError(e)) throw e;
   }
-  return false;
 }
 
 /** 默认/初始口令判定：显式标记、种子哈希，或登录口令即种子默认值（兼容哈希已升级为 pbkdf2 的情形） */
@@ -102,37 +107,39 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   // 1. Try users table
   const user = await loadUserAuthRow(env, String(username));
 
-  // 锁定预检：锁定期间即使口令正确也拒绝，并反馈剩余时间（按账号生效，不影响其他账号）
-  if (user) {
-    const remainMs = lockedRemainingMs(user.locked_until);
-    if (remainMs > 0) {
-      return rateLimited(`账号已锁定，请 ${Math.ceil(remainMs / 60000)} 分钟后再试`);
-    }
-  }
+  // #17 verify-first：锁定剩余时间只用于「凭据正确」分支的反馈，失败路径不据此区分账号是否存在
+  const remainMs = user ? lockedRemainingMs(user.locked_until) : 0;
 
+  // 先验证口令；未知用户名在下方 legacy 分支执行同代价假验证
+  let userVerified: PasswordVerifyResult | null = null;
   if (user) {
     const verified = await verifyPassword(providedPassword, user.password_hash);
-    if (verified.ok) {
-      const needsChange = usingDefaultCredential(user, providedPassword);
-      const hashToStore = verified.needsUpgrade ? await hashPassword(providedPassword) : user.password_hash;
-      try {
-        await env.DB.prepare(
-          'UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = ? WHERE id = ?'
-        ).bind(hashToStore, needsChange ? 1 : 0, user.id).run();
-      } catch (e) {
-        // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛，不得静默放行
-        if (!isMissingColumnError(e)) throw e;
-        // 迁移前降级：至少写回口令哈希（#7 透明升级不丢失）
-        await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(hashToStore, user.id).run();
-      }
-      const jwtSecret = await getJwtSecret(env);
-      const token = await generateToken(user.username, jwtSecret);
+    if (verified.ok) userVerified = verified;
+  }
 
-      return successResponse({
-        token,
-        user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, must_change_password: needsChange },
-      }, 'Login successful');
+  if (userVerified && user) {
+    // 口令正确但锁定期内：反馈剩余锁定时间（#8），不发 token、不重置计数
+    if (remainMs > 0) return lockedFeedback(remainMs);
+
+    const needsChange = usingDefaultCredential(user, providedPassword);
+    const hashToStore = userVerified.needsUpgrade ? await hashPassword(providedPassword) : user.password_hash;
+    try {
+      await env.DB.prepare(
+        'UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = ? WHERE id = ?'
+      ).bind(hashToStore, needsChange ? 1 : 0, user.id).run();
+    } catch (e) {
+      // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛，不得静默放行
+      if (!isMissingColumnError(e)) throw e;
+      // 迁移前降级：至少写回口令哈希（#7 透明升级不丢失）
+      await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(hashToStore, user.id).run();
     }
+    const jwtSecret = await getJwtSecret(env);
+    const token = await generateToken(user.username, jwtSecret);
+
+    return successResponse({
+      token,
+      user: { id: user.id, username: user.username, display_name: user.display_name, role: user.role, must_change_password: needsChange },
+    }, 'Login successful');
   }
 
   // 2. Fallback: check site_config (legacy) and auto-migrate to users table
@@ -142,6 +149,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   if (adminUsername && adminPasswordHash && String(username) === adminUsername.value) {
     const fallbackVerified = await verifyPassword(providedPassword, adminPasswordHash.value);
     if (fallbackVerified.ok) {
+      // 遗留口令正确但锁定期内：与 users 表分支一致，只对凭据正确者反馈剩余时间
+      if (remainMs > 0) return lockedFeedback(remainMs);
+
       const needsChange = adminPasswordHash.value === INITIAL_ADMIN_PASSWORD_HASH || providedPassword === DEFAULT_SEED_PASSWORD;
       const migratedHash = await hashPassword(providedPassword);
       // Auto-migrate: update or create user in users table from legacy site_config
@@ -187,15 +197,16 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
         }, 'Login successful (migrated from legacy config)');
       }
     }
+  } else if (!user) {
+    // 未知用户名（且非遗留管理员名）：执行与真实校验同代价的假验证，抹平失败路径耗时差（#17 AC4）
+    await fakeVerifyPassword(providedPassword);
   }
 
-  // 凭据失败：对已存在账号计数（锁定期满后重新从 0 计），连续 >= MAX_LOGIN_ATTEMPTS 触发锁定
-  if (user) {
-    const lockExpired = user.locked_until !== null && lockedRemainingMs(user.locked_until) === 0;
-    const locked = await registerLoginFailure(env, user.id, lockExpired ? 0 : user.failed_login_attempts);
-    if (locked) {
-      return rateLimited(`连续失败次数过多，账号已锁定 ${Math.ceil(LOCK_DURATION_MS / 60000)} 分钟，请稍后再试`);
-    }
+  // 凭据失败：统一 401「Invalid credentials」——不区分未知账号与错误口令、不暴露锁定（#17 AC1/AC2）
+  // 计数/锁定语义不变：仅对已存在账号计数；锁定期内不累加、不延长；锁定期满后从 0 重新计数
+  if (user && remainMs === 0) {
+    const lockExpired = user.locked_until !== null;
+    await registerLoginFailure(env, user.id, lockExpired ? 0 : user.failed_login_attempts);
   }
 
   return unauthorized('Invalid credentials');
