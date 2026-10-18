@@ -5,18 +5,21 @@
 ## 技术栈
 
 ### 前端
+
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
 - **Element Plus** — 后台管理UI组件库
-- **marked + highlight.js + DOMPurify** — Markdown渲染与代码高亮
+- **marked + DOMPurify** — Markdown渲染（marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖与 prose.css 的 hljs 样式暂为渲染侧残留）
 
 ### 后端
+
 - **Cloudflare Workers** — 无服务器API后端
 - **Cloudflare D1** — SQLite数据库（文章、分类、标签、评论等）
 - **Cloudflare KV** — 键值存储（媒体文件 + 编辑锁）
 - **JWT** — 管理员/编辑者认证
 
 ### 部署
+
 - **Cloudflare Pages** — 前端静态托管
 - **GitHub Actions** — CI/CD 自动部署
 
@@ -131,18 +134,18 @@
 
 D1 (SQLite) 共 9 张表：
 
-| 表名 | 说明 |
-|------|------|
-| `users` | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限） |
-| `categories` | 文章分类（含 created_by 所有权） |
-| `tags` | 标签（含 created_by 所有权） |
-| `articles` | 文章（含Markdown原文和HTML渲染结果，author_id作者，category_id默认1） |
-| `article_tags` | 文章-标签多对多关联 |
-| `comments` | 评论（含审核状态） |
-| `article_likes` | 点赞记录（IP去重） |
-| `media_assets` | 媒体文件元数据（含 uploaded_by 所有权） |
-| `friend_links` | 友情链接 |
-| `site_config` | 站点配置（KV结构，含JWT密钥） |
+| 表名            | 说明                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `users`         | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限） |
+| `categories`    | 文章分类（含 created_by 所有权）                                                             |
+| `tags`          | 标签（含 created_by 所有权）                                                                 |
+| `articles`      | 文章（含Markdown原文和HTML渲染结果，author_id作者，category_id默认1）                        |
+| `article_tags`  | 文章-标签多对多关联                                                                          |
+| `comments`      | 评论（含审核状态）                                                                           |
+| `article_likes` | 点赞记录（IP去重）                                                                           |
+| `media_assets`  | 媒体文件元数据（含 uploaded_by 所有权）                                                      |
+| `friend_links`  | 友情链接                                                                                     |
+| `site_config`   | 站点配置（KV结构，含JWT密钥）                                                                |
 
 另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。
 
@@ -152,97 +155,97 @@ D1 (SQLite) 共 9 张表：
 
 ### 公开接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 健康检查 |
-| POST | `/auth/login` | 登录（返回JWT token和用户信息） |
-| GET | `/articles` | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录） |
-| GET | `/articles/:slug` | 文章详情 |
-| GET | `/categories` | 分类列表 |
-| GET | `/tags` | 标签列表 |
-| GET | `/articles/:article_id/comments` | 文章评论 |
-| POST | `/articles/:article_id/comments` | 提交评论 |
-| GET | `/search` | 全文搜索 |
-| POST | `/articles/:article_id/like` | 点赞/取消 |
-| GET | `/articles/:article_id/like-status` | 点赞状态 |
-| GET | `/articles/:article_id/view` | 增加阅读量（Cookie去重，24小时TTL） |
-| GET | `/media/serve/*` | 媒体文件访问 |
-| GET | `/friend-links` | 友情链接 |
-| GET | `/config` | 公开站点配置 |
-| GET | `/settings` | 公开可视化配置（前台运行时套用） |
-| GET | `/img-proxy?url=` | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存） |
-| GET | `/text-proxy?url=` | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；与图片通道共用 SSRF（含解析后 IP 复核）/域名/限流校验，text/json/xml 白名单 + CORS 头） |
+| 方法 | 路径                                | 说明                                                                                                                                                |
+| ---- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET  | `/health`                           | 健康检查                                                                                                                                            |
+| POST | `/auth/login`                       | 登录（返回JWT token和用户信息）                                                                                                                     |
+| GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
+| GET  | `/articles/:slug`                   | 文章详情                                                                                                                                            |
+| GET  | `/categories`                       | 分类列表                                                                                                                                            |
+| GET  | `/tags`                             | 标签列表                                                                                                                                            |
+| GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
+| POST | `/articles/:article_id/comments`    | 提交评论                                                                                                                                            |
+| GET  | `/search`                           | 全文搜索                                                                                                                                            |
+| POST | `/articles/:article_id/like`        | 点赞/取消                                                                                                                                           |
+| GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
+| GET  | `/articles/:article_id/view`        | 增加阅读量（Cookie去重，24小时TTL）                                                                                                                 |
+| GET  | `/media/serve/*`                    | 媒体文件访问                                                                                                                                        |
+| GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
+| GET  | `/config`                           | 公开站点配置                                                                                                                                        |
+| GET  | `/settings`                         | 公开可视化配置（前台运行时套用）                                                                                                                    |
+| GET  | `/img-proxy?url=`                   | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存）                                                  |
+| GET  | `/text-proxy?url=`                  | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；与图片通道共用 SSRF（含解析后 IP 复核）/域名/限流校验，text/json/xml 白名单 + CORS 头） |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
 
 #### 通用接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/auth/refresh` | 刷新Token（须改密状态下仍可调用，用于令牌续期） |
-| POST | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
-| POST | `/articles` | 创建文章（自动设置author_id） |
-| PUT | `/articles/:id` | 更新文章（editor仅自己的） |
-| DELETE | `/articles/:id` | 删除文章（editor仅自己的） |
-| POST | `/categories` | 创建分类（自动设置created_by） |
-| PUT | `/categories/:id` | 更新分类（editor仅自己的） |
-| POST | `/tags` | 创建标签（自动设置created_by） |
-| GET | `/comments` | 评论列表（editor仅自己文章的） |
-| PUT | `/comments/:id/approve` | 审核通过（editor仅自己文章的） |
-| PUT | `/comments/:id/reject` | 审核拒绝（editor仅自己文章的） |
-| DELETE | `/comments/:id` | 删除评论（editor仅自己文章的） |
-| POST | `/media/upload` | 上传媒体（自动设置uploaded_by） |
-| GET | `/media` | 媒体列表（editor仅自己的） |
-| DELETE | `/media/:id` | 删除媒体（editor仅自己上传的） |
+| 方法   | 路径                    | 说明                                                                                             |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| POST   | `/auth/refresh`         | 刷新Token（须改密状态下仍可调用，用于令牌续期）                                                  |
+| POST   | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
+| POST   | `/articles`             | 创建文章（自动设置author_id）                                                                    |
+| PUT    | `/articles/:id`         | 更新文章（editor仅自己的）                                                                       |
+| DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                       |
+| POST   | `/categories`           | 创建分类（自动设置created_by）                                                                   |
+| PUT    | `/categories/:id`       | 更新分类（editor仅自己的）                                                                       |
+| POST   | `/tags`                 | 创建标签（自动设置created_by）                                                                   |
+| GET    | `/comments`             | 评论列表（editor仅自己文章的）                                                                   |
+| PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                   |
+| PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                   |
+| DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                   |
+| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by）                                                                  |
+| GET    | `/media`                | 媒体列表（editor仅自己的）                                                                       |
+| DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                   |
 
 #### 编辑锁接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/articles/:id/lock` | 获取编辑锁（30分钟TTL） |
-| DELETE | `/articles/:id/lock` | 释放编辑锁 |
-| GET | `/articles/:id/lock` | 查询编辑锁状态 |
-| POST | `/articles/:id/lock/force` | 强制接管编辑锁（admin） |
+| 方法   | 路径                       | 说明                    |
+| ------ | -------------------------- | ----------------------- |
+| POST   | `/articles/:id/lock`       | 获取编辑锁（30分钟TTL） |
+| DELETE | `/articles/:id/lock`       | 释放编辑锁              |
+| GET    | `/articles/:id/lock`       | 查询编辑锁状态          |
+| POST   | `/articles/:id/lock/force` | 强制接管编辑锁（admin） |
 
 #### 管理员专属接口（需 admin 角色）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| DELETE | `/categories/:id` | 删除分类 |
-| DELETE | `/tags/:id` | 删除标签 |
-| GET | `/users` | 用户列表 |
-| POST | `/users` | 创建用户 |
-| PUT | `/users/:id` | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定） |
-| DELETE | `/users/:id` | 删除用户（至少保留一个admin） |
-| GET | `/config/all` | 全部配置 |
-| PUT | `/config` | 更新配置 |
-| GET | `/friend-links/all` | 全部友链 |
-| POST | `/friend-links` | 创建友链 |
-| PUT | `/friend-links/:id` | 更新友链 |
-| DELETE | `/friend-links/:id` | 删除友链 |
-| GET | `/admin/export` | 导出数据 |
-| POST | `/admin/import` | 导入数据 |
-| GET | `/settings/all` | 拉取全部可视化配置 |
-| PUT | `/settings` | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效） |
-| POST | `/settings/reset` | 恢复默认可视化配置 |
-| GET | `/settings/export` | 导出配置 JSON |
-| POST | `/settings/import` | 导入配置 JSON |
+| 方法   | 路径                | 说明                                                                   |
+| ------ | ------------------- | ---------------------------------------------------------------------- |
+| DELETE | `/categories/:id`   | 删除分类                                                               |
+| DELETE | `/tags/:id`         | 删除标签                                                               |
+| GET    | `/users`            | 用户列表                                                               |
+| POST   | `/users`            | 创建用户                                                               |
+| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定） |
+| DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                          |
+| GET    | `/config/all`       | 全部配置                                                               |
+| PUT    | `/config`           | 更新配置                                                               |
+| GET    | `/friend-links/all` | 全部友链                                                               |
+| POST   | `/friend-links`     | 创建友链                                                               |
+| PUT    | `/friend-links/:id` | 更新友链                                                               |
+| DELETE | `/friend-links/:id` | 删除友链                                                               |
+| GET    | `/admin/export`     | 导出数据                                                               |
+| POST   | `/admin/import`     | 导入数据                                                               |
+| GET    | `/settings/all`     | 拉取全部可视化配置                                                     |
+| PUT    | `/settings`         | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）              |
+| POST   | `/settings/reset`   | 恢复默认可视化配置                                                     |
+| GET    | `/settings/export`  | 导出配置 JSON                                                          |
+| POST   | `/settings/import`  | 导入配置 JSON                                                          |
 
 ## 前台页面
 
-| 路径 | 说明 | 渲染模式 |
-|------|------|----------|
-| `/` | 首页（Hero + 最新文章卡片网格） | 静态 |
-| `/articles` | 文章列表（分页） | 静态 |
-| `/articles/:slug` | 文章详情（Markdown渲染） | SSR |
-| `/categories/:slug` | 分类文章 | SSR |
-| `/tags/:slug` | 标签文章 | SSR |
-| `/api/v1/*` | API代理到Worker | SSR |
-| `/rss.xml` | RSS订阅源 | SSR |
-| `/archives` | 时间线归档 | 静态 |
-| `/about` | 关于页面 | 静态 |
-| `/search` | 搜索页 | 静态 |
-| `/admin` | 后台管理 | 静态 |
+| 路径                | 说明                            | 渲染模式 |
+| ------------------- | ------------------------------- | -------- |
+| `/`                 | 首页（Hero + 最新文章卡片网格） | 静态     |
+| `/articles`         | 文章列表（分页）                | 静态     |
+| `/articles/:slug`   | 文章详情（Markdown渲染）        | SSR      |
+| `/categories/:slug` | 分类文章                        | SSR      |
+| `/tags/:slug`       | 标签文章                        | SSR      |
+| `/api/v1/*`         | API代理到Worker                 | SSR      |
+| `/rss.xml`          | RSS订阅源                       | SSR      |
+| `/archives`         | 时间线归档                      | 静态     |
+| `/about`            | 关于页面                        | 静态     |
+| `/search`           | 搜索页                          | 静态     |
+| `/admin`            | 后台管理                        | 静态     |
 
 ## 后台管理
 
@@ -296,7 +299,7 @@ D1 (SQLite) 共 9 张表：
 
 - **图片通道** `/api/v1/img-proxy?url=`：前端全局监听 `<img>` 加载失败（`document` 捕获阶段 error 事件）→ 自动把 `src` 切换为代理地址；代理成功显示原图，代理也失败则隐藏占位（不显示破图）。仅本站之外的图片触发，同源图片不代理。
 - **文字通道** `/api/v1/text-proxy?url=`：前端提供全局 `window.fetchWithProxy(url, opts)`——直连成功原样返回；失败（网络 / CORS / 非 2xx）自动改请求代理地址。返回标准 `Response`，调用方仅作文本 / JSON 解析。悬浮一言组件已接入。
-- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、**域名解析后 IP 复核**（DoH A/AAAA，任一结果落入受限段即拒绝；解析失败 / 超时 / 无记录 fail-closed 拒绝；每一跳重定向均复核）、仅白名单 MIME（图片通道 image/*，文字通道 text/* + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**保持严格 TLS 证书校验**，不做全局绕过。
+- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、**域名解析后 IP 复核**（DoH A/AAAA，任一结果落入受限段即拒绝；解析失败 / 超时 / 无记录 fail-closed 拒绝；每一跳重定向均复核）、仅白名单 MIME（图片通道 image/_，文字通道 text/_ + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**保持严格 TLS 证书校验**，不做全局绕过。
 - **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
 - **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
 - 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`、前端逻辑在 `src/components/layout/BaseLayout.astro`。
@@ -322,13 +325,13 @@ D1 (SQLite) 共 9 张表：
 
 前台页面在加载时会自动从 `/api/v1/config` 读取站点配置并动态应用：
 
-| 配置项 | 前台应用位置 |
-|--------|-------------|
-| `site_title` | 导航栏Logo、页面标题、页脚版权 |
-| `site_subtitle` | 首页Hero区域副标题 |
+| 配置项             | 前台应用位置                           |
+| ------------------ | -------------------------------------- |
+| `site_title`       | 导航栏Logo、页面标题、页脚版权         |
+| `site_subtitle`    | 首页Hero区域副标题                     |
 | `site_description` | 首页Hero描述、meta description、OG描述 |
-| `site_keywords` | meta keywords |
-| `about_content` | `/about` 页面内容 |
+| `site_keywords`    | meta keywords                          |
+| `about_content`    | `/about` 页面内容                      |
 
 - 页面级 description 优先级高于站点级（不会被覆盖）
 - 首页 Hero 区域的默认文案在无配置时显示，有配置后自动替换
@@ -353,6 +356,8 @@ npm run dev
 ```
 
 访问 `http://localhost:4321`
+
+> 前端类型门禁：`npm run check`（astro check，含 `.astro`/`.vue`/`.ts`；存在类型错误即非零退出）。入口为 `scripts/run-astro-check.mjs`——Node < 22.12 时自动补 `--experimental-require-module` 旗标（language-server 以 require 拉取 ESM-only 的 astro2tsx，组合钉版说明见脚本头注）。
 
 ### Worker 后端开发
 
@@ -389,10 +394,10 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：
 
-| Secret | 说明 |
-|--------|------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API Token |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
+| Secret                  | 说明                 |
+| ----------------------- | -------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID   |
 
 ### Cloudflare 资源
 
@@ -411,17 +416,17 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 安装依赖 → Worker 类型检查与测试 → 构建Astro站点
+1. 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建Astro站点
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 
 ### 部署架构
 
-| 项目 | 类型 | URL | 说明 |
-|------|------|-----|------|
-| `blog-website-page` | Pages | `blog-website-page.pages.dev` | 前端站点（Astro SSR + 静态） |
-| `blog-api` | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV） |
-| `blog_website` | Worker | — | Git集成自动创建（冗余，不冲突） |
+| 项目                | 类型   | URL                              | 说明                            |
+| ------------------- | ------ | -------------------------------- | ------------------------------- |
+| `blog-website-page` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）    |
+| `blog-api`          | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）             |
+| `blog_website`      | Worker | —                                | Git集成自动创建（冗余，不冲突） |
 
 前端通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker。
 

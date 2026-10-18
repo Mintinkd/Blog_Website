@@ -10,5 +10,7 @@
       "@utils/*": ["src/utils/*"],
       "@styles/*": ["src/styles/*"]
     }
-  }
+  },
+  "exclude": ["dist", "worker", "node_modules"],
+  "//": "本 tsconfig 只服务前端类型门禁（npm run check / astro check）。worker/ 的类型门禁自管——worker/tsconfig.json + @cloudflare/workers-types（npm run typecheck，CI 中先行）；dist/ 为构建产物。两处排除是「各自的门禁各自定义」，不是静默收窄检查范围。"
 }

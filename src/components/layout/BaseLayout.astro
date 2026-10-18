@@ -331,14 +331,14 @@ const initialCss = buildCss(initialSettings);
         } catch {}
       })();
 
-      // 初始化全站动效（reveal / 磁吸 / 进度条 / 视差）；ClientRouter 跨页后重挂
+      // 初始化全站动效（reveal / 磁吸 / 进度条 / 视差）；ClientRouter 跨页后重挂。
+      // initMotion 无清理回调（返回 void）——原代码把调用结果塞进 (()=>void)|null 槽位
+      // 属于宽松规则下的死代码（运行时 teardown 恒为 undefined），类型门禁启用后清掉（#26）
       (async () => {
         try {
           const { initMotion } = await import('../../utils/motion');
-          let teardown: (() => void) | null = null;
           const startMotion = () => {
-            teardown?.();
-            teardown = initMotion();
+            initMotion();
           };
           startMotion();
           document.addEventListener('astro:page-load', startMotion);
@@ -552,7 +552,7 @@ const initialCss = buildCss(initialSettings);
           });
         }
       };
-      (window as any).fetchWithProxy = async (input: RequestInfo | URL, init?: RequestInit, opts?: { forceProxy?: boolean }): Promise<Response> => {
+      window.fetchWithProxy = async (input: RequestInfo | URL, init?: RequestInit, opts?: { forceProxy?: boolean }): Promise<Response> => {
         const target = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
         let host = '';
         try { host = new URL(target).hostname; } catch { /* 非法 URL 也交由代理路径处理 */ }

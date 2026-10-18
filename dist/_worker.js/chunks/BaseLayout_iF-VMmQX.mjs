@@ -165,7 +165,11 @@ function sanitizeSettings(input) {
   }
   const ly = s.layout && typeof s.layout === "object" && !Array.isArray(s.layout) ? s.layout : {};
   const layout = {
-    contentMaxWidth: pickStr(ly.contentMaxWidth, SIZE_RE, d.layout.contentMaxWidth),
+    contentMaxWidth: pickStr(
+      ly.contentMaxWidth,
+      SIZE_RE,
+      d.layout.contentMaxWidth
+    ),
     headerHeight: pickStr(ly.headerHeight, SIZE_RE, d.layout.headerHeight),
     radiusSm: pickStr(ly.radiusSm, SIZE_RE, d.layout.radiusSm),
     radiusMd: pickStr(ly.radiusMd, SIZE_RE, d.layout.radiusMd),
@@ -177,11 +181,18 @@ function sanitizeSettings(input) {
     bgImage,
     bgOpacity: pickNum(bgs.bgOpacity, 0, 1, d.background.bgOpacity),
     bgBlur: pickNum(bgs.bgBlur, 0, 30, d.background.bgBlur),
-    bgBrightness: pickNum(bgs.bgBrightness, 0.7, 1.3, d.background.bgBrightness)
+    bgBrightness: pickNum(
+      bgs.bgBrightness,
+      0.7,
+      1.3,
+      d.background.bgBrightness
+    )
   };
   const fsrc = s.features && typeof s.features === "object" && !Array.isArray(s.features) ? s.features : {};
   const features = { ...d.features };
-  for (const k of Object.keys(d.features)) {
+  for (const k of Object.keys(
+    d.features
+  )) {
     features[k] = pickBool(fsrc[k], d.features[k]);
   }
   const msrc = s.motion && typeof s.motion === "object" && !Array.isArray(s.motion) ? s.motion : {};
@@ -200,7 +211,8 @@ function kebab(k) {
 }
 function hexToRgb(hex) {
   let h = (hex || "").trim().replace("#", "");
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length === 3)
+    h = h.split("").map((c) => c + c).join("");
   const n = parseInt((h + "000000").slice(0, 6), 16);
   return [n >> 16 & 255, n >> 8 & 255, n & 255];
 }
@@ -225,20 +237,32 @@ function cssFrom(s) {
   lines.push(`  --radius-md: ${ly.radiusMd} !important;`);
   lines.push(`  --radius-lg: ${ly.radiusLg} !important;`);
   lines.push(`  --bg-image: url("${bg.bgImage}") !important;`);
-  lines.push(`  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`);
-  lines.push(`  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`);
+  lines.push(
+    `  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`
+  );
+  lines.push(
+    `  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`
+  );
   lines.push("}");
   lines.push('[data-theme="light"] {');
-  for (const [k, v] of Object.entries(L)) lines.push(`  --color-${kebab(k)}: ${v} !important;`);
-  lines.push(`  --bg-overlay: ${buildOverlay(L.bgPrimary, bg.bgOpacity)} !important;`);
+  for (const [k, v] of Object.entries(L))
+    lines.push(`  --color-${kebab(k)}: ${v} !important;`);
+  lines.push(
+    `  --bg-overlay: ${buildOverlay(L.bgPrimary, bg.bgOpacity)} !important;`
+  );
   lines.push("}");
   lines.push('[data-theme="dark"] {');
-  for (const [k, v] of Object.entries(D)) lines.push(`  --color-${kebab(k)}: ${v} !important;`);
-  lines.push(`  --bg-overlay: ${buildOverlay(D.bgPrimary, bg.bgOpacity)} !important;`);
+  for (const [k, v] of Object.entries(D))
+    lines.push(`  --color-${kebab(k)}: ${v} !important;`);
+  lines.push(
+    `  --bg-overlay: ${buildOverlay(D.bgPrimary, bg.bgOpacity)} !important;`
+  );
   lines.push("}");
   for (const [k, on] of Object.entries(s.features)) {
     if (!on) {
-      lines.push(`html[data-feature-${k}="off"] [data-feature="${k}"] { display: none !important; }`);
+      lines.push(
+        `html[data-feature-${k}="off"] [data-feature="${k}"] { display: none !important; }`
+      );
     }
   }
   return lines.join("\n");

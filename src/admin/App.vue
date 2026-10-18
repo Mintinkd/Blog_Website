@@ -3,21 +3,46 @@
     <div v-if="!isLoggedIn" class="login-page">
       <div class="login-card">
         <div class="login-header">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path
+              d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+            ></path>
+          </svg>
           <h1>Blog Admin</h1>
         </div>
         <form @submit.prevent="handleLogin" class="login-form">
           <div class="form-group">
-            <label>{{ t('admin.username') }}</label>
-            <input v-model="loginForm.username" type="text" :placeholder="t('admin.username')" required />
+            <label>{{ t("admin.username") }}</label>
+            <input
+              v-model="loginForm.username"
+              type="text"
+              :placeholder="t('admin.username')"
+              required
+            />
           </div>
           <div class="form-group">
-            <label>{{ t('admin.password') }}</label>
-            <input v-model="loginForm.password" type="password" :placeholder="t('admin.password')" required />
+            <label>{{ t("admin.password") }}</label>
+            <input
+              v-model="loginForm.password"
+              type="password"
+              :placeholder="t('admin.password')"
+              required
+            />
           </div>
           <p v-if="loginError" class="error-msg">{{ loginError }}</p>
           <button type="submit" class="login-btn" :disabled="loginLoading">
-            {{ loginLoading ? t('admin.login_loading') : t('admin.login') }}
+            {{ loginLoading ? t("admin.login_loading") : t("admin.login") }}
           </button>
         </form>
       </div>
@@ -26,84 +51,206 @@
     <div v-else class="admin-layout">
       <aside class="admin-sidebar">
         <div class="sidebar-header">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path
+              d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+            ></path>
+          </svg>
           <span>Blog Admin</span>
         </div>
         <nav class="sidebar-nav">
-          <button v-for="item in visibleNavItems" :key="item.key" :class="['nav-item', { active: currentTab === item.key }]" @click="switchTab(item.key)">
+          <button
+            v-for="item in visibleNavItems"
+            :key="item.key"
+            :class="['nav-item', { active: currentTab === item.key }]"
+            @click="switchTab(item.key)"
+          >
             <component :is="item.icon" />
             {{ item.label() }}
           </button>
         </nav>
         <div class="sidebar-footer">
-          <a href="/" class="nav-item">{{ t('admin.back_site') }}</a>
-          <button class="nav-item" @click="handleLogout">{{ t('admin.logout') }}</button>
+          <a href="/" class="nav-item">{{ t("admin.back_site") }}</a>
+          <button class="nav-item" @click="handleLogout">
+            {{ t("admin.logout") }}
+          </button>
         </div>
       </aside>
 
       <main class="admin-main">
         <div v-if="currentTab === 'articles'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.articles') }}</h2>
-            <div style="display:flex;gap:0.5rem;align-items:center;">
-              <select v-if="userRole === 'admin'" v-model="authorFilter" @change="loadArticles()" style="padding:0.4rem 0.6rem;font-size:0.85rem;">
-                <option value="">{{ t('admin.all_authors') }}</option>
-                <option v-for="u in users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</option>
+            <h2>{{ t("admin.articles") }}</h2>
+            <div style="display: flex; gap: 0.5rem; align-items: center">
+              <select
+                v-if="userRole === 'admin'"
+                v-model="authorFilter"
+                @change="loadArticles()"
+                style="padding: 0.4rem 0.6rem; font-size: 0.85rem"
+              >
+                <option value="">{{ t("admin.all_authors") }}</option>
+                <option v-for="u in users" :key="u.id" :value="u.id">
+                  {{ u.display_name || u.username }}
+                </option>
               </select>
-              <button class="btn-primary" @click="openNewArticle">{{ t('admin.new_article') }}</button>
+              <button class="btn-primary" @click="openNewArticle">
+                {{ t("admin.new_article") }}
+              </button>
             </div>
           </div>
-          <div v-if="articlesLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-if="articlesLoading" class="loading">
+            {{ t("common.loading") }}
+          </div>
           <table v-else class="data-table">
             <thead>
-              <tr><th>{{ t('admin.title') }}</th><th>{{ t('admin.author') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.category') }}</th><th>{{ t('article.views') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr>
+              <tr>
+                <th>{{ t("admin.title") }}</th>
+                <th>{{ t("admin.author") }}</th>
+                <th>{{ t("admin.status") }}</th>
+                <th>{{ t("admin.category") }}</th>
+                <th>{{ t("article.views") }}</th>
+                <th>{{ t("admin.created_at") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
             </thead>
             <tbody>
               <tr v-for="a in articles" :key="a.id">
-                <td><a :href="`/articles/${a.slug}`" target="_blank">{{ a.title }}</a></td>
-                <td>{{ a.author_name || '-' }}</td>
-                <td><span :class="['status-badge', a.status]">{{ a.status === 'published' ? t('article.published') : t('article.draft') }}</span></td>
-                <td>{{ a.category?.name || '-' }}</td>
+                <td>
+                  <a :href="`/articles/${a.slug}`" target="_blank">{{
+                    a.title
+                  }}</a>
+                </td>
+                <td>{{ a.author_name || "-" }}</td>
+                <td>
+                  <span :class="['status-badge', a.status]">{{
+                    a.status === "published"
+                      ? t("article.published")
+                      : t("article.draft")
+                  }}</span>
+                </td>
+                <td>{{ a.category?.name || "-" }}</td>
                 <td>{{ a.view_count }}</td>
                 <td>{{ formatDate(a.created_at) }}</td>
                 <td class="actions">
-                  <button @click="editArticle(a)">{{ t('admin.edit') }}</button>
-                  <button @click="deleteArticle(a.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                  <button @click="editArticle(a)">{{ t("admin.edit") }}</button>
+                  <button @click="deleteArticle(a.id)" class="btn-danger">
+                    {{ t("admin.delete") }}
+                  </button>
                 </td>
               </tr>
-              <tr v-if="articles.length === 0"><td colspan="7" class="empty">{{ t('article.no_articles') }}</td></tr>
+              <tr v-if="articles.length === 0">
+                <td colspan="7" class="empty">
+                  {{ t("article.no_articles") }}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
 
         <div v-if="currentTab === 'categories'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.categories') }}</h2>
-            <button class="btn-primary" @click="editingCategoryId = null; showCategoryForm = true; categoryForm = { name: '', slug: '', description: '' }">{{ t('admin.new_category') }}</button>
+            <h2>{{ t("admin.categories") }}</h2>
+            <button
+              class="btn-primary"
+              @click="
+                editingCategoryId = null;
+                showCategoryForm = true;
+                categoryForm = { name: '', slug: '', description: '' };
+              "
+            >
+              {{ t("admin.new_category") }}
+            </button>
           </div>
           <table class="data-table">
-            <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.article_count') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{{ t("admin.name") }}</th>
+                <th>{{ t("admin.slug") }}</th>
+                <th>{{ t("admin.article_count") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="c in categories" :key="c.id">
                 <td>{{ c.name }}</td>
                 <td>{{ c.slug }}</td>
                 <td>{{ c.article_count || 0 }}</td>
                 <td class="actions">
-                  <button v-if="userRole === 'admin' || !c.created_by || c.created_by === currentUserId" @click="categoryForm = { name: c.name, slug: c.slug, description: c.description || '' }; editingCategoryId = c.id; showCategoryForm = true">{{ t('admin.edit') }}</button>
-                  <button v-if="userRole === 'admin'" @click="deleteCategory(c.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                  <button
+                    v-if="
+                      userRole === 'admin' ||
+                      !c.created_by ||
+                      c.created_by === currentUserId
+                    "
+                    @click="
+                      categoryForm = {
+                        name: c.name,
+                        slug: c.slug,
+                        description: c.description || '',
+                      };
+                      editingCategoryId = c.id;
+                      showCategoryForm = true;
+                    "
+                  >
+                    {{ t("admin.edit") }}
+                  </button>
+                  <button
+                    v-if="userRole === 'admin'"
+                    @click="deleteCategory(c.id)"
+                    class="btn-danger"
+                  >
+                    {{ t("admin.delete") }}
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
-          <div v-if="showCategoryForm" class="modal-overlay" @click.self="showCategoryForm = false">
+          <div
+            v-if="showCategoryForm"
+            class="modal-overlay"
+            @click.self="showCategoryForm = false"
+          >
             <div class="modal">
-              <h3>{{ editingCategoryId ? t('admin.edit') + t('admin.categories') : t('admin.new_category') }}</h3>
-              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="categoryForm.name" /></div>
-              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="categoryForm.slug" /></div>
-              <div class="form-group"><label>{{ t('admin.description') }}</label><textarea v-model="categoryForm.description" rows="3"></textarea></div>
+              <h3>
+                {{
+                  editingCategoryId
+                    ? t("admin.edit") + t("admin.categories")
+                    : t("admin.new_category")
+                }}
+              </h3>
+              <div class="form-group">
+                <label>{{ t("admin.name") }}</label
+                ><input v-model="categoryForm.name" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.slug") }}</label
+                ><input v-model="categoryForm.slug" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.description") }}</label
+                ><textarea
+                  v-model="categoryForm.description"
+                  rows="3"
+                ></textarea>
+              </div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showCategoryForm = false">{{ t('admin.cancel') }}</button>
-                <button class="btn-primary" @click="saveCategory">{{ t('admin.save') }}</button>
+                <button class="btn-secondary" @click="showCategoryForm = false">
+                  {{ t("admin.cancel") }}
+                </button>
+                <button class="btn-primary" @click="saveCategory">
+                  {{ t("admin.save") }}
+                </button>
               </div>
             </div>
           </div>
@@ -111,27 +258,63 @@
 
         <div v-if="currentTab === 'tags'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.tags') }}</h2>
-            <button class="btn-primary" @click="showTagForm = true; tagForm = { name: '', slug: '' }">{{ t('admin.new_tag') }}</button>
+            <h2>{{ t("admin.tags") }}</h2>
+            <button
+              class="btn-primary"
+              @click="
+                showTagForm = true;
+                tagForm = { name: '', slug: '' };
+              "
+            >
+              {{ t("admin.new_tag") }}
+            </button>
           </div>
           <table class="data-table">
-            <thead><tr><th>{{ t('admin.name') }}</th><th>{{ t('admin.slug') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{{ t("admin.name") }}</th>
+                <th>{{ t("admin.slug") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="tag in tags" :key="tag.id">
                 <td>{{ tag.name }}</td>
                 <td>{{ tag.slug }}</td>
-                <td class="actions"><button v-if="userRole === 'admin'" @click="deleteTag(tag.id)" class="btn-danger">{{ t('admin.delete') }}</button></td>
+                <td class="actions">
+                  <button
+                    v-if="userRole === 'admin'"
+                    @click="deleteTag(tag.id)"
+                    class="btn-danger"
+                  >
+                    {{ t("admin.delete") }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
-          <div v-if="showTagForm" class="modal-overlay" @click.self="showTagForm = false">
+          <div
+            v-if="showTagForm"
+            class="modal-overlay"
+            @click.self="showTagForm = false"
+          >
             <div class="modal">
-              <h3>{{ t('admin.new_tag') }}</h3>
-              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="tagForm.name" /></div>
-              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="tagForm.slug" /></div>
+              <h3>{{ t("admin.new_tag") }}</h3>
+              <div class="form-group">
+                <label>{{ t("admin.name") }}</label
+                ><input v-model="tagForm.name" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.slug") }}</label
+                ><input v-model="tagForm.slug" />
+              </div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showTagForm = false">{{ t('admin.cancel') }}</button>
-                <button class="btn-primary" @click="saveTag">{{ t('admin.save') }}</button>
+                <button class="btn-secondary" @click="showTagForm = false">
+                  {{ t("admin.cancel") }}
+                </button>
+                <button class="btn-primary" @click="saveTag">
+                  {{ t("admin.save") }}
+                </button>
               </div>
             </div>
           </div>
@@ -139,123 +322,359 @@
 
         <div v-if="currentTab === 'about'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.about_page') }}</h2>
-            <a href="/about" target="_blank" class="btn-secondary" style="font-size:0.8rem;padding:0.35rem 0.75rem;text-decoration:none;">{{ t('admin.preview_page') }}</a>
+            <h2>{{ t("admin.about_page") }}</h2>
+            <a
+              href="/about"
+              target="_blank"
+              class="btn-secondary"
+              style="
+                font-size: 0.8rem;
+                padding: 0.35rem 0.75rem;
+                text-decoration: none;
+              "
+              >{{ t("admin.preview_page") }}</a
+            >
           </div>
-          <div v-if="configLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-if="configLoading" class="loading">
+            {{ t("common.loading") }}
+          </div>
           <div v-else class="config-form">
-            <p style="font-size:0.85rem;color:var(--color-text-tertiary);margin-bottom:1rem;">{{ t('admin.about_hint') }}</p>
+            <p
+              style="
+                font-size: 0.85rem;
+                color: var(--color-text-tertiary);
+                margin-bottom: 1rem;
+              "
+            >
+              {{ t("admin.about_hint") }}
+            </p>
             <div class="form-group">
               <label>关于页内容 (Markdown)</label>
-              <textarea v-model="aboutContent" rows="20" class="editor-textarea"></textarea>
+              <textarea
+                v-model="aboutContent"
+                rows="20"
+                class="editor-textarea"
+              ></textarea>
             </div>
-            <button class="btn-primary" @click="saveAbout" :disabled="aboutSaving">{{ aboutSaving ? t('admin.save_loading') : t('admin.save') }}</button>
+            <button
+              class="btn-primary"
+              @click="saveAbout"
+              :disabled="aboutSaving"
+            >
+              {{ aboutSaving ? t("admin.save_loading") : t("admin.save") }}
+            </button>
             <p v-if="aboutMsg" class="msg">{{ aboutMsg }}</p>
           </div>
         </div>
 
         <div v-if="currentTab === 'config'" class="admin-panel">
-          <div class="panel-header"><h2>{{ t('admin.site_config') }}</h2></div>
-          <div v-if="configLoading" class="loading">{{ t('common.loading') }}</div>
+          <div class="panel-header">
+            <h2>{{ t("admin.site_config") }}</h2>
+          </div>
+          <div v-if="configLoading" class="loading">
+            {{ t("common.loading") }}
+          </div>
           <div v-else class="config-form">
-            <div class="form-group"><label>{{ t('admin.site_title') }}</label><input v-model="configForm.site_title" /></div>
-            <div class="form-group"><label>{{ t('admin.site_subtitle') }}</label><input v-model="configForm.site_subtitle" /></div>
-            <div class="form-group"><label>{{ t('admin.site_description') }}</label><textarea v-model="configForm.site_description" rows="2"></textarea></div>
+            <div class="form-group">
+              <label>{{ t("admin.site_title") }}</label
+              ><input v-model="configForm.site_title" />
+            </div>
+            <div class="form-group">
+              <label>{{ t("admin.site_subtitle") }}</label
+              ><input v-model="configForm.site_subtitle" />
+            </div>
+            <div class="form-group">
+              <label>{{ t("admin.site_description") }}</label
+              ><textarea
+                v-model="configForm.site_description"
+                rows="2"
+              ></textarea>
+            </div>
 
-            <div class="form-group"><label>{{ t('admin.posts_per_page') }}</label><input v-model.number="configForm.posts_per_page" type="number" min="1" max="50" /></div>
-            <button class="btn-primary" @click="saveConfig">{{ t('admin.save') }}</button>
+            <div class="form-group">
+              <label>{{ t("admin.posts_per_page") }}</label
+              ><input
+                v-model.number="configForm.posts_per_page"
+                type="number"
+                min="1"
+                max="50"
+              />
+            </div>
+            <button class="btn-primary" @click="saveConfig">
+              {{ t("admin.save") }}
+            </button>
             <p v-if="configMsg" class="msg">{{ configMsg }}</p>
           </div>
         </div>
 
         <div v-if="currentTab === 'comments'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.comments') }}</h2>
-            <div style="display:flex;gap:0.5rem;">
-              <button :class="['btn-secondary', { active: commentFilter === '' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = ''; loadComments()">{{ t('admin.all') }}</button>
-              <button :class="['btn-secondary', { active: commentFilter === 'pending' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = 'pending'; loadComments()">{{ t('admin.pending') }}</button>
-              <button :class="['btn-secondary', { active: commentFilter === 'approved' }]" style="font-size:0.8rem;padding:0.3rem 0.6rem;" @click="commentFilter = 'approved'; loadComments()">{{ t('admin.approved') }}</button>
+            <h2>{{ t("admin.comments") }}</h2>
+            <div style="display: flex; gap: 0.5rem">
+              <button
+                :class="['btn-secondary', { active: commentFilter === '' }]"
+                style="font-size: 0.8rem; padding: 0.3rem 0.6rem"
+                @click="
+                  commentFilter = '';
+                  loadComments();
+                "
+              >
+                {{ t("admin.all") }}
+              </button>
+              <button
+                :class="[
+                  'btn-secondary',
+                  { active: commentFilter === 'pending' },
+                ]"
+                style="font-size: 0.8rem; padding: 0.3rem 0.6rem"
+                @click="
+                  commentFilter = 'pending';
+                  loadComments();
+                "
+              >
+                {{ t("admin.pending") }}
+              </button>
+              <button
+                :class="[
+                  'btn-secondary',
+                  { active: commentFilter === 'approved' },
+                ]"
+                style="font-size: 0.8rem; padding: 0.3rem 0.6rem"
+                @click="
+                  commentFilter = 'approved';
+                  loadComments();
+                "
+              >
+                {{ t("admin.approved") }}
+              </button>
             </div>
           </div>
           <table class="data-table">
-            <thead><tr><th>{{ t('admin.nickname') }}</th><th>{{ t('admin.content') }}</th><th>{{ t('admin.articles') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{{ t("admin.nickname") }}</th>
+                <th>{{ t("admin.content") }}</th>
+                <th>{{ t("admin.articles") }}</th>
+                <th>{{ t("admin.status") }}</th>
+                <th>{{ t("admin.created_at") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="c in comments" :key="c.id">
                 <td>{{ c.nickname }}</td>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.content }}</td>
-                <td><a :href="`/articles/${c.article_slug || ''}`" target="_blank" style="font-size:0.8rem;">{{ c.article_title }}</a></td>
-                <td><span :class="['status-badge', c.status]">{{ c.status === 'pending' ? t('admin.pending') : c.status === 'approved' ? t('admin.approved') : t('admin.rejected') }}</span></td>
+                <td
+                  style="
+                    max-width: 300px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                >
+                  {{ c.content }}
+                </td>
+                <td>
+                  <a
+                    :href="`/articles/${c.article_slug || ''}`"
+                    target="_blank"
+                    style="font-size: 0.8rem"
+                    >{{ c.article_title }}</a
+                  >
+                </td>
+                <td>
+                  <span :class="['status-badge', c.status]">{{
+                    c.status === "pending"
+                      ? t("admin.pending")
+                      : c.status === "approved"
+                        ? t("admin.approved")
+                        : t("admin.rejected")
+                  }}</span>
+                </td>
                 <td>{{ formatDate(c.created_at) }}</td>
                 <td class="actions">
-                  <button v-if="c.status === 'pending'" @click="approveComment(c.id)" style="color:var(--color-success);">{{ t('admin.approve') }}</button>
-                  <button v-if="c.status === 'pending'" @click="rejectComment(c.id)" style="color:var(--color-warning);">{{ t('admin.reject') }}</button>
-                  <button @click="deleteComment(c.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                  <button
+                    v-if="c.status === 'pending'"
+                    @click="approveComment(c.id)"
+                    style="color: var(--color-success)"
+                  >
+                    {{ t("admin.approve") }}
+                  </button>
+                  <button
+                    v-if="c.status === 'pending'"
+                    @click="rejectComment(c.id)"
+                    style="color: var(--color-warning)"
+                  >
+                    {{ t("admin.reject") }}
+                  </button>
+                  <button @click="deleteComment(c.id)" class="btn-danger">
+                    {{ t("admin.delete") }}
+                  </button>
                 </td>
               </tr>
-              <tr v-if="comments.length === 0"><td colspan="6" class="empty">{{ t('admin.no_comments') }}</td></tr>
+              <tr v-if="comments.length === 0">
+                <td colspan="6" class="empty">{{ t("admin.no_comments") }}</td>
+              </tr>
             </tbody>
           </table>
         </div>
 
         <div v-if="currentTab === 'media'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.media') }}</h2>
-            <label class="btn-primary" style="cursor:pointer;">
-              {{ t('admin.upload') }}
-              <input type="file" accept="image/*" @change="uploadMedia" style="display:none;" />
+            <h2>{{ t("admin.media") }}</h2>
+            <label class="btn-primary" style="cursor: pointer">
+              {{ t("admin.upload") }}
+              <input
+                type="file"
+                accept="image/*"
+                @change="uploadMedia"
+                style="display: none"
+              />
             </label>
           </div>
-          <div v-if="mediaLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-if="mediaLoading" class="loading">
+            {{ t("common.loading") }}
+          </div>
           <div v-else class="media-grid">
             <div v-for="m in mediaList" :key="m.id" class="media-item">
               <img :src="m.url" :alt="m.original_name" class="media-thumb" />
               <div class="media-info">
                 <span class="media-name">{{ m.original_name }}</span>
                 <div class="media-actions-row">
-                  <button class="btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;" @click="copyMediaUrl(m.url)">{{ t('admin.copy_url') }}</button>
-                  <button class="btn-danger" style="font-size:0.7rem;padding:0.2rem 0.5rem;" @click="deleteMedia(m.id)">{{ t('admin.delete') }}</button>
+                  <button
+                    class="btn-secondary"
+                    style="font-size: 0.7rem; padding: 0.2rem 0.5rem"
+                    @click="copyMediaUrl(m.url)"
+                  >
+                    {{ t("admin.copy_url") }}
+                  </button>
+                  <button
+                    class="btn-danger"
+                    style="font-size: 0.7rem; padding: 0.2rem 0.5rem"
+                    @click="deleteMedia(m.id)"
+                  >
+                    {{ t("admin.delete") }}
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-          <p v-if="mediaList.length === 0 && !mediaLoading" class="empty">{{ t('admin.no_media') }}</p>
+          <p v-if="mediaList.length === 0 && !mediaLoading" class="empty">
+            {{ t("admin.no_media") }}
+          </p>
         </div>
 
         <div v-if="currentTab === 'users'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.users') }}</h2>
-            <button class="btn-primary" @click="editingUserId = null; showUserForm = true; userForm = { username: '', password: '', display_name: '', role: 'admin' }">{{ t('admin.new_user') }}</button>
+            <h2>{{ t("admin.users") }}</h2>
+            <button
+              class="btn-primary"
+              @click="
+                editingUserId = null;
+                showUserForm = true;
+                userForm = {
+                  username: '',
+                  password: '',
+                  display_name: '',
+                  role: 'admin',
+                };
+              "
+            >
+              {{ t("admin.new_user") }}
+            </button>
           </div>
           <table class="data-table">
-            <thead><tr><th>{{ t('admin.username') }}</th><th>{{ t('admin.display_name') }}</th><th>{{ t('admin.role') }}</th><th>{{ t('admin.created_at') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{{ t("admin.username") }}</th>
+                <th>{{ t("admin.display_name") }}</th>
+                <th>{{ t("admin.role") }}</th>
+                <th>{{ t("admin.created_at") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
                 <td>{{ u.username }}</td>
-                <td>{{ u.display_name || '-' }}</td>
-                <td><span :class="['status-badge', u.role]">{{ u.role === 'admin' ? t('admin.role_admin') : t('admin.role_editor') }}</span></td>
+                <td>{{ u.display_name || "-" }}</td>
+                <td>
+                  <span :class="['status-badge', u.role]">{{
+                    u.role === "admin"
+                      ? t("admin.role_admin")
+                      : t("admin.role_editor")
+                  }}</span>
+                </td>
                 <td>{{ formatDate(u.created_at) }}</td>
                 <td class="actions">
-                  <button @click="editingUserId = u.id; originalUserRole = u.role; userForm = { username: u.username, password: '', display_name: u.display_name || '', role: u.role }; showUserForm = true">{{ t('admin.edit') }}</button>
-                  <button @click="deleteUser(u.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                  <button
+                    @click="
+                      editingUserId = u.id;
+                      originalUserRole = u.role;
+                      userForm = {
+                        username: u.username,
+                        password: '',
+                        display_name: u.display_name || '',
+                        role: u.role,
+                      };
+                      showUserForm = true;
+                    "
+                  >
+                    {{ t("admin.edit") }}
+                  </button>
+                  <button @click="deleteUser(u.id)" class="btn-danger">
+                    {{ t("admin.delete") }}
+                  </button>
                 </td>
               </tr>
             </tbody>
           </table>
-          <div v-if="showUserForm" class="modal-overlay" @click.self="showUserForm = false">
+          <div
+            v-if="showUserForm"
+            class="modal-overlay"
+            @click.self="showUserForm = false"
+          >
             <div class="modal">
-              <h3>{{ editingUserId ? t('admin.edit') + t('admin.users') : t('admin.new_user') }}</h3>
-              <div class="form-group"><label>{{ t('admin.username') }}</label><input v-model="userForm.username" :disabled="!!editingUserId" /></div>
-              <div class="form-group"><label>{{ t('admin.password') }}{{ editingUserId ? t('admin.password_hint') : '' }}</label><input v-model="userForm.password" type="password" :required="!editingUserId" /></div>
-              <div class="form-group"><label>{{ t('admin.display_name') }}</label><input v-model="userForm.display_name" /></div>
-              <div class="form-group"><label>{{ t('admin.role') }}</label>
+              <h3>
+                {{
+                  editingUserId
+                    ? t("admin.edit") + t("admin.users")
+                    : t("admin.new_user")
+                }}
+              </h3>
+              <div class="form-group">
+                <label>{{ t("admin.username") }}</label
+                ><input
+                  v-model="userForm.username"
+                  :disabled="!!editingUserId"
+                />
+              </div>
+              <div class="form-group">
+                <label
+                  >{{ t("admin.password")
+                  }}{{ editingUserId ? t("admin.password_hint") : "" }}</label
+                ><input
+                  v-model="userForm.password"
+                  type="password"
+                  :required="!editingUserId"
+                />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.display_name") }}</label
+                ><input v-model="userForm.display_name" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.role") }}</label>
                 <select v-model="userForm.role">
-                  <option value="admin">{{ t('admin.role_admin') }}</option>
-                  <option value="editor">{{ t('admin.role_editor') }}</option>
+                  <option value="admin">{{ t("admin.role_admin") }}</option>
+                  <option value="editor">{{ t("admin.role_editor") }}</option>
                 </select>
               </div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showUserForm = false">{{ t('admin.cancel') }}</button>
-                <button class="btn-primary" @click="saveUser">{{ t('admin.save') }}</button>
+                <button class="btn-secondary" @click="showUserForm = false">
+                  {{ t("admin.cancel") }}
+                </button>
+                <button class="btn-primary" @click="saveUser">
+                  {{ t("admin.save") }}
+                </button>
               </div>
             </div>
           </div>
@@ -263,37 +682,131 @@
 
         <div v-if="currentTab === 'friend_links'" class="admin-panel">
           <div class="panel-header">
-            <h2>{{ t('admin.friend_links') }}</h2>
-            <button class="btn-primary" @click="showFriendLinkForm = true; editingFriendLinkId = null; friendLinkForm = { name: '', url: '', description: '', sort_order: 0, is_active: true }">{{ t('admin.new_friend_link') }}</button>
+            <h2>{{ t("admin.friend_links") }}</h2>
+            <button
+              class="btn-primary"
+              @click="
+                showFriendLinkForm = true;
+                editingFriendLinkId = null;
+                friendLinkForm = {
+                  name: '',
+                  url: '',
+                  description: '',
+                  sort_order: 0,
+                  is_active: true,
+                };
+              "
+            >
+              {{ t("admin.new_friend_link") }}
+            </button>
           </div>
           <table class="data-table">
-            <thead><tr><th>{{ t('admin.name') }}</th><th>URL</th><th>{{ t('admin.description') }}</th><th>{{ t('admin.sort_order') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{{ t("admin.name") }}</th>
+                <th>URL</th>
+                <th>{{ t("admin.description") }}</th>
+                <th>{{ t("admin.sort_order") }}</th>
+                <th>{{ t("admin.status") }}</th>
+                <th>{{ t("admin.actions") }}</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="fl in friendLinks" :key="fl.id">
                 <td>{{ fl.name }}</td>
-                <td><a :href="fl.url" target="_blank" style="font-size:0.8rem;">{{ fl.url }}</a></td>
-                <td>{{ fl.description || '-' }}</td>
+                <td>
+                  <a :href="fl.url" target="_blank" style="font-size: 0.8rem">{{
+                    fl.url
+                  }}</a>
+                </td>
+                <td>{{ fl.description || "-" }}</td>
                 <td>{{ fl.sort_order }}</td>
-                <td><span :class="['status-badge', fl.is_active ? 'published' : 'draft']">{{ fl.is_active ? t('admin.active') : t('admin.inactive') }}</span></td>
+                <td>
+                  <span
+                    :class="[
+                      'status-badge',
+                      fl.is_active ? 'published' : 'draft',
+                    ]"
+                    >{{
+                      fl.is_active ? t("admin.active") : t("admin.inactive")
+                    }}</span
+                  >
+                </td>
                 <td class="actions">
-                  <button @click="editingFriendLinkId = fl.id; friendLinkForm = { name: fl.name, url: fl.url, description: fl.description || '', sort_order: fl.sort_order, is_active: !!fl.is_active }; showFriendLinkForm = true">{{ t('admin.edit') }}</button>
-                  <button @click="deleteFriendLink(fl.id)" class="btn-danger">{{ t('admin.delete') }}</button>
+                  <button
+                    @click="
+                      editingFriendLinkId = fl.id;
+                      friendLinkForm = {
+                        name: fl.name,
+                        url: fl.url,
+                        description: fl.description || '',
+                        sort_order: fl.sort_order,
+                        is_active: !!fl.is_active,
+                      };
+                      showFriendLinkForm = true;
+                    "
+                  >
+                    {{ t("admin.edit") }}
+                  </button>
+                  <button @click="deleteFriendLink(fl.id)" class="btn-danger">
+                    {{ t("admin.delete") }}
+                  </button>
                 </td>
               </tr>
-              <tr v-if="friendLinks.length === 0"><td colspan="6" class="empty">{{ t('admin.no_friend_links') }}</td></tr>
+              <tr v-if="friendLinks.length === 0">
+                <td colspan="6" class="empty">
+                  {{ t("admin.no_friend_links") }}
+                </td>
+              </tr>
             </tbody>
           </table>
-          <div v-if="showFriendLinkForm" class="modal-overlay" @click.self="showFriendLinkForm = false">
+          <div
+            v-if="showFriendLinkForm"
+            class="modal-overlay"
+            @click.self="showFriendLinkForm = false"
+          >
             <div class="modal">
-              <h3>{{ editingFriendLinkId ? t('admin.edit') + t('admin.friend_links') : t('admin.new_friend_link') }}</h3>
-              <div class="form-group"><label>{{ t('admin.name') }}</label><input v-model="friendLinkForm.name" /></div>
-              <div class="form-group"><label>URL</label><input v-model="friendLinkForm.url" /></div>
-              <div class="form-group"><label>{{ t('admin.description') }}</label><input v-model="friendLinkForm.description" /></div>
-              <div class="form-group"><label>{{ t('admin.sort_order') }}</label><input v-model.number="friendLinkForm.sort_order" type="number" /></div>
-              <div class="form-group"><label class="checkbox-label"><input type="checkbox" v-model="friendLinkForm.is_active" /> {{ t('admin.active') }}</label></div>
+              <h3>
+                {{
+                  editingFriendLinkId
+                    ? t("admin.edit") + t("admin.friend_links")
+                    : t("admin.new_friend_link")
+                }}
+              </h3>
+              <div class="form-group">
+                <label>{{ t("admin.name") }}</label
+                ><input v-model="friendLinkForm.name" />
+              </div>
+              <div class="form-group">
+                <label>URL</label><input v-model="friendLinkForm.url" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.description") }}</label
+                ><input v-model="friendLinkForm.description" />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.sort_order") }}</label
+                ><input
+                  v-model.number="friendLinkForm.sort_order"
+                  type="number"
+                />
+              </div>
+              <div class="form-group">
+                <label class="checkbox-label"
+                  ><input type="checkbox" v-model="friendLinkForm.is_active" />
+                  {{ t("admin.active") }}</label
+                >
+              </div>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="showFriendLinkForm = false">{{ t('admin.cancel') }}</button>
-                <button class="btn-primary" @click="saveFriendLink">{{ t('admin.save') }}</button>
+                <button
+                  class="btn-secondary"
+                  @click="showFriendLinkForm = false"
+                >
+                  {{ t("admin.cancel") }}
+                </button>
+                <button class="btn-primary" @click="saveFriendLink">
+                  {{ t("admin.save") }}
+                </button>
               </div>
             </div>
           </div>
@@ -302,28 +815,66 @@
         <div v-if="currentTab === 'appearance'" class="admin-panel">
           <div class="panel-header">
             <h2>外观与个性化</h2>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-              <button class="btn-secondary" @click="exportSettingsFile">导出</button>
-              <label class="btn-secondary" style="cursor:pointer;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
+              <button class="btn-secondary" @click="exportSettingsFile">
+                导出
+              </button>
+              <label class="btn-secondary" style="cursor: pointer">
                 导入
-                <input type="file" accept="application/json" @change="importSettingsFile" style="display:none;" />
+                <input
+                  type="file"
+                  accept="application/json"
+                  @change="importSettingsFile"
+                  style="display: none"
+                />
               </label>
-              <button class="btn-secondary" style="color:var(--color-error);" @click="resetSettings">恢复默认</button>
-              <button class="btn-primary" @click="saveSettings" :disabled="settingsSaving">{{ settingsSaving ? t('admin.save_loading') : t('admin.save') }}</button>
+              <button
+                class="btn-secondary"
+                style="color: var(--color-error)"
+                @click="resetSettings"
+              >
+                恢复默认
+              </button>
+              <button
+                class="btn-primary"
+                @click="saveSettings"
+                :disabled="settingsSaving"
+              >
+                {{ settingsSaving ? t("admin.save_loading") : t("admin.save") }}
+              </button>
             </div>
           </div>
-          <div v-if="settingsLoading" class="loading">{{ t('common.loading') }}</div>
+          <div v-if="settingsLoading" class="loading">
+            {{ t("common.loading") }}
+          </div>
           <div v-else class="config-form appearance-form">
             <section class="setting-section">
               <h3>主题与配色</h3>
-              <div class="theme-group" v-for="themeKey in ['light', 'dark']" :key="themeKey">
-                <h4>{{ themeKey === 'light' ? '浅色模式' : '深色模式' }}</h4>
+              <div
+                class="theme-group"
+                v-for="themeKey in ['light', 'dark']"
+                :key="themeKey"
+              >
+                <h4>{{ themeKey === "light" ? "浅色模式" : "深色模式" }}</h4>
                 <div class="color-grid">
-                  <div class="color-field" v-for="cf in colorFields" :key="cf.key">
+                  <div
+                    class="color-field"
+                    v-for="cf in colorFields"
+                    :key="cf.key"
+                  >
                     <label>{{ cf.label }}</label>
                     <div class="color-input-row">
-                      <input type="color" v-model="settings.theme[themeKey][cf.key]" @input="previewSettings" />
-                      <input type="text" class="color-hex" v-model="settings.theme[themeKey][cf.key]" @input="previewSettings" />
+                      <input
+                        type="color"
+                        v-model="settings.theme[themeKey][cf.key]"
+                        @input="previewSettings"
+                      />
+                      <input
+                        type="text"
+                        class="color-hex"
+                        v-model="settings.theme[themeKey][cf.key]"
+                        @input="previewSettings"
+                      />
                     </div>
                   </div>
                 </div>
@@ -333,34 +884,105 @@
             <section class="setting-section">
               <h3>布局</h3>
               <div class="form-row">
-                <div class="form-group"><label>内容最大宽度</label><input v-model="settings.layout.contentMaxWidth" @input="previewSettings" placeholder="1200px" /></div>
-                <div class="form-group"><label>顶栏高度</label><input v-model="settings.layout.headerHeight" @input="previewSettings" placeholder="64px" /></div>
+                <div class="form-group">
+                  <label>内容最大宽度</label
+                  ><input
+                    v-model="settings.layout.contentMaxWidth"
+                    @input="previewSettings"
+                    placeholder="1200px"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>顶栏高度</label
+                  ><input
+                    v-model="settings.layout.headerHeight"
+                    @input="previewSettings"
+                    placeholder="64px"
+                  />
+                </div>
               </div>
               <div class="form-row">
-                <div class="form-group"><label>圆角(小)</label><input v-model="settings.layout.radiusSm" @input="previewSettings" placeholder="6px" /></div>
-                <div class="form-group"><label>圆角(中)</label><input v-model="settings.layout.radiusMd" @input="previewSettings" placeholder="10px" /></div>
-                <div class="form-group"><label>圆角(大)</label><input v-model="settings.layout.radiusLg" @input="previewSettings" placeholder="16px" /></div>
+                <div class="form-group">
+                  <label>圆角(小)</label
+                  ><input
+                    v-model="settings.layout.radiusSm"
+                    @input="previewSettings"
+                    placeholder="6px"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>圆角(中)</label
+                  ><input
+                    v-model="settings.layout.radiusMd"
+                    @input="previewSettings"
+                    placeholder="10px"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>圆角(大)</label
+                  ><input
+                    v-model="settings.layout.radiusLg"
+                    @input="previewSettings"
+                    placeholder="16px"
+                  />
+                </div>
               </div>
             </section>
 
             <section class="setting-section">
               <h3>背景</h3>
-              <div class="form-group"><label>背景图路径 (URL，留空用默认)</label><input v-model="settings.background.bgImage" @input="previewSettings" placeholder="/bg-placeholder.svg" /></div>
+              <div class="form-group">
+                <label>背景图路径 (URL，留空用默认)</label
+                ><input
+                  v-model="settings.background.bgImage"
+                  @input="previewSettings"
+                  placeholder="/bg-placeholder.svg"
+                />
+              </div>
               <div class="form-group">
                 <label>背景图片强度：{{ settings.background.bgOpacity }}</label>
-                <input type="range" min="0" max="1" step="0.01" v-model.number="settings.background.bgOpacity" @input="previewSettings" />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  v-model.number="settings.background.bgOpacity"
+                  @input="previewSettings"
+                />
               </div>
-              <p class="hint">数值越高，背景图片越清晰、蒙版越淡；建议 0.3~0.7 平衡可读性与图片可见度。</p>
+              <p class="hint">
+                数值越高，背景图片越清晰、蒙版越淡；建议 0.3~0.7
+                平衡可读性与图片可见度。
+              </p>
               <div class="form-group">
                 <label>背景雾化强度：{{ settings.background.bgBlur }}px</label>
-                <input type="range" min="0" max="30" step="1" v-model.number="settings.background.bgBlur" @input="previewSettings" />
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="1"
+                  v-model.number="settings.background.bgBlur"
+                  @input="previewSettings"
+                />
               </div>
-              <p class="hint">数值越高背景越模糊（0 为不模糊）。轻度雾化可显著提升前景文字可读性，建议 4~10。</p>
+              <p class="hint">
+                数值越高背景越模糊（0
+                为不模糊）。轻度雾化可显著提升前景文字可读性，建议 4~10。
+              </p>
               <div class="form-group">
                 <label>背景亮度：{{ settings.background.bgBrightness }}</label>
-                <input type="range" min="0.7" max="1.3" step="0.01" v-model.number="settings.background.bgBrightness" @input="previewSettings" />
+                <input
+                  type="range"
+                  min="0.7"
+                  max="1.3"
+                  step="0.01"
+                  v-model.number="settings.background.bgBrightness"
+                  @input="previewSettings"
+                />
               </div>
-              <p class="hint">低于 1 可压暗过亮的背景图（暗色主题更舒适），高于 1 提亮。</p>
+              <p class="hint">
+                低于 1 可压暗过亮的背景图（暗色主题更舒适），高于 1 提亮。
+              </p>
             </section>
 
             <section class="setting-section">
@@ -368,7 +990,10 @@
               <div class="form-row">
                 <div class="form-group">
                   <label>动效强度</label>
-                  <select v-model="settings.motion.intensity" @change="previewSettings">
+                  <select
+                    v-model="settings.motion.intensity"
+                    @change="previewSettings"
+                  >
                     <option value="normal">标准（全部动效）</option>
                     <option value="reduced">减弱（仅轻量入场与进度条）</option>
                     <option value="off">关闭（无动效）</option>
@@ -377,22 +1002,44 @@
               </div>
               <div class="toggle-grid">
                 <label class="toggle-item">
-                  <input type="checkbox" v-model="settings.motion.parallax" @change="previewSettings" />
+                  <input
+                    type="checkbox"
+                    v-model="settings.motion.parallax"
+                    @change="previewSettings"
+                  />
                   <span>启用背景视差</span>
                 </label>
               </div>
               <div class="form-group">
                 <label>视差速度：{{ settings.motion.parallaxSpeed }}</label>
-                <input type="range" min="0" max="0.1" step="0.005" v-model.number="settings.motion.parallaxSpeed" @input="previewSettings" :disabled="!settings.motion.parallax" />
+                <input
+                  type="range"
+                  min="0"
+                  max="0.1"
+                  step="0.005"
+                  v-model.number="settings.motion.parallaxSpeed"
+                  @input="previewSettings"
+                  :disabled="!settings.motion.parallax"
+                />
               </div>
-              <p class="hint">背景视差为极轻微滚动位移，增强沉浸感且不干扰阅读；在任意主题与语言下均生效。</p>
+              <p class="hint">
+                背景视差为极轻微滚动位移，增强沉浸感且不干扰阅读；在任意主题与语言下均生效。
+              </p>
             </section>
 
             <section class="setting-section">
               <h3>功能开关</h3>
               <div class="toggle-grid">
-                <label class="toggle-item" v-for="ft in featureList" :key="ft.key">
-                  <input type="checkbox" v-model="settings.features[ft.key]" @change="previewSettings" />
+                <label
+                  class="toggle-item"
+                  v-for="ft in featureList"
+                  :key="ft.key"
+                >
+                  <input
+                    type="checkbox"
+                    v-model="settings.features[ft.key]"
+                    @change="previewSettings"
+                  />
                   <span>{{ ft.label }}</span>
                 </label>
               </div>
@@ -400,16 +1047,43 @@
 
             <section class="setting-section">
               <h3>文案覆盖</h3>
-              <p class="hint">覆盖界面文案（随当前语言生效），留空使用默认文案。</p>
-              <div class="copy-row head"><span>键 (key)</span><span>中文 (zh)</span><span>英文 (en)</span><span></span></div>
+              <p class="hint">
+                覆盖界面文案（随当前语言生效），留空使用默认文案。
+              </p>
+              <div class="copy-row head">
+                <span>键 (key)</span><span>中文 (zh)</span><span>英文 (en)</span
+                ><span></span>
+              </div>
               <div class="copy-row" v-for="key in copyKeys" :key="key">
-                <input :list="'i18n-keys'" :value="key" @input="renameCopyKey(key, ($event.target as HTMLInputElement).value)" placeholder="如 nav.home" />
-                <input v-model="settings.copy.zh[key]" @input="previewSettings" />
-                <input v-model="settings.copy.en[key]" @input="previewSettings" />
-                <button class="btn-danger" @click="removeCopyKey(key)">×</button>
+                <input
+                  :list="'i18n-keys'"
+                  :value="key"
+                  @input="
+                    renameCopyKey(
+                      key,
+                      ($event.target as HTMLInputElement).value
+                    )
+                  "
+                  placeholder="如 nav.home"
+                />
+                <input
+                  v-model="settings.copy.zh[key]"
+                  @input="previewSettings"
+                />
+                <input
+                  v-model="settings.copy.en[key]"
+                  @input="previewSettings"
+                />
+                <button class="btn-danger" @click="removeCopyKey(key)">
+                  ×
+                </button>
               </div>
               <div class="copy-row">
-                <input :list="'i18n-keys'" v-model="newCopyKey" placeholder="新增键名，如 nav.home" />
+                <input
+                  :list="'i18n-keys'"
+                  v-model="newCopyKey"
+                  placeholder="新增键名，如 nav.home"
+                />
                 <input v-model="newCopyZh" placeholder="中文" />
                 <input v-model="newCopyEn" placeholder="English" />
                 <button class="btn-primary" @click="addCopyKey">+</button>
@@ -423,78 +1097,198 @@
           </div>
         </div>
 
-        <div v-if="showLockConflict" class="modal-overlay" @click.self="showLockConflict = false">
+        <div
+          v-if="showLockConflict"
+          class="modal-overlay"
+          @click.self="showLockConflict = false"
+        >
           <div class="modal">
-            <h3>{{ t('admin.edit_locked') }}</h3>
-            <p>{{ t('admin.edit_locked_msg', { name: lockConflict?.holder_name || '?' }) }}</p>
-            <p v-if="lockConflict?.expires_at" style="font-size:0.85rem;color:#888;">{{ t('admin.lock_expires_at') }}: {{ new Date(lockConflict.expires_at).toLocaleString() }}</p>
+            <h3>{{ t("admin.edit_locked") }}</h3>
+            <p>
+              {{
+                t("admin.edit_locked_msg", {
+                  name: lockConflict?.holder_name || "?",
+                })
+              }}
+            </p>
+            <p
+              v-if="lockConflict?.expires_at"
+              style="font-size: 0.85rem; color: #888"
+            >
+              {{ t("admin.lock_expires_at") }}:
+              {{ new Date(lockConflict.expires_at).toLocaleString() }}
+            </p>
             <div class="modal-actions">
-              <button class="btn-secondary" @click="showLockConflict = false">{{ t('admin.cancel') }}</button>
-              <button v-if="userRole === 'admin'" class="btn-danger" @click="forceTakeover">{{ t('admin.force_takeover') }}</button>
+              <button class="btn-secondary" @click="showLockConflict = false">
+                {{ t("admin.cancel") }}
+              </button>
+              <button
+                v-if="userRole === 'admin'"
+                class="btn-danger"
+                @click="forceTakeover"
+              >
+                {{ t("admin.force_takeover") }}
+              </button>
             </div>
           </div>
         </div>
 
         <Teleport to="body">
           <div v-if="showArticleEditor" class="article-editor-overlay">
-          <div class="article-editor">
-            <div class="editor-header">
-              <h3>{{ editingArticle ? t('admin.edit') + t('admin.articles') : t('admin.new_article') }}</h3>
-              <button @click="releaseEditLock(); showArticleEditor = false" class="close-btn">&times;</button>
-            </div>
-            <div class="editor-body">
-              <div class="form-group"><label>{{ t('admin.title') }}</label><input v-model="articleForm.title" /></div>
-              <div class="form-group"><label>{{ t('admin.slug') }}</label><input v-model="articleForm.slug" /></div>
-              <div class="form-row">
-                <div class="form-group"><label>{{ t('admin.category') }}</label>
-                  <select v-model="articleForm.category_id">
-                    <option value="">{{ t('admin.no_category') }}</option>
-                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-                  </select>
+            <div class="article-editor">
+              <div class="editor-header">
+                <h3>
+                  {{
+                    editingArticle
+                      ? t("admin.edit") + t("admin.articles")
+                      : t("admin.new_article")
+                  }}
+                </h3>
+                <button
+                  @click="
+                    releaseEditLock();
+                    showArticleEditor = false;
+                  "
+                  class="close-btn"
+                >
+                  &times;
+                </button>
+              </div>
+              <div class="editor-body">
+                <div class="form-group">
+                  <label>{{ t("admin.title") }}</label
+                  ><input v-model="articleForm.title" />
                 </div>
-                <div class="form-group"><label>{{ t('admin.status') }}</label>
-                  <select v-model="articleForm.status">
-                    <option value="draft">{{ t('article.draft') }}</option>
-                    <option value="published">{{ t('article.published') }}</option>
-                  </select>
+                <div class="form-group">
+                  <label>{{ t("admin.slug") }}</label
+                  ><input v-model="articleForm.slug" />
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>{{ t("admin.category") }}</label>
+                    <select v-model="articleForm.category_id">
+                      <option value="">{{ t("admin.no_category") }}</option>
+                      <option v-for="c in categories" :key="c.id" :value="c.id">
+                        {{ c.name }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ t("admin.status") }}</label>
+                    <select v-model="articleForm.status">
+                      <option value="draft">{{ t("article.draft") }}</option>
+                      <option value="published">
+                        {{ t("article.published") }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>{{ t("admin.tags_label") }}</label>
+                  <div class="tag-selector">
+                    <div class="tag-chips">
+                      <button
+                        v-for="tag in tags"
+                        :key="tag.id"
+                        type="button"
+                        :class="[
+                          'tag-chip',
+                          {
+                            active: (articleForm.tags || []).includes(tag.name),
+                          },
+                        ]"
+                        @click="toggleTag(tag.name)"
+                      >
+                        {{ tag.name }}
+                      </button>
+                    </div>
+                    <div class="tag-input-row">
+                      <input
+                        v-model="newTagInput"
+                        @keydown.enter.prevent="addNewTag"
+                        :placeholder="t('admin.add_tag_placeholder')"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>{{ t("admin.summary") }}</label
+                  ><textarea v-model="articleForm.summary" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                  <label>{{ t("admin.cover") }}</label
+                  ><input
+                    v-model="articleForm.cover_image"
+                    :placeholder="t('admin.cover_placeholder')"
+                  />
+                </div>
+                <div class="form-group">
+                  <div class="content-label-row">
+                    <label>{{ t("admin.content") }} (Markdown)</label>
+                    <div class="preview-toggle">
+                      <button
+                        :class="[
+                          'toggle-btn',
+                          { active: editorMode === 'edit' },
+                        ]"
+                        @click="editorMode = 'edit'"
+                      >
+                        {{ t("admin.edit_mode") }}
+                      </button>
+                      <button
+                        :class="[
+                          'toggle-btn',
+                          { active: editorMode === 'split' },
+                        ]"
+                        @click="editorMode = 'split'"
+                      >
+                        {{ t("admin.split_mode") }}
+                      </button>
+                      <button
+                        :class="[
+                          'toggle-btn',
+                          { active: editorMode === 'preview' },
+                        ]"
+                        @click="editorMode = 'preview'"
+                      >
+                        {{ t("admin.preview_mode") }}
+                      </button>
+                    </div>
+                  </div>
+                  <div :class="['editor-content-area', editorMode]">
+                    <textarea
+                      v-if="editorMode !== 'preview'"
+                      v-model="articleForm.content"
+                      rows="20"
+                      class="editor-textarea"
+                      @input="updatePreview"
+                    ></textarea>
+                    <div
+                      v-if="editorMode !== 'edit'"
+                      class="editor-preview prose"
+                      v-html="previewHtml"
+                    ></div>
+                  </div>
                 </div>
               </div>
-              <div class="form-group">
-                <label>{{ t('admin.tags_label') }}</label>
-                <div class="tag-selector">
-                  <div class="tag-chips">
-                    <button v-for="tag in tags" :key="tag.id" type="button"
-                      :class="['tag-chip', { active: (articleForm.tags || []).includes(tag.name) }]"
-                      @click="toggleTag(tag.name)">{{ tag.name }}</button>
-                  </div>
-                  <div class="tag-input-row">
-                    <input v-model="newTagInput" @keydown.enter.prevent="addNewTag"
-                      :placeholder="t('admin.add_tag_placeholder')" />
-                  </div>
-                </div>
-              </div>
-              <div class="form-group"><label>{{ t('admin.summary') }}</label><textarea v-model="articleForm.summary" rows="2"></textarea></div>
-              <div class="form-group"><label>{{ t('admin.cover') }}</label><input v-model="articleForm.cover_image" :placeholder="t('admin.cover_placeholder')" /></div>
-              <div class="form-group">
-                <div class="content-label-row">
-                  <label>{{ t('admin.content') }} (Markdown)</label>
-                  <div class="preview-toggle">
-                    <button :class="['toggle-btn', { active: editorMode === 'edit' }]" @click="editorMode = 'edit'">{{ t('admin.edit_mode') }}</button>
-                    <button :class="['toggle-btn', { active: editorMode === 'split' }]" @click="editorMode = 'split'">{{ t('admin.split_mode') }}</button>
-                    <button :class="['toggle-btn', { active: editorMode === 'preview' }]" @click="editorMode = 'preview'">{{ t('admin.preview_mode') }}</button>
-                  </div>
-                </div>
-                <div :class="['editor-content-area', editorMode]">
-                  <textarea v-if="editorMode !== 'preview'" v-model="articleForm.content" rows="20" class="editor-textarea" @input="updatePreview"></textarea>
-                  <div v-if="editorMode !== 'edit'" class="editor-preview prose" v-html="previewHtml"></div>
-                </div>
+              <div class="editor-footer">
+                <button
+                  class="btn-secondary"
+                  @click="showArticleEditor = false"
+                >
+                  {{ t("admin.cancel") }}
+                </button>
+                <button
+                  class="btn-primary"
+                  @click="saveArticle"
+                  :disabled="articleSaving"
+                >
+                  {{
+                    articleSaving ? t("admin.save_loading") : t("admin.save")
+                  }}
+                </button>
               </div>
             </div>
-            <div class="editor-footer">
-              <button class="btn-secondary" @click="showArticleEditor = false">{{ t('admin.cancel') }}</button>
-              <button class="btn-primary" @click="saveArticle" :disabled="articleSaving">{{ articleSaving ? t('admin.save_loading') : t('admin.save') }}</button>
-            </div>
-          </div>
           </div>
         </Teleport>
       </main>
@@ -503,137 +1297,255 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, h, defineComponent } from 'vue';
-import { t, getLocale, setLocale, initLocale } from '../utils/i18n.ts';
-import { applySettings, getDefaultSettings, broadcastSettingsChange } from '../utils/settings.ts';
-import zh from '../i18n/zh.json';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
-import DOMPurify from 'dompurify';
+import {
+  ref,
+  reactive,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  h,
+  defineComponent,
+} from "vue";
+import { t, getLocale, setLocale, initLocale } from "../utils/i18n.ts";
+import {
+  applySettings,
+  getDefaultSettings,
+  broadcastSettingsChange,
+} from "../utils/settings.ts";
+import zh from "../i18n/zh.json";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
-marked.setOptions({
-  highlight(code: string, lang: string) {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value;
-    }
-    return hljs.highlightAuto(code).value;
-  },
-});
+// marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
+// （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
+// 与 src/utils/markdown.ts 同一套说明，如需恢复高亮应接线 marked-highlight）。
 
 function updatePreview() {
   if (!articleForm.value.content) {
-    previewHtml.value = '';
+    previewHtml.value = "";
     return;
   }
   try {
     const raw = marked.parse(articleForm.value.content) as string;
     previewHtml.value = DOMPurify.sanitize(raw);
   } catch {
-    previewHtml.value = '';
+    previewHtml.value = "";
   }
 }
 
-const API = '/api/v1';
+const API = "/api/v1";
 const currentLocale = ref(initLocale());
 
-const token = ref(localStorage.getItem('admin_token') || '');
-const userRole = ref(localStorage.getItem('admin_role') || 'editor');
-const currentUserId = ref(Number(localStorage.getItem('admin_user_id')) || 0);
+const token = ref(localStorage.getItem("admin_token") || "");
+const userRole = ref(localStorage.getItem("admin_role") || "editor");
+const currentUserId = ref(Number(localStorage.getItem("admin_user_id")) || 0);
 const isLoggedIn = ref(!!token.value);
-const currentTab = ref('articles');
+const currentTab = ref("articles");
 
-const loginForm = ref({ username: '', password: '' });
-const loginError = ref('');
+const loginForm = ref({ username: "", password: "" });
+const loginError = ref("");
 const loginLoading = ref(false);
 
 const articles = ref<any[]>([]);
 const articlesLoading = ref(false);
-const authorFilter = ref('');
+const authorFilter = ref("");
 const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
-const articleForm = ref({ title: '', slug: '', summary: '', content: '', cover_image: '', category_id: '', status: 'draft', tags: [] as string[] });
-const newTagInput = ref('');
+const articleForm = ref({
+  title: "",
+  slug: "",
+  summary: "",
+  content: "",
+  cover_image: "",
+  category_id: "",
+  status: "draft",
+  tags: [] as string[],
+});
+const newTagInput = ref("");
 const articleSaving = ref(false);
-const editorMode = ref<'edit' | 'split' | 'preview'>('edit');
-const previewHtml = ref('');
+const editorMode = ref<"edit" | "split" | "preview">("edit");
+const previewHtml = ref("");
 
 const categories = ref<any[]>([]);
 const showCategoryForm = ref(false);
-const categoryForm = ref({ name: '', slug: '', description: '' });
+const categoryForm = ref({ name: "", slug: "", description: "" });
 const editingCategoryId = ref<number | null>(null);
 
 const tags = ref<any[]>([]);
 const showTagForm = ref(false);
-const tagForm = ref({ name: '', slug: '' });
+const tagForm = ref({ name: "", slug: "" });
 
-const configForm = ref({ site_title: '', site_subtitle: '', site_description: '', posts_per_page: 10 });
+const configForm = ref({
+  site_title: "",
+  site_subtitle: "",
+  site_description: "",
+  posts_per_page: 10,
+});
 const configLoading = ref(false);
-const configMsg = ref('');
+const configMsg = ref("");
 
-const aboutContent = ref('');
+const aboutContent = ref("");
 const aboutSaving = ref(false);
-const aboutMsg = ref('');
+const aboutMsg = ref("");
 
 const users = ref<any[]>([]);
 const showUserForm = ref(false);
-const userForm = ref({ username: '', password: '', display_name: '', role: 'admin' });
+const userForm = ref({
+  username: "",
+  password: "",
+  display_name: "",
+  role: "admin",
+});
 const editingUserId = ref<number | null>(null);
-const originalUserRole = ref<string>('');
+const originalUserRole = ref<string>("");
 
 const comments = ref<any[]>([]);
-const commentFilter = ref('');
+const commentFilter = ref("");
 
 const mediaList = ref<any[]>([]);
 const mediaLoading = ref(false);
 
 const friendLinks = ref<any[]>([]);
 const showFriendLinkForm = ref(false);
-const friendLinkForm = ref({ name: '', url: '', description: '', sort_order: 0, is_active: true });
+const friendLinkForm = ref({
+  name: "",
+  url: "",
+  description: "",
+  sort_order: 0,
+  is_active: true,
+});
 const editingFriendLinkId = ref<number | null>(null);
 
-const SvgIcon = (paths: string) => defineComponent({
-  render() {
-    return h('svg', {
-      xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16,
-      viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
-      'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-      innerHTML: paths,
-    });
-  },
-});
+const SvgIcon = (paths: string) =>
+  defineComponent({
+    render() {
+      return h("svg", {
+        xmlns: "http://www.w3.org/2000/svg",
+        width: 16,
+        height: 16,
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": 2,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        innerHTML: paths,
+      });
+    },
+  });
 
 const navItems = [
-  { key: 'articles', label: () => t('admin.articles'), minRole: 'editor', icon: SvgIcon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>') },
-  { key: 'categories', label: () => t('admin.categories'), minRole: 'editor', icon: SvgIcon('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>') },
-  { key: 'tags', label: () => t('admin.tags'), minRole: 'editor', icon: SvgIcon('<line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line>') },
-  { key: 'about', label: () => t('admin.about_page'), minRole: 'admin', icon: SvgIcon('<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>') },
-  { key: 'comments', label: () => t('admin.comments'), minRole: 'editor', icon: SvgIcon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>') },
-  { key: 'media', label: () => t('admin.media'), minRole: 'editor', icon: SvgIcon('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>') },
-  { key: 'friend_links', label: () => t('admin.friend_links'), minRole: 'admin', icon: SvgIcon('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>') },
-  { key: 'config', label: () => t('admin.site_config'), minRole: 'admin', icon: SvgIcon('<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>') },
-  { key: 'appearance', label: () => '外观与个性化', minRole: 'admin', icon: SvgIcon('<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.53-.21-1.01-.55-1.37-.34-.36-.55-.84-.55-1.38 0-1.1.9-2 2-2h2.34c2.64 0 4.79-2.15 4.79-4.79C21.63 6.32 17.31 2 12 2z"></path><circle cx="7.5" cy="10.5" r="1.5"></circle><circle cx="12" cy="7.5" r="1.5"></circle><circle cx="16.5" cy="10.5" r="1.5"></circle>') },
-  { key: 'users', label: () => t('admin.users'), minRole: 'admin', icon: SvgIcon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>') },
+  {
+    key: "articles",
+    label: () => t("admin.articles"),
+    minRole: "editor",
+    icon: SvgIcon(
+      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline>'
+    ),
+  },
+  {
+    key: "categories",
+    label: () => t("admin.categories"),
+    minRole: "editor",
+    icon: SvgIcon(
+      '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>'
+    ),
+  },
+  {
+    key: "tags",
+    label: () => t("admin.tags"),
+    minRole: "editor",
+    icon: SvgIcon(
+      '<line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line>'
+    ),
+  },
+  {
+    key: "about",
+    label: () => t("admin.about_page"),
+    minRole: "admin",
+    icon: SvgIcon(
+      '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>'
+    ),
+  },
+  {
+    key: "comments",
+    label: () => t("admin.comments"),
+    minRole: "editor",
+    icon: SvgIcon(
+      '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>'
+    ),
+  },
+  {
+    key: "media",
+    label: () => t("admin.media"),
+    minRole: "editor",
+    icon: SvgIcon(
+      '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>'
+    ),
+  },
+  {
+    key: "friend_links",
+    label: () => t("admin.friend_links"),
+    minRole: "admin",
+    icon: SvgIcon(
+      '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>'
+    ),
+  },
+  {
+    key: "config",
+    label: () => t("admin.site_config"),
+    minRole: "admin",
+    icon: SvgIcon(
+      '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>'
+    ),
+  },
+  {
+    key: "appearance",
+    label: () => "外观与个性化",
+    minRole: "admin",
+    icon: SvgIcon(
+      '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.53-.21-1.01-.55-1.37-.34-.36-.55-.84-.55-1.38 0-1.1.9-2 2-2h2.34c2.64 0 4.79-2.15 4.79-4.79C21.63 6.32 17.31 2 12 2z"></path><circle cx="7.5" cy="10.5" r="1.5"></circle><circle cx="12" cy="7.5" r="1.5"></circle><circle cx="16.5" cy="10.5" r="1.5"></circle>'
+    ),
+  },
+  {
+    key: "users",
+    label: () => t("admin.users"),
+    minRole: "admin",
+    icon: SvgIcon(
+      '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>'
+    ),
+  },
 ];
 
-const adminOnlyTabs = ['config', 'users', 'about', 'friend_links', 'appearance'];
+const adminOnlyTabs = [
+  "config",
+  "users",
+  "about",
+  "friend_links",
+  "appearance",
+];
 
 const visibleNavItems = computed(() => {
-  return navItems.filter(item => {
-    if (item.minRole === 'admin' && userRole.value !== 'admin') return false;
+  return navItems.filter((item) => {
+    if (item.minRole === "admin" && userRole.value !== "admin") return false;
     return true;
   });
 });
 
 function switchTab(key: string) {
-  if (adminOnlyTabs.includes(key) && userRole.value !== 'admin') {
-    alert('您没有权限访问此页面');
+  if (adminOnlyTabs.includes(key) && userRole.value !== "admin") {
+    alert("您没有权限访问此页面");
     return;
   }
   currentTab.value = key;
 }
 
 function authHeaders() {
-  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` };
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token.value}`,
+  };
 }
 
 async function api(method: string, path: string, body?: any) {
@@ -642,39 +1554,39 @@ async function api(method: string, path: string, body?: any) {
   const res = await fetch(`${API}${path}`, opts);
   const data = await res.json();
   if (data.code === 10003) {
-    token.value = '';
-    userRole.value = 'editor';
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_role');
-    localStorage.removeItem('admin_user_id');
+    token.value = "";
+    userRole.value = "editor";
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_role");
+    localStorage.removeItem("admin_user_id");
     isLoggedIn.value = false;
   }
   if (data.code === 10004) {
-    console.warn('Permission denied:', data.message);
+    console.warn("Permission denied:", data.message);
   }
   return data;
 }
 
 async function handleLogin() {
-  loginError.value = '';
+  loginError.value = "";
   loginLoading.value = true;
   try {
-    const data = await api('POST', '/auth/login', loginForm.value);
+    const data = await api("POST", "/auth/login", loginForm.value);
     if (data.code === 0 && data.data?.token) {
       token.value = data.data.token;
-      localStorage.setItem('admin_token', data.data.token);
-      const role = data.data.user?.role || 'editor';
+      localStorage.setItem("admin_token", data.data.token);
+      const role = data.data.user?.role || "editor";
       const userId = data.data.user?.id || 0;
       userRole.value = role;
       currentUserId.value = userId;
-      localStorage.setItem('admin_role', role);
-      localStorage.setItem('admin_user_id', String(userId));
+      localStorage.setItem("admin_role", role);
+      localStorage.setItem("admin_user_id", String(userId));
       isLoggedIn.value = true;
     } else {
-      loginError.value = data.message || t('admin.login_error');
+      loginError.value = data.message || t("admin.login_error");
     }
   } catch (e) {
-    loginError.value = t('admin.login_error');
+    loginError.value = t("admin.login_error");
   } finally {
     loginLoading.value = false;
   }
@@ -683,26 +1595,28 @@ async function handleLogin() {
 async function handleLogout() {
   // 退出前释放当前编辑锁
   await releaseEditLock();
-  token.value = '';
-  userRole.value = 'editor';
+  token.value = "";
+  userRole.value = "editor";
   currentUserId.value = 0;
-  localStorage.removeItem('admin_token');
-  localStorage.removeItem('admin_role');
-  localStorage.removeItem('admin_user_id');
+  localStorage.removeItem("admin_token");
+  localStorage.removeItem("admin_role");
+  localStorage.removeItem("admin_user_id");
   isLoggedIn.value = false;
 }
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString(getLocale() === 'zh' ? 'zh-CN' : 'en-US');
+  if (!d) return "-";
+  return new Date(d).toLocaleDateString(
+    getLocale() === "zh" ? "zh-CN" : "en-US"
+  );
 }
 
 async function loadArticles() {
   articlesLoading.value = true;
   try {
-    let url = '/articles?page_size=100&status=all';
+    let url = "/articles?page_size=100&status=all";
     if (authorFilter.value) url += `&author_id=${authorFilter.value}`;
-    const data = await api('GET', url);
+    const data = await api("GET", url);
     if (data.code === 0) articles.value = data.data?.items || [];
   } finally {
     articlesLoading.value = false;
@@ -710,28 +1624,28 @@ async function loadArticles() {
 }
 
 async function loadCategories() {
-  const data = await api('GET', '/categories');
+  const data = await api("GET", "/categories");
   if (data.code === 0) categories.value = data.data?.items || data.data || [];
 }
 
 async function loadTags() {
-  const data = await api('GET', '/tags');
+  const data = await api("GET", "/tags");
   if (data.code === 0) tags.value = data.data?.items || data.data || [];
 }
 
 async function loadConfig() {
   configLoading.value = true;
   try {
-    const data = await api('GET', '/config/all');
+    const data = await api("GET", "/config/all");
     if (data.code === 0 && data.data) {
       configForm.value = {
-        site_title: data.data.site_title || '',
-        site_subtitle: data.data.site_subtitle || '',
-        site_description: data.data.site_description || '',
+        site_title: data.data.site_title || "",
+        site_subtitle: data.data.site_subtitle || "",
+        site_description: data.data.site_description || "",
 
         posts_per_page: parseInt(data.data.posts_per_page) || 10,
       };
-      aboutContent.value = data.data.about_content || '';
+      aboutContent.value = data.data.about_content || "";
     }
   } finally {
     configLoading.value = false;
@@ -743,9 +1657,9 @@ const showLockConflict = ref(false);
 const lockConflictArticleId = ref<number | null>(null);
 
 async function editArticle(a: any) {
-  const lockRes = await api('POST', `/articles/${a.id}/edit-lock`);
+  const lockRes = await api("POST", `/articles/${a.id}/edit-lock`);
   if (lockRes.code !== 0 && lockRes.code !== 10006) {
-    alert(lockRes.message || t('admin.save_failed'));
+    alert(lockRes.message || t("admin.save_failed"));
     return;
   }
   if (lockRes.code === 10006) {
@@ -759,18 +1673,18 @@ async function editArticle(a: any) {
   articleForm.value = {
     title: a.title,
     slug: a.slug,
-    summary: a.summary || '',
-    content: '',
-    cover_image: a.cover_image || '',
-    category_id: a.category?.id?.toString() || '',
-    status: a.status || 'draft',
+    summary: a.summary || "",
+    content: "",
+    cover_image: a.cover_image || "",
+    category_id: a.category?.id?.toString() || "",
+    status: a.status || "draft",
     tags: (a.tags || []).map((t: any) => t.name),
   };
   showArticleEditor.value = true;
   try {
-    const detail = await api('GET', `/articles/${a.slug}`);
+    const detail = await api("GET", `/articles/${a.slug}`);
     if (detail.code === 0 && detail.data) {
-      articleForm.value.content = detail.data.content || '';
+      articleForm.value.content = detail.data.content || "";
       updatePreview();
     }
   } catch {}
@@ -778,49 +1692,63 @@ async function editArticle(a: any) {
 
 async function forceTakeover() {
   if (!lockConflictArticleId.value) return;
-  if (!confirm(t('admin.force_takeover_confirm'))) return;
-  const res = await api('POST', `/articles/${lockConflictArticleId.value}/edit-lock/force`);
+  if (!confirm(t("admin.force_takeover_confirm"))) return;
+  const res = await api(
+    "POST",
+    `/articles/${lockConflictArticleId.value}/edit-lock/force`
+  );
   if (res.code === 0) {
     showLockConflict.value = false;
     // 接管成功后锁已在当前用户名下，直接打开编辑器，不再重复抢锁
-    const a = articles.value.find((x: any) => x.id === lockConflictArticleId.value);
+    const a = articles.value.find(
+      (x: any) => x.id === lockConflictArticleId.value
+    );
     if (a) {
       editingArticle.value = a;
       articleForm.value = {
         title: a.title,
         slug: a.slug,
-        summary: a.summary || '',
-        content: '',
-        cover_image: a.cover_image || '',
-        category_id: a.category?.id?.toString() || '',
-        status: a.status || 'draft',
+        summary: a.summary || "",
+        content: "",
+        cover_image: a.cover_image || "",
+        category_id: a.category?.id?.toString() || "",
+        status: a.status || "draft",
         tags: (a.tags || []).map((t: any) => t.name),
       };
       showArticleEditor.value = true;
       try {
-        const detail = await api('GET', `/articles/${a.slug}`);
+        const detail = await api("GET", `/articles/${a.slug}`);
         if (detail.code === 0 && detail.data) {
-          articleForm.value.content = detail.data.content || '';
+          articleForm.value.content = detail.data.content || "";
           updatePreview();
         }
       } catch {}
     }
     lockConflictArticleId.value = null;
   } else {
-    alert(res.message || t('admin.save_failed'));
+    alert(res.message || t("admin.save_failed"));
   }
 }
 
 async function releaseEditLock() {
   if (editingArticle.value?.id) {
-    await api('DELETE', `/articles/${editingArticle.value.id}/edit-lock`);
+    await api("DELETE", `/articles/${editingArticle.value.id}/edit-lock`);
   }
 }
 
 function openNewArticle() {
   editingArticle.value = null;
-  articleForm.value = { title: '', slug: '', summary: '', content: '', cover_image: '', category_id: '', status: 'draft', tags: [] };
-  newTagInput.value = '';
+  articleForm.value = {
+    title: "",
+    slug: "",
+    summary: "",
+    content: "",
+    cover_image: "",
+    category_id: "",
+    status: "draft",
+    tags: [],
+  };
+  newTagInput.value = "";
   showArticleEditor.value = true;
 }
 
@@ -832,26 +1760,33 @@ function toggleTag(name: string) {
 }
 
 async function addNewTag() {
-  const name = (newTagInput.value || '').trim();
+  const name = (newTagInput.value || "").trim();
   if (!name) return;
   const tags = articleForm.value.tags || (articleForm.value.tags = []);
-  if (tags.includes(name)) { newTagInput.value = ''; return; }
+  if (tags.includes(name)) {
+    newTagInput.value = "";
+    return;
+  }
 
-  let slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-  if (!slug) slug = 'tag-' + Date.now().toString(36);
+  let slug = name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-]/g, "");
+  if (!slug) slug = "tag-" + Date.now().toString(36);
 
   try {
-    const res = await api('POST', '/tags', { name, slug });
+    const res = await api("POST", "/tags", { name, slug });
     if (res.code === 0 || res.code === 10006) {
       await loadTags();
-      if (!articleForm.value.tags.includes(name)) articleForm.value.tags.push(name);
+      if (!articleForm.value.tags.includes(name))
+        articleForm.value.tags.push(name);
     } else {
-      alert(res.message || t('admin.save_failed'));
+      alert(res.message || t("admin.save_failed"));
     }
   } catch {
-    alert(t('admin.save_failed'));
+    alert(t("admin.save_failed"));
   }
-  newTagInput.value = '';
+  newTagInput.value = "";
 }
 
 async function saveArticle() {
@@ -862,16 +1797,16 @@ async function saveArticle() {
     if (!body.category_id) body.category_id = null;
     let data;
     if (editingArticle.value) {
-      data = await api('PUT', `/articles/${editingArticle.value.id}`, body);
+      data = await api("PUT", `/articles/${editingArticle.value.id}`, body);
     } else {
-      data = await api('POST', '/articles', body);
+      data = await api("POST", "/articles", body);
     }
     if (data.code === 0) {
       if (editingArticle.value) await releaseEditLock();
       showArticleEditor.value = false;
       await loadArticles();
     } else {
-      alert(data.message || t('admin.save_failed'));
+      alert(data.message || t("admin.save_failed"));
     }
   } finally {
     articleSaving.value = false;
@@ -879,66 +1814,72 @@ async function saveArticle() {
 }
 
 async function deleteArticle(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/articles/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/articles/${id}`);
   if (data.code === 0) await loadArticles();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 async function saveCategory() {
   let data;
   if (editingCategoryId.value) {
-    data = await api('PUT', `/categories/${editingCategoryId.value}`, categoryForm.value);
+    data = await api(
+      "PUT",
+      `/categories/${editingCategoryId.value}`,
+      categoryForm.value
+    );
   } else {
-    data = await api('POST', '/categories', categoryForm.value);
+    data = await api("POST", "/categories", categoryForm.value);
   }
   if (data.code === 0) {
     showCategoryForm.value = false;
     editingCategoryId.value = null;
     await loadCategories();
   } else {
-    alert(data.message || t('admin.save_failed'));
+    alert(data.message || t("admin.save_failed"));
   }
 }
 
 async function deleteCategory(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/categories/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/categories/${id}`);
   if (data.code === 0) await loadCategories();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 async function saveTag() {
-  const data = await api('POST', '/tags', tagForm.value);
+  const data = await api("POST", "/tags", tagForm.value);
   if (data.code === 0) {
     showTagForm.value = false;
     await loadTags();
   } else {
-    alert(data.message || t('admin.save_failed'));
+    alert(data.message || t("admin.save_failed"));
   }
 }
 
 async function deleteTag(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/tags/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/tags/${id}`);
   if (data.code === 0) await loadTags();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 async function saveConfig() {
-  configMsg.value = '';
-  const data = await api('PUT', '/config', configForm.value);
-  if (data.code === 0) configMsg.value = t('admin.save_success');
-  else configMsg.value = data.message || t('admin.save_failed');
+  configMsg.value = "";
+  const data = await api("PUT", "/config", configForm.value);
+  if (data.code === 0) configMsg.value = t("admin.save_success");
+  else configMsg.value = data.message || t("admin.save_failed");
 }
 
 async function saveAbout() {
   aboutSaving.value = true;
-  aboutMsg.value = '';
+  aboutMsg.value = "";
   try {
-    const data = await api('PUT', '/config', { about_content: aboutContent.value });
-    if (data.code === 0) aboutMsg.value = t('admin.save_success');
-    else aboutMsg.value = data.message || t('admin.save_failed');
+    const data = await api("PUT", "/config", {
+      about_content: aboutContent.value,
+    });
+    if (data.code === 0) aboutMsg.value = t("admin.save_success");
+    else aboutMsg.value = data.message || t("admin.save_failed");
   } finally {
     aboutSaving.value = false;
   }
@@ -948,36 +1889,41 @@ async function saveAbout() {
 const settings = reactive(getDefaultSettings());
 const settingsLoading = ref(false);
 const settingsSaving = ref(false);
-const settingsMsg = ref('');
-const newCopyKey = ref('');
-const newCopyZh = ref('');
-const newCopyEn = ref('');
+const settingsMsg = ref("");
+const newCopyKey = ref("");
+const newCopyZh = ref("");
+const newCopyEn = ref("");
 
 const i18nKeys = Object.keys(zh as Record<string, unknown>);
 const colorFields = [
-  { key: 'accent', label: '主色' },
-  { key: 'accentHover', label: '主色(悬停)' },
-  { key: 'bgPrimary', label: '页面背景' },
-  { key: 'bgSecondary', label: '卡片背景' },
-  { key: 'bgTertiary', label: '次要背景' },
-  { key: 'textPrimary', label: '主文字' },
-  { key: 'textSecondary', label: '次文字' },
-  { key: 'textTertiary', label: '辅助文字' },
-  { key: 'border', label: '边框' },
-  { key: 'borderLight', label: '浅边框' },
+  { key: "accent", label: "主色" },
+  { key: "accentHover", label: "主色(悬停)" },
+  { key: "bgPrimary", label: "页面背景" },
+  { key: "bgSecondary", label: "卡片背景" },
+  { key: "bgTertiary", label: "次要背景" },
+  { key: "textPrimary", label: "主文字" },
+  { key: "textSecondary", label: "次文字" },
+  { key: "textTertiary", label: "辅助文字" },
+  { key: "border", label: "边框" },
+  { key: "borderLight", label: "浅边框" },
 ] as const;
 const featureList = [
-  { key: 'comments', label: '评论' },
-  { key: 'likes', label: '点赞' },
-  { key: 'friendLinks', label: '友情链接' },
-  { key: 'search', label: '搜索' },
-  { key: 'rss', label: 'RSS' },
-  { key: 'darkMode', label: '暗色切换按钮' },
-  { key: 'i18n', label: '语言切换按钮' },
+  { key: "comments", label: "评论" },
+  { key: "likes", label: "点赞" },
+  { key: "friendLinks", label: "友情链接" },
+  { key: "search", label: "搜索" },
+  { key: "rss", label: "RSS" },
+  { key: "darkMode", label: "暗色切换按钮" },
+  { key: "i18n", label: "语言切换按钮" },
 ] as const;
 
 const copyKeys = computed(() =>
-  Array.from(new Set([...Object.keys(settings.copy.zh), ...Object.keys(settings.copy.en)]))
+  Array.from(
+    new Set([
+      ...Object.keys(settings.copy.zh),
+      ...Object.keys(settings.copy.en),
+    ])
+  )
 );
 
 // 实时预览：把当前草稿直接套用到页面（后台面板本身也用同一套 CSS 变量，因此可即时预览）
@@ -988,7 +1934,7 @@ function previewSettings() {
 async function loadSettings() {
   settingsLoading.value = true;
   try {
-    const data = await api('GET', '/settings');
+    const data = await api("GET", "/settings");
     if (data.code === 0 && data.data) {
       const inc = data.data;
       settings.theme = inc.theme;
@@ -1006,17 +1952,21 @@ async function loadSettings() {
 
 async function saveSettings() {
   settingsSaving.value = true;
-  settingsMsg.value = '';
+  settingsMsg.value = "";
   try {
-    const data = await api('PUT', '/settings', JSON.parse(JSON.stringify(settings)));
+    const data = await api(
+      "PUT",
+      "/settings",
+      JSON.parse(JSON.stringify(settings))
+    );
     if (data.code === 0) {
-      settingsMsg.value = t('admin.save_success');
+      settingsMsg.value = t("admin.save_success");
       broadcastSettingsChange();
     } else {
-      settingsMsg.value = data.message || t('admin.save_failed');
+      settingsMsg.value = data.message || t("admin.save_failed");
     }
   } catch {
-    settingsMsg.value = t('admin.save_failed');
+    settingsMsg.value = t("admin.save_failed");
   } finally {
     settingsSaving.value = false;
   }
@@ -1024,16 +1974,18 @@ async function saveSettings() {
 
 async function exportSettingsFile() {
   try {
-    const res = await fetch(`${API}/settings/export`, { headers: authHeaders() });
+    const res = await fetch(`${API}/settings/export`, {
+      headers: authHeaders(),
+    });
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'site-settings.json';
+    a.download = "site-settings.json";
     a.click();
     URL.revokeObjectURL(url);
   } catch {
-    alert('导出失败');
+    alert("导出失败");
   }
 }
 
@@ -1043,7 +1995,7 @@ async function importSettingsFile(e: Event) {
   if (!file) return;
   try {
     const obj = JSON.parse(await file.text());
-    const data = await api('POST', '/settings/import', obj);
+    const data = await api("POST", "/settings/import", obj);
     if (data.code === 0 && data.data) {
       settings.theme = data.data.theme;
       settings.layout = data.data.layout;
@@ -1053,19 +2005,19 @@ async function importSettingsFile(e: Event) {
       settings.motion = data.data.motion || getDefaultSettings().motion;
       previewSettings();
       broadcastSettingsChange();
-      settingsMsg.value = '配置导入成功';
+      settingsMsg.value = "配置导入成功";
     } else {
-      settingsMsg.value = data.message || '导入失败';
+      settingsMsg.value = data.message || "导入失败";
     }
   } catch {
-    settingsMsg.value = '导入失败：文件格式错误';
+    settingsMsg.value = "导入失败：文件格式错误";
   }
-  input.value = '';
+  input.value = "";
 }
 
 async function resetSettings() {
-  if (!confirm('确定将所有外观设置恢复为默认值？此操作不可撤销。')) return;
-  const data = await api('POST', '/settings/reset');
+  if (!confirm("确定将所有外观设置恢复为默认值？此操作不可撤销。")) return;
+  const data = await api("POST", "/settings/reset");
   if (data.code === 0 && data.data) {
     settings.theme = data.data.theme;
     settings.layout = data.data.layout;
@@ -1075,20 +2027,20 @@ async function resetSettings() {
     settings.motion = data.data.motion || getDefaultSettings().motion;
     previewSettings();
     broadcastSettingsChange();
-    settingsMsg.value = '已恢复默认设置';
+    settingsMsg.value = "已恢复默认设置";
   } else {
-    settingsMsg.value = '恢复失败';
+    settingsMsg.value = "恢复失败";
   }
 }
 
 function addCopyKey() {
-  const k = (newCopyKey.value || '').trim();
+  const k = (newCopyKey.value || "").trim();
   if (!k) return;
   if (newCopyZh.value) settings.copy.zh[k] = newCopyZh.value;
   if (newCopyEn.value) settings.copy.en[k] = newCopyEn.value;
-  newCopyKey.value = '';
-  newCopyZh.value = '';
-  newCopyEn.value = '';
+  newCopyKey.value = "";
+  newCopyZh.value = "";
+  newCopyEn.value = "";
   previewSettings();
 }
 
@@ -1099,7 +2051,7 @@ function removeCopyKey(k: string) {
 }
 
 function renameCopyKey(oldKey: string, newKey: string) {
-  const k = (newKey || '').trim();
+  const k = (newKey || "").trim();
   if (!k || k === oldKey) return;
   const zhv = settings.copy.zh[oldKey];
   const env = settings.copy.en[oldKey];
@@ -1111,7 +2063,7 @@ function renameCopyKey(oldKey: string, newKey: string) {
 }
 
 async function loadUsers() {
-  const data = await api('GET', '/users');
+  const data = await api("GET", "/users");
   if (data.code === 0) users.value = data.data || [];
 }
 
@@ -1119,61 +2071,62 @@ async function saveUser() {
   let data;
   if (editingUserId.value) {
     const body: any = { display_name: userForm.value.display_name };
-    if (userForm.value.role !== originalUserRole.value) body.role = userForm.value.role;
+    if (userForm.value.role !== originalUserRole.value)
+      body.role = userForm.value.role;
     if (userForm.value.password) body.password = userForm.value.password;
-    data = await api('PUT', `/users/${editingUserId.value}`, body);
+    data = await api("PUT", `/users/${editingUserId.value}`, body);
   } else {
     if (!userForm.value.username || !userForm.value.password) {
-      alert(t('admin.username_password_required'));
+      alert(t("admin.username_password_required"));
       return;
     }
-    data = await api('POST', '/users', userForm.value);
+    data = await api("POST", "/users", userForm.value);
   }
   if (data.code === 0) {
     showUserForm.value = false;
     editingUserId.value = null;
     await loadUsers();
   } else {
-    alert(data.message || t('admin.save_failed'));
+    alert(data.message || t("admin.save_failed"));
   }
 }
 
 async function deleteUser(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/users/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/users/${id}`);
   if (data.code === 0) await loadUsers();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 async function loadComments() {
-  const status = commentFilter.value ? `?status=${commentFilter.value}` : '';
-  const data = await api('GET', `/comments${status}`);
+  const status = commentFilter.value ? `?status=${commentFilter.value}` : "";
+  const data = await api("GET", `/comments${status}`);
   if (data.code === 0) comments.value = data.data || [];
 }
 
 async function approveComment(id: number) {
-  const data = await api('PUT', `/comments/${id}/approve`);
+  const data = await api("PUT", `/comments/${id}/approve`);
   if (data.code === 0) await loadComments();
-  else alert(data.message || t('admin.save_failed'));
+  else alert(data.message || t("admin.save_failed"));
 }
 
 async function rejectComment(id: number) {
-  const data = await api('PUT', `/comments/${id}/reject`);
+  const data = await api("PUT", `/comments/${id}/reject`);
   if (data.code === 0) await loadComments();
-  else alert(data.message || t('admin.save_failed'));
+  else alert(data.message || t("admin.save_failed"));
 }
 
 async function deleteComment(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/comments/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/comments/${id}`);
   if (data.code === 0) await loadComments();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 async function loadMedia() {
   mediaLoading.value = true;
   try {
-    const data = await api('GET', '/media');
+    const data = await api("GET", "/media");
     if (data.code === 0) mediaList.value = data.data?.items || [];
   } finally {
     mediaLoading.value = false;
@@ -1186,62 +2139,66 @@ async function uploadMedia(e: Event) {
   if (!file) return;
 
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
 
   try {
-    const res = await fetch('/api/v1/media/upload', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token.value}` },
+    const res = await fetch("/api/v1/media/upload", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token.value}` },
       body: formData,
     });
     const data = await res.json();
     if (data.code === 0) await loadMedia();
-    else alert(data.message || t('admin.upload_failed'));
+    else alert(data.message || t("admin.upload_failed"));
   } catch {
-    alert(t('admin.upload_failed'));
+    alert(t("admin.upload_failed"));
   }
-  input.value = '';
+  input.value = "";
 }
 
 async function deleteMedia(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/media/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/media/${id}`);
   if (data.code === 0) await loadMedia();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 function copyMediaUrl(url: string) {
   const fullUrl = new URL(url, window.location.origin).href;
   navigator.clipboard.writeText(fullUrl);
-  alert(t('admin.copied'));
+  alert(t("admin.copied"));
 }
 
 async function loadFriendLinks() {
-  const data = await api('GET', '/friend-links/all');
+  const data = await api("GET", "/friend-links/all");
   if (data.code === 0) friendLinks.value = data.data?.items || data.data || [];
 }
 
 async function saveFriendLink() {
   let data;
   if (editingFriendLinkId.value) {
-    data = await api('PUT', `/friend-links/${editingFriendLinkId.value}`, friendLinkForm.value);
+    data = await api(
+      "PUT",
+      `/friend-links/${editingFriendLinkId.value}`,
+      friendLinkForm.value
+    );
   } else {
-    data = await api('POST', '/friend-links', friendLinkForm.value);
+    data = await api("POST", "/friend-links", friendLinkForm.value);
   }
   if (data.code === 0) {
     showFriendLinkForm.value = false;
     editingFriendLinkId.value = null;
     await loadFriendLinks();
   } else {
-    alert(data.message || t('admin.save_failed'));
+    alert(data.message || t("admin.save_failed"));
   }
 }
 
 async function deleteFriendLink(id: number) {
-  if (!confirm(t('admin.delete_confirm'))) return;
-  const data = await api('DELETE', `/friend-links/${id}`);
+  if (!confirm(t("admin.delete_confirm"))) return;
+  const data = await api("DELETE", `/friend-links/${id}`);
   if (data.code === 0) await loadFriendLinks();
-  else alert(data.message || t('admin.delete_failed'));
+  else alert(data.message || t("admin.delete_failed"));
 }
 
 function loadInitialData() {
@@ -1251,7 +2208,7 @@ function loadInitialData() {
   loadComments();
   loadMedia();
   loadFriendLinks();
-  if (userRole.value === 'admin') {
+  if (userRole.value === "admin") {
     loadUsers();
   }
 }
@@ -1262,37 +2219,36 @@ watch(isLoggedIn, (v) => {
 
 onMounted(() => {
   if (isLoggedIn.value) loadInitialData();
-  window.addEventListener('beforeunload', handleBeforeUnload);
+  window.addEventListener("beforeunload", handleBeforeUnload);
 });
 
 onBeforeUnmount(() => {
   releaseEditLock();
-  window.removeEventListener('beforeunload', handleBeforeUnload);
+  window.removeEventListener("beforeunload", handleBeforeUnload);
 });
 
 function handleBeforeUnload(_e: BeforeUnloadEvent) {
   // 页面关闭/刷新时尽力释放编辑锁（keepalive 确保请求发出）
   if (editingArticle.value?.id) {
-    const token = localStorage.getItem('admin_token');
-    const apiBase = import.meta.env.PUBLIC_API_BASE || '/api/v1';
+    const token = localStorage.getItem("admin_token");
+    const apiBase = import.meta.env.PUBLIC_API_BASE || "/api/v1";
     if (token) {
       fetch(`${apiBase}/articles/${editingArticle.value.id}/edit-lock`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
         keepalive: true,
       }).catch(() => {});
     }
   }
 }
 
-
 watch(currentTab, (tab) => {
-  if (tab === 'config' || tab === 'about') loadConfig();
-  if (tab === 'appearance') loadSettings();
-  if (tab === 'users') loadUsers();
-  if (tab === 'comments') loadComments();
-  if (tab === 'media') loadMedia();
-  if (tab === 'friend_links') loadFriendLinks();
+  if (tab === "config" || tab === "about") loadConfig();
+  if (tab === "appearance") loadSettings();
+  if (tab === "users") loadUsers();
+  if (tab === "comments") loadComments();
+  if (tab === "media") loadMedia();
+  if (tab === "friend_links") loadFriendLinks();
 });
 </script>
 
@@ -1845,58 +2801,58 @@ watch(currentTab, (tab) => {
   overflow: hidden;
 }
 
-  .media-thumb {
-    width: 100%;
-    height: 140px;
-    object-fit: cover;
-    display: block;
-  }
+.media-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+}
 
-  .tag-selector {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-  }
-  .tag-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .tag-chip {
-    padding: 0.3rem 0.7rem;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    border-radius: 999px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-  }
-  .tag-chip:hover {
-    border-color: var(--color-accent);
-    color: var(--color-accent);
-  }
-  .tag-chip.active {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-    color: #fff;
-  }
-  .tag-input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .tag-input-row input {
-    flex: 1 1 200px;
-    min-width: 0;
-    padding: 0.5rem 0.7rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    font-size: 0.85rem;
-  }
+.tag-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.tag-chip {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.tag-chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.tag-chip.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.tag-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.tag-input-row input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+}
 
 .media-info {
   padding: 0.5rem;
