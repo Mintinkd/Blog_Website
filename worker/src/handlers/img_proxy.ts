@@ -131,8 +131,9 @@ export type UrlValidation =
   | { ok: false; status: number; message: string };
 
 /**
- * issue #14：初始目标与每一跳重定向共用的唯一校验入口。
- * 任何新增规则都只改这里，避免「只在初始 URL 校验、重定向被绕过」。
+ * issue #14：初始目标与每一跳重定向共用的唯一同步校验入口（协议 / 长度 / 字面量层）。
+ * issue #19：解析后 IP 复核作为异步第二层（resolveAndCheckTarget），由
+ * fetchWithValidatedRedirects 在实际拉取前执行；两层都在同一拉取流水线上，缺一不可。
  */
 export function validateTargetUrl(raw: string): UrlValidation {
   if (!raw || raw.length > MAX_URL_LEN) {
@@ -233,12 +234,20 @@ async function resolveAndCheckTarget(host: string, signal?: AbortSignal | null):
  */
 export async function fetchWithValidatedRedirects(initial: URL, init: RequestInit): Promise<ProxyFetchResult> {
   let current = initial;
+  // 同一请求内按主机复用解析结果（同主机重定向如 http→https 不重复 DoH 查询）
+  const resolutions = new Map<string, Promise<'ok' | 'blocked' | 'failed'>>();
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     // issue #19：每次拉取前对主机做解析后 IP 复核（含首跳与每一跳重定向）
-    const resolution = await resolveAndCheckTarget(current.hostname, init.signal);
-    if (resolution === 'blocked') return { kind: 'blocked' };
-    if (resolution === 'failed') return { kind: 'resolution_failed' };
+    const host = current.hostname;
+    let resolution = resolutions.get(host);
+    if (!resolution) {
+      resolution = resolveAndCheckTarget(host, init.signal);
+      resolutions.set(host, resolution);
+    }
+    const outcome = await resolution;
+    if (outcome === 'blocked') return { kind: 'blocked' };
+    if (outcome === 'failed') return { kind: 'resolution_failed' };
 
     let res: Response;
     try {
@@ -358,10 +367,10 @@ export async function handleImgProxy(request: Request, env: Env, ctx: ExecutionC
     });
 
     if (fetched.kind === 'blocked') {
-      return Response.json({ code: 403, message: '重定向目标被禁止代理', data: null }, { status: 403 });
+      return Response.json({ code: 403, message: '目标地址被禁止代理', data: null }, { status: 403 });
     }
     if (fetched.kind === 'resolution_failed') {
-      return Response.json({ code: 502, message: '目标域名解析失败，已拒绝代理', data: null }, { status: 502 });
+      return Response.json({ code: 502, message: '目标域名解析失败或超时，已拒绝代理', data: null }, { status: 502 });
     }
     if (fetched.kind === 'too_many_redirects') {
       return Response.json({ code: 502, message: `重定向次数超过 ${MAX_REDIRECTS} 次`, data: null }, { status: 502 });

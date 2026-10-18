@@ -195,4 +195,26 @@ describe('fetchWithValidatedRedirects 解析后 IP 复核', () => {
     expect(result.kind).toBe('resolution_failed');
     expect(targetCalls).toEqual([]);
   });
+
+  it('同主机重定向（如 http→https）不重复 DoH 查询', async () => {
+    const { targetCalls, dohCalls } = installNetworkStub(
+      {
+        A: () => netAnswer([{ type: 'A', data: '93.184.216.34' }]),
+        AAAA: () => netAnswer([]),
+      },
+      (u) =>
+        u.protocol === 'http:'
+          ? new Response(null, { status: 301, headers: { Location: 'https://same.publicsite.net/img.png' } })
+          : new Response('upstream-ok', { status: 200 })
+    );
+
+    const result = await fetchWithValidatedRedirects(new URL('http://same.publicsite.net/img.png'), {});
+
+    expect(result.kind).toBe('ok');
+    expect(dohCalls.length).toBe(2); // A + AAAA 各一次，第二跳复用
+    expect(targetCalls).toEqual([
+      'http://same.publicsite.net/img.png',
+      'https://same.publicsite.net/img.png',
+    ]);
+  });
 });

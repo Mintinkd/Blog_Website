@@ -171,7 +171,7 @@ D1 (SQLite) 共 9 张表：
 | GET | `/config` | 公开站点配置 |
 | GET | `/settings` | 公开可视化配置（前台运行时套用） |
 | GET | `/img-proxy?url=` | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存） |
-| GET | `/text-proxy?url=` | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；text/json/xml 白名单 + CORS 头） |
+| GET | `/text-proxy?url=` | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；与图片通道共用 SSRF（含解析后 IP 复核）/域名/限流校验，text/json/xml 白名单 + CORS 头） |
 
 ### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
 

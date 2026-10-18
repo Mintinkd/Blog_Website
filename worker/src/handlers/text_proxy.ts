@@ -104,10 +104,10 @@ export async function handleTextProxy(request: Request, env: Env, ctx: Execution
     });
 
     if (fetched.kind === 'blocked') {
-      return corsify(Response.json({ code: 403, message: '重定向目标被禁止代理', data: null }, { status: 403 }));
+      return corsify(Response.json({ code: 403, message: '目标地址被禁止代理', data: null }, { status: 403 }));
     }
     if (fetched.kind === 'resolution_failed') {
-      return corsify(Response.json({ code: 502, message: '目标域名解析失败，已拒绝代理', data: null }, { status: 502 }));
+      return corsify(Response.json({ code: 502, message: '目标域名解析失败或超时，已拒绝代理', data: null }, { status: 502 }));
     }
     if (fetched.kind === 'too_many_redirects') {
       return corsify(Response.json({ code: 502, message: `重定向次数超过 ${MAX_REDIRECTS} 次`, data: null }, { status: 502 }));
