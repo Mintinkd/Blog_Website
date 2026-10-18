@@ -1,4 +1,9 @@
 import { setOverrides, refreshDomTranslations } from "./i18n";
+import {
+  PATTERNS,
+  SETTINGS_RULES,
+  type SettingsRule,
+} from "../generated/settings-rules";
 
 /**
  * 全站可视化配置 —— 前端运行时注入器
@@ -41,7 +46,7 @@ export interface SiteSettings {
     bgOpacity: number;
     /** 背景图雾化模糊（px，0=不模糊），提升前景文字可读性 */
     bgBlur: number;
-    /** 背景图亮度（0.7~1.3，1=原样），暗色主题下调低可避免亮图刺眼 */
+    /** 背景图亮度（可配区间以 settings.rules.json 为准，1=原样），暗色主题下调低可避免亮图刺眼 */
     bgBrightness: number;
   };
   features: {
@@ -127,138 +132,93 @@ export function getDefaultSettings(): SiteSettings {
   };
 }
 
-/* ── P1-6 / issue #11：字段级白名单（读侧兜底） ──
- * 与 worker/src/handlers/settings.ts 的 validateSettings 同一套规则：
- * 写入侧非法值会被 400 拒绝；此处负责读侧兜底——历史脏数据/绕过校验的数据
- * 一律按字段回落默认值，从根上消除「值未校验即拼进 CSS」的注入面（报告 M1/L1）。 */
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
-const SIZE_RE = /^\d{1,4}(px|rem|em|%)$/;
-/** 站内相对路径（媒体库/静态资源） */
-const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
-/** 仅 https 外链；字符集排除引号/尖括号/反斜杠/圆括号，杜绝 CSS 字符串逃逸与标签闭合 */
-const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
+/* ── P1-6 / issue #11 → issue #27：字段级白名单（读侧兜底） ──
+ * 规则不再双端各手写一份：全部来自 src/generated/settings-rules.ts ——
+ * 仓库根 settings.rules.json 规则描述符的生成物，写侧（worker，非法即 400 拒绝）
+ * 与本读侧共享同一单源，「双端同一套」由 CI 漂移断言守护。
+ * 此处职责为兜底：历史脏数据/绕过校验的数据一律按字段回落默认值，
+ * 从根上消除「值未校验即拼进 CSS」的注入面（报告 M1）。 */
 
-function pickStr(v: unknown, re: RegExp, fallback: string): string {
-  return typeof v === "string" && re.test(v) ? v : fallback;
+/** 普通对象（非 null / 非数组）：读侧容器语义 —— 整形污染的容器不展开，逐字段走回落 */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-function pickNum(
-  v: unknown,
-  min: number,
-  max: number,
-  fallback: number
-): number {
-  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max
-    ? v
-    : fallback;
+/** 读侧逐级取值：每一级都必须是普通对象（与既有逐字段实现的容器判定同构） */
+function readValue(src: unknown, path: string): unknown {
+  let cur: unknown = src;
+  for (const key of path.split(".")) {
+    cur = isPlainObject(cur) ? cur[key] : undefined;
+  }
+  return cur;
 }
 
-function pickBool(v: unknown, fallback: boolean): boolean {
-  return typeof v === "boolean" ? v : fallback;
+/** 读侧逐叶写回（out 为 getDefaultSettings() 产物：各分区均为普通对象，逐级必然贯通） */
+function writeLeaf(
+  out: Record<string, unknown>,
+  path: string,
+  value: unknown
+): void {
+  let cur: unknown = out;
+  const segs = path.split(".");
+  for (const key of segs.slice(0, segs.length - 1)) {
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  (cur as Record<string, unknown>)[segs[segs.length - 1]] = value;
 }
 
-function pickCopy(src: unknown): Record<string, string> {
+/** copy 覆盖地图：只收字符串且长度 ≤ 上限（上限随生成物携带，与写侧同源） */
+function pickCopy(src: unknown, cap: number): Record<string, string> {
   const out: Record<string, string> = {};
-  if (src && typeof src === "object" && !Array.isArray(src)) {
+  if (isPlainObject(src)) {
     for (const [k, v] of Object.entries(src)) {
-      if (typeof v === "string" && v.length <= 2000) out[k] = v;
+      if (typeof v === "string" && v.length <= cap) out[k] = v;
     }
   }
   return out;
 }
 
+/** 按 kind 逐字段落地：合法 → 原值，非法 → 按字段回落默认值（语义与逐字段手写版逐字对应） */
+function applyLeaf(rule: SettingsRule, v: unknown, fallback: unknown): unknown {
+  switch (rule.kind) {
+    case "string":
+      // 命中任一命名 pattern 即合法（bgImage = 站内相对路径 或 https 外链，语义见 PATTERNS 注释）
+      return typeof v === "string" &&
+        rule.patterns.some((name) => PATTERNS[name].test(v))
+        ? v
+        : fallback;
+    case "number":
+      return typeof v === "number" &&
+        Number.isFinite(v) &&
+        v >= rule.min &&
+        v <= rule.max
+        ? v
+        : fallback;
+    case "enum":
+      return typeof v === "string" && rule.values.includes(v) ? v : fallback;
+    case "bool":
+      return typeof v === "boolean" ? v : fallback;
+    case "copy":
+      return pickCopy(v, rule.cap);
+  }
+}
+
 /** 把任意形状的输入收敛为「全字段合法」的 SiteSettings（非法字段按字段回落默认值） */
 export function sanitizeSettings(input: unknown): SiteSettings {
-  const d = getDefaultSettings();
-  const s = (
-    input && typeof input === "object" && !Array.isArray(input) ? input : {}
-  ) as Record<string, any>;
-
-  const theme = { light: { ...d.theme.light }, dark: { ...d.theme.dark } };
-  for (const mode of ["light", "dark"] as const) {
-    const src =
-      s.theme && typeof s.theme === "object" && !Array.isArray(s.theme)
-        ? s.theme[mode]
-        : undefined;
-    if (src && typeof src === "object" && !Array.isArray(src)) {
-      for (const k of Object.keys(d.theme[mode]) as (keyof ThemeColors)[]) {
-        theme[mode][k] = pickStr(src[k], HEX_COLOR_RE, d.theme[mode][k]);
-      }
-    }
+  const out = getDefaultSettings() as unknown as Record<string, unknown>;
+  const src =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
+  for (const [path, rule] of Object.entries(SETTINGS_RULES)) {
+    // 回落值与判定先于写回：默认值即为该字段的回落基线（逐字段与旧实现一致）
+    writeLeaf(
+      out,
+      path,
+      applyLeaf(rule, readValue(src, path), readValue(out, path))
+    );
   }
-
-  const ly =
-    s.layout && typeof s.layout === "object" && !Array.isArray(s.layout)
-      ? s.layout
-      : {};
-  const layout = {
-    contentMaxWidth: pickStr(
-      ly.contentMaxWidth,
-      SIZE_RE,
-      d.layout.contentMaxWidth
-    ),
-    headerHeight: pickStr(ly.headerHeight, SIZE_RE, d.layout.headerHeight),
-    radiusSm: pickStr(ly.radiusSm, SIZE_RE, d.layout.radiusSm),
-    radiusMd: pickStr(ly.radiusMd, SIZE_RE, d.layout.radiusMd),
-    radiusLg: pickStr(ly.radiusLg, SIZE_RE, d.layout.radiusLg),
-  };
-
-  const bgs =
-    s.background &&
-    typeof s.background === "object" &&
-    !Array.isArray(s.background)
-      ? s.background
-      : {};
-  const bgImage =
-    typeof bgs.bgImage === "string" &&
-    (LOCAL_PATH_RE.test(bgs.bgImage) || HTTPS_URL_RE.test(bgs.bgImage))
-      ? bgs.bgImage
-      : d.background.bgImage;
-  const background = {
-    bgImage,
-    bgOpacity: pickNum(bgs.bgOpacity, 0, 1, d.background.bgOpacity),
-    bgBlur: pickNum(bgs.bgBlur, 0, 30, d.background.bgBlur),
-    bgBrightness: pickNum(
-      bgs.bgBrightness,
-      0.7,
-      1.3,
-      d.background.bgBrightness
-    ),
-  };
-
-  const fsrc =
-    s.features && typeof s.features === "object" && !Array.isArray(s.features)
-      ? s.features
-      : {};
-  const features = { ...d.features };
-  for (const k of Object.keys(
-    d.features
-  ) as (keyof SiteSettings["features"])[]) {
-    features[k] = pickBool(fsrc[k], d.features[k]);
-  }
-
-  const msrc =
-    s.motion && typeof s.motion === "object" && !Array.isArray(s.motion)
-      ? s.motion
-      : {};
-  const intensity = msrc.intensity;
-  const motion = {
-    intensity: (intensity === "normal" ||
-    intensity === "reduced" ||
-    intensity === "off"
-      ? intensity
-      : d.motion.intensity) as SiteSettings["motion"]["intensity"],
-    parallax: pickBool(msrc.parallax, d.motion.parallax),
-    parallaxSpeed: pickNum(msrc.parallaxSpeed, 0, 0.1, d.motion.parallaxSpeed),
-  };
-
-  const copySrc =
-    s.copy && typeof s.copy === "object" && !Array.isArray(s.copy)
-      ? s.copy
-      : {};
-  const copy = { zh: pickCopy(copySrc.zh), en: pickCopy(copySrc.en) };
-
-  return { theme, layout, background, features, copy, motion };
+  return out as unknown as SiteSettings;
 }
 
 const STYLE_ID = "dynamic-settings";
@@ -279,6 +239,20 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** buildOverlay/bgBlur/bgBrightness 的防御性钳制区间与 sanitize 白名单同源：
+ * 直接引用生成物规则，不再在此复述数值（区间改变只发生在描述符） */
+function numericRangeAt(path: string): { min: number; max: number } {
+  const rule = SETTINGS_RULES[path];
+  if (rule.kind !== "number") {
+    throw new Error("参照的规则不是 number 形状：" + path);
+  }
+  return { min: rule.min, max: rule.max };
+}
+
+const BG_OPACITY_RANGE = numericRangeAt("background.bgOpacity");
+const BG_BLUR_RANGE = numericRangeAt("background.bgBlur");
+const BG_BRIGHTNESS_RANGE = numericRangeAt("background.bgBrightness");
+
 /**
  * 背景遮罩：用主题背景色按「图片强度」生成渐变，保证前景文字对比度
  * - 语义约定：opacity = 图片穿透蒙版的可见度（0=几乎全遮挡、1=几乎全透出图）
@@ -287,7 +261,10 @@ function hexToRgb(hex: string): [number, number, number] {
  */
 function buildOverlay(bg: string, opacity: number): string {
   const [r, g, b] = hexToRgb(bg);
-  const o = Math.max(0, Math.min(1, Number(opacity) || 0));
+  const o = Math.max(
+    BG_OPACITY_RANGE.min,
+    Math.min(BG_OPACITY_RANGE.max, Number(opacity) || 0)
+  );
   const mask = Math.max(0, Math.min(1, (1 - o) * 0.55));
   // 顶端略低、底端略高（深→浅阴影感），与原来方向一致；保留 0.05 的小跨度
   const a1 = Math.max(0, mask - 0.05);
@@ -311,10 +288,10 @@ function cssFrom(s: SiteSettings): string {
   lines.push(`  --radius-lg: ${ly.radiusLg} !important;`);
   lines.push(`  --bg-image: url("${bg.bgImage}") !important;`);
   lines.push(
-    `  --bg-blur: ${Math.max(0, Math.min(30, Number(bg.bgBlur) || 0))}px !important;`
+    `  --bg-blur: ${Math.max(BG_BLUR_RANGE.min, Math.min(BG_BLUR_RANGE.max, Number(bg.bgBlur) || 0))}px !important;`
   );
   lines.push(
-    `  --bg-brightness: ${Math.max(0.7, Math.min(1.3, Number(bg.bgBrightness) || 1))} !important;`
+    `  --bg-brightness: ${Math.max(BG_BRIGHTNESS_RANGE.min, Math.min(BG_BRIGHTNESS_RANGE.max, Number(bg.bgBrightness) || 1))} !important;`
   );
   lines.push("}");
 

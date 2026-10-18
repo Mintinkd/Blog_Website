@@ -1,3 +1,7 @@
 dist/
 .wrangler/
 package-lock.json
+
+# 生成物（issue #27）：字节一致性由 CI「重新生成 diff 为空」守护，prettier 不得触碰
+src/generated/
+worker/src/generated/

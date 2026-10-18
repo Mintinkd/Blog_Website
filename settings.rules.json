@@ -1,0 +1,67 @@
+{
+  "patterns": {
+    "hexColor": "^#[0-9a-fA-F]{3,8}$",
+    "size": "^\\d{1,4}(px|rem|em|%)$",
+    "localPath": "^\\/[A-Za-z0-9\\-._~/%]+$",
+    "httpsUrl": "^https:\\/\\/[A-Za-z0-9\\-._~:/?#@!$&*+,;=%]+$"
+  },
+  "patternNotes": {
+    "localPath": "站内相对路径（媒体库/静态资源）",
+    "httpsUrl": "仅 https 外链；字符集排除引号/尖括号/反斜杠/圆括号，杜绝 CSS 字符串逃逸与标签闭合"
+  },
+  "copyCap": 2000,
+  "enums": {
+    "intensity": ["normal", "reduced", "off"]
+  },
+  "fieldSets": {
+    "themeColors": {
+      "accent": { "str": "hexColor" },
+      "accentHover": { "str": "hexColor" },
+      "bgPrimary": { "str": "hexColor" },
+      "bgSecondary": { "str": "hexColor" },
+      "bgTertiary": { "str": "hexColor" },
+      "textPrimary": { "str": "hexColor" },
+      "textSecondary": { "str": "hexColor" },
+      "textTertiary": { "str": "hexColor" },
+      "border": { "str": "hexColor" },
+      "borderLight": { "str": "hexColor" }
+    }
+  },
+  "sections": {
+    "theme": {
+      "light": { "use": "themeColors" },
+      "dark": { "use": "themeColors" }
+    },
+    "layout": {
+      "contentMaxWidth": { "str": "size" },
+      "headerHeight": { "str": "size" },
+      "radiusSm": { "str": "size" },
+      "radiusMd": { "str": "size" },
+      "radiusLg": { "str": "size" }
+    },
+    "background": {
+      "bgImage": { "str": ["localPath", "httpsUrl"] },
+      "bgOpacity": { "num": [0, 1] },
+      "bgBlur": { "num": [0, 30] },
+      "bgBrightness": { "num": [0.7, 1.3] }
+    },
+    "features": {
+      "comments": { "bool": true },
+      "likes": { "bool": true },
+      "friendLinks": { "bool": true },
+      "search": { "bool": true },
+      "rss": { "bool": true },
+      "darkMode": { "bool": true },
+      "i18n": { "bool": true }
+    },
+    "motion": {
+      "intensity": { "enum": "intensity" },
+      "parallax": { "bool": true },
+      "parallaxSpeed": { "num": [0, 0.1] }
+    },
+    "copy": {
+      "zh": { "copy": true },
+      "en": { "copy": true }
+    }
+  }
+}

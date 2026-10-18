@@ -1,6 +1,7 @@
 import { Env } from "../index";
 import { successResponse, error, ErrorCodes } from "../utils/response";
 import { isPlainObject } from "../utils/object";
+import { PATTERNS, SETTINGS_RULES } from "../generated/settings-rules";
 
 /**
  * 全站可视化配置中心 —— 后端逻辑
@@ -157,77 +158,70 @@ function deepMerge<T>(base: T, override: any): T {
   return out;
 }
 
-/* ── P1-6 / issue #11：设置值字段白名单（写入侧拒绝非法值，400） ──
- * 规则与 src/utils/settings.ts 的 sanitizeSettings 保持一致（双端同一套）。
- * 背景图仅放行站内相对路径或 https 外链，字符集排除引号/尖括号/反斜杠/圆括号，
- * 从根上杜绝 CSS 字符串逃逸、</style> 提前闭合与 url() 外联注入（报告 M1）。 */
+/* ── P1-6 / issue #11 → issue #27：设置值字段白名单（写入侧拒绝非法值，400） ──
+ * 规则不再手写：逐字段来自 src/generated/settings-rules.ts（仓库根 settings.rules.json
+ * 规则描述符的生成物，与前端读侧共享同一单源；「双端同一套」由 CI 漂移断言守护）。
+ * validateSettings 只做「逐条取值 → 按 kind 断言」的通用管线——
+ * 不得在此手抄任何 pattern / 数值区间 / copy 上限（背景图仅站内相对路径或 https 外链、
+ * 排除引号/尖括号/反斜杠/圆括号等注入面语义注记，随生成物的 PATTERNS 注释携带）。 */
 
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
-const SIZE_RE = /^\d{1,4}(px|rem|em|%)$/;
-const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
-const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
-
-function isSafeUrl(v: unknown): v is string {
-  return (
-    typeof v === "string" && (LOCAL_PATH_RE.test(v) || HTTPS_URL_RE.test(v))
-  );
+/** 逐级取值：中间容器只要求「是对象即可」（与既有逐字段重构前完全同构——
+ * 数组等异形容器在字符串键下取不到值，视同缺失） */
+function ruleValue(s: SiteSettings, path: string): unknown {
+  let cur: unknown = s;
+  for (const key of path.split(".")) {
+    cur =
+      cur !== null && typeof cur === "object"
+        ? (cur as Record<PropertyKey, unknown>)[key]
+        : undefined;
+  }
+  return cur;
 }
 
-function isNumberInRange(v: unknown, min: number, max: number): v is number {
-  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
-}
-
-/** 返回非法字段路径列表；空数组 = 全部合法 */
+/** 返回非法字段路径列表；空数组 = 全部合法。规则逐条来自生成物，
+ * 未通过即路径点名（含 copy 内首个违规键），顺序 = 描述符分区顺序 */
 export function validateSettings(s: SiteSettings): string[] {
   const bad: string[] = [];
   const req = (ok: boolean, path: string) => {
     if (!ok) bad.push(path);
   };
-  const d = getDefaultSettings();
-
-  for (const mode of ["light", "dark"] as const) {
-    const t = (s.theme as unknown as Record<string, unknown> | undefined)?.[
-      mode
-    ] as Record<string, unknown> | undefined;
-    for (const k of Object.keys(d.theme[mode]) as (keyof ThemeColors)[]) {
-      const v = t && typeof t === "object" ? t[k] : undefined;
-      req(typeof v === "string" && HEX_COLOR_RE.test(v), `theme.${mode}.${k}`);
+  for (const [path, rule] of Object.entries(SETTINGS_RULES)) {
+    const v = ruleValue(s, path);
+    switch (rule.kind) {
+      case "string":
+        req(
+          typeof v === "string" &&
+            rule.patterns.some((name) => PATTERNS[name].test(v)),
+          path
+        );
+        break;
+      case "number":
+        req(
+          typeof v === "number" &&
+            Number.isFinite(v) &&
+            v >= rule.min &&
+            v <= rule.max,
+          path
+        );
+        break;
+      case "enum":
+        req(typeof v === "string" && rule.values.includes(v), path);
+        break;
+      case "bool":
+        req(typeof v === "boolean", path);
+        break;
+      case "copy":
+        if (!isPlainObject(v)) {
+          bad.push(path);
+          break;
+        }
+        const badKey = Object.entries(v).find(
+          ([, value]) =>
+            typeof value !== "string" || (value as string).length > rule.cap
+        );
+        if (badKey) bad.push(`${path}.${badKey[0]}`);
+        break;
     }
-  }
-  for (const k of Object.keys(d.layout) as (keyof SiteSettings["layout"])[]) {
-    const v = s.layout?.[k];
-    req(typeof v === "string" && SIZE_RE.test(v), `layout.${k}`);
-  }
-  req(isSafeUrl(s.background?.bgImage), "background.bgImage");
-  req(isNumberInRange(s.background?.bgOpacity, 0, 1), "background.bgOpacity");
-  req(isNumberInRange(s.background?.bgBlur, 0, 30), "background.bgBlur");
-  req(
-    isNumberInRange(s.background?.bgBrightness, 0.7, 1.3),
-    "background.bgBrightness"
-  );
-  for (const k of Object.keys(
-    d.features
-  ) as (keyof SiteSettings["features"])[]) {
-    req(typeof s.features?.[k] === "boolean", `features.${k}`);
-  }
-  req(
-    s.motion?.intensity === "normal" ||
-      s.motion?.intensity === "reduced" ||
-      s.motion?.intensity === "off",
-    "motion.intensity"
-  );
-  req(typeof s.motion?.parallax === "boolean", "motion.parallax");
-  req(isNumberInRange(s.motion?.parallaxSpeed, 0, 0.1), "motion.parallaxSpeed");
-  for (const loc of ["zh", "en"] as const) {
-    const m = (s.copy as unknown as Record<string, unknown> | undefined)?.[loc];
-    if (!isPlainObject(m)) {
-      bad.push(`copy.${loc}`);
-      continue;
-    }
-    const badKey = Object.entries(m).find(
-      ([, v]) => typeof v !== "string" || (v as string).length > 2000
-    );
-    if (badKey) bad.push(`copy.${loc}.${badKey[0]}`);
   }
   return bad;
 }

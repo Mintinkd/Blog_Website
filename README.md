@@ -73,6 +73,8 @@
 │   │   ├── global.css           # 全局样式（含 .site-bg 固定背景层）
 │   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级兜底）
 │   │   └── prose.css            # 文章排版样式
+│   ├── generated/
+│   │   └── settings-rules.ts    # 生成物：设置白名单规则（双端同构，禁止手工编辑，issue #27）
 │   ├── utils/
 │       ├── api.ts               # API请求工具
 │       ├── markdown.ts          # Markdown渲染
@@ -85,6 +87,7 @@
 │       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
 │   ├── patch-csp.mjs            # 构建后 CSP 收紧（astro:build:done 自动调用，注入内联脚本 sha256）
+│   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
@@ -92,6 +95,8 @@
 │   ├── schema.sql               # 数据库Schema
 │   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核等）
 │   └── src/
+│       ├── generated/
+│       │   └── settings-rules.ts # 生成物：设置白名单规则（与根包同构，禁止手工编辑，issue #27）
 │       ├── index.ts             # Worker入口
 │       ├── router.ts            # 路由注册与分发
 │       ├── middleware/
@@ -121,6 +126,7 @@
 │       └── utils/               # 工具函数
 ├── astro.config.mjs
 ├── package.json
+├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── .node-version
@@ -295,6 +301,7 @@ D1 (SQLite) 共 9 张表：
 - **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度 / 雾化 / 亮度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
 - **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
 - **数据安全**：这些设置不含任何密钥，`/settings` 作为公开接口供前台拉取；写 / 导出 / 导入 / 恢复均为 admin 专属。
+- **合法性单源（issue #27 / ADR 0001）**：读侧回落与写侧拒绝共享同一套校验规则 —— 手写单源为仓库根 `settings.rules.json`（规则描述符），`npm run gen:settings` 从其生成 `src/generated/settings-rules.ts` 与 `worker/src/generated/settings-rules.ts` 两份字节一致的规则模块，两侧校验逻辑只消费生成物；生成物禁止手工编辑，CI 以「重新生成 → diff 必须为空」的漂移断言最早门禁守护，漂移修复流程为改描述符 → 重跑生成 → 一并提交。
 
 ### 外链内容智能代理
 
@@ -372,7 +379,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是设置白名单生成物漂移断言（`npm run gen:settings` 重新生成 → git diff 必须为空，issue #27 / ADR 0001），随后才是 worker typecheck / worker 测试、前端 check、构建。
 
 ### 初始化数据库
 

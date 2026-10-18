@@ -9,7 +9,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "prepare": "husky",
-    "check": "node scripts/run-astro-check.mjs"
+    "check": "node scripts/run-astro-check.mjs",
+    "gen:settings": "node scripts/generate-settings-rules.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.0.0",

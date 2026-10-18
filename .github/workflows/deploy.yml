@@ -21,6 +21,11 @@ jobs:
         with:
           node-version: "22"
 
+      # issue #27 / ADR 0001：设置白名单生成物不得漂移——
+      # 重新生成后 diff 非空即红（零依赖脚本，最早门禁，先于依赖安装）
+      - name: Check Settings Rules drift
+        run: npm run gen:settings && git diff --exit-code -- src/generated/settings-rules.ts worker/src/generated/settings-rules.ts
+
       - name: Install dependencies
         run: npm ci
 
