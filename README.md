@@ -207,7 +207,7 @@ D1 (SQLite) 共 9 张表：
 | DELETE | `/tags/:id` | 删除标签 |
 | GET | `/users` | 用户列表 |
 | POST | `/users` | 创建用户 |
-| PUT | `/users/:id` | 更新用户（密码、显示名、角色） |
+| PUT | `/users/:id` | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定） |
 | DELETE | `/users/:id` | 删除用户（至少保留一个admin） |
 | GET | `/config/all` | 全部配置 |
 | PUT | `/config` | 更新配置 |

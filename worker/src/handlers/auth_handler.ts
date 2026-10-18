@@ -332,10 +332,14 @@ export async function handleUpdateUser(request: Request, env: Env, params: Recor
     values.push(newRole);
   }
 
-  if (body.password) {
+  const passwordReset = Boolean(body.password);
+
+  if (passwordReset) {
     const passwordHash = await hashPassword(String(body.password));
     sets.push('password_hash = ?');
     values.push(passwordHash);
+    // 管理员重置口令（#18）：与自助改密对齐，同一步清零失败计数、清空锁定截止时间，重置后账号可立即登录
+    sets.push('failed_login_attempts = 0', 'locked_until = NULL');
   }
 
   if (sets.length === 0) {
@@ -346,7 +350,15 @@ export async function handleUpdateUser(request: Request, env: Env, params: Recor
   values.push(new Date().toISOString());
   values.push(Number(id));
 
-  await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+  try {
+    await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+  } catch (e) {
+    // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛，不得静默丢失更新
+    if (!isMissingColumnError(e) || !passwordReset) throw e;
+    // 迁移前降级：仅更新既有字段（角色/显示名/口令哈希），锁定清零待迁移后生效
+    const fallbackSets = sets.filter((s) => !s.startsWith('failed_login_attempts') && !s.startsWith('locked_until'));
+    await env.DB.prepare(`UPDATE users SET ${fallbackSets.join(', ')} WHERE id = ?`).bind(...values).run();
+  }
 
   return successResponse(null, 'User updated');
 }
