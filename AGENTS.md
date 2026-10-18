@@ -19,4 +19,5 @@ vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request
 ## Repo docs
 
 - `README.md` — main contract (API surface, structure, behaviour, deployment); the source of truth for implementation and review.
+- `CODING_STANDARDS.md` — judgement-call coding rules enforced by the `code-review` Standards axis.
 - `docs/reviews/YYYY-MM-DD-<topic>.md` — code-review reports.
