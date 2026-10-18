@@ -3,6 +3,7 @@ import { successResponse, error, ErrorCodes, unauthorized, rateLimited } from '.
 import { verifyToken, generateToken } from '../middleware/auth';
 import type { AuthResult } from '../middleware/auth';
 import { hashPassword, verifyPassword } from '../utils/password';
+import { isMissingColumnError } from '../utils/d1_compat';
 
 // P1-5 / issue #8：初始/默认口令检测与登录失败锁定
 const DEFAULT_SEED_PASSWORD = 'password';
@@ -38,19 +39,32 @@ interface UserAuthRow {
   locked_until: string | null;
 }
 
+/** 半迁移兜底行：新增列可能在（部分应用的）迁移前缺失，按列可选 */
+interface UserAuthRowCompat extends Omit<UserAuthRow, 'must_change_password' | 'failed_login_attempts' | 'locked_until'> {
+  must_change_password?: number;
+  failed_login_attempts?: number;
+  locked_until?: string | null;
+}
+
 /** 取回登录所需用户行；新增列尚未迁移时降级为旧列（锁定/须改密功能待迁移后生效） */
 async function loadUserAuthRow(env: Env, username: string): Promise<UserAuthRow | null> {
   try {
     return await env.DB.prepare(
       'SELECT id, username, password_hash, display_name, role, must_change_password, failed_login_attempts, locked_until FROM users WHERE username = ?'
     ).bind(username).first<UserAuthRow>();
-  } catch {
-    const row = await env.DB.prepare(
-      'SELECT id, username, password_hash, display_name, role FROM users WHERE username = ?'
-    ).bind(username).first<Omit<UserAuthRow, 'must_change_password' | 'failed_login_attempts' | 'locked_until'>>();
-    if (!row) return null;
-    return { ...row, must_change_password: 0, failed_login_attempts: 0, locked_until: null };
+  } catch (e) {
+    // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许回退旧列；其余异常向上抛（fail-closed）
+    if (!isMissingColumnError(e)) throw e;
   }
+  // 半迁移兜底：schema.sql 三条独立 ALTER，按实际存在的列逐列降级——已存在的列（如 must_change_password）仍取真实值，不被一并置 0
+  const info = await env.DB.prepare("SELECT name FROM pragma_table_info('users')").all<{ name: string }>();
+  const existing = new Set(info.results.map((r) => r.name));
+  const columns = ['id', 'username', 'password_hash', 'display_name', 'role',
+    ...['must_change_password', 'failed_login_attempts', 'locked_until'].filter((c) => existing.has(c))];
+  const row = await env.DB.prepare(`SELECT ${columns.join(', ')} FROM users WHERE username = ?`)
+    .bind(username).first<UserAuthRowCompat>();
+  if (!row) return null;
+  return { ...row, must_change_password: row.must_change_password ?? 0, failed_login_attempts: row.failed_login_attempts ?? 0, locked_until: row.locked_until ?? null };
 }
 
 /** 记一次登录失败；达到阈值即写入锁定截止时间并返回 true */
@@ -63,8 +77,9 @@ async function registerLoginFailure(env: Env, userId: number, currentAttempts: n
       return true;
     }
     await env.DB.prepare('UPDATE users SET failed_login_attempts = ? WHERE id = ?').bind(attempts, userId).run();
-  } catch {
-    // 迁移前降级：无法计数时仅放行，功能待迁移后生效
+  } catch (e) {
+    // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前，功能不可用）允许跳过；其余异常向上抛，不得静默丢失计数
+    if (!isMissingColumnError(e)) throw e;
   }
   return false;
 }
@@ -104,7 +119,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
         await env.DB.prepare(
           'UPDATE users SET password_hash = ?, failed_login_attempts = 0, locked_until = NULL, must_change_password = ? WHERE id = ?'
         ).bind(hashToStore, needsChange ? 1 : 0, user.id).run();
-      } catch {
+      } catch (e) {
+        // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛，不得静默放行
+        if (!isMissingColumnError(e)) throw e;
         // 迁移前降级：至少写回口令哈希（#7 透明升级不丢失）
         await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(hashToStore, user.id).run();
       }
@@ -134,7 +151,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
           await env.DB.prepare(
             'UPDATE users SET password_hash = ?, must_change_password = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ?'
           ).bind(migratedHash, needsChange ? 1 : 0, user.id).run();
-        } catch {
+        } catch (e) {
+          // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛
+          if (!isMissingColumnError(e)) throw e;
           await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(migratedHash, user.id).run();
         }
         const jwtSecret = await getJwtSecret(env);
@@ -152,7 +171,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
             'INSERT INTO users (username, password_hash, display_name, role, must_change_password) VALUES (?, ?, ?, ?, ?)'
           ).bind(String(username), migratedHash, displayName, 'admin', needsChange ? 1 : 0).run();
           newId = result.meta.last_row_id;
-        } catch {
+        } catch (e) {
+          // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛
+          if (!isMissingColumnError(e)) throw e;
           const result = await env.DB.prepare(
             'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)'
           ).bind(String(username), migratedHash, displayName, 'admin').run();
@@ -227,7 +248,9 @@ export async function handleChangePassword(request: Request, env: Env, authResul
     await env.DB.prepare(
       'UPDATE users SET password_hash = ?, must_change_password = 0, failed_login_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?'
     ).bind(newHash, nowIso, user.id).run();
-  } catch {
+  } catch (e) {
+    // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许降级；其余异常向上抛，不得静默放行
+    if (!isMissingColumnError(e)) throw e;
     // 迁移前降级：仅更新口令哈希
     await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').bind(newHash, nowIso, user.id).run();
   }

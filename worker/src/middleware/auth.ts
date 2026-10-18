@@ -1,5 +1,6 @@
 import { Env } from '../index';
 import { unauthorized, forbidden } from '../utils/response';
+import { isMissingColumnError } from '../utils/d1_compat';
 
 export interface AuthResult {
   username: string;
@@ -102,16 +103,14 @@ async function getUserAuth(username: string, env: Env): Promise<{ role: string; 
     const row = await env.DB.prepare('SELECT role, must_change_password FROM users WHERE username = ?').bind(username).first<{ role: string; must_change_password: number }>();
     if (!row) return null;
     return { role: row.role, mustChangePassword: Boolean(row.must_change_password) };
-  } catch {
-    // 新增列尚未迁移时降级为旧列（须改密强制仅在迁移后生效）
-    try {
-      const row = await env.DB.prepare('SELECT role FROM users WHERE username = ?').bind(username).first<{ role: string }>();
-      if (!row) return null;
-      return { role: row.role, mustChangePassword: false };
-    } catch {
-      return null;
-    }
+  } catch (e) {
+    // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许回退旧列；其余异常一律向上抛（fail-closed，不得静默关闭门禁）
+    if (!isMissingColumnError(e)) throw e;
   }
+  // 新增列尚未迁移时降级为旧列（须改密强制仅在迁移后生效）
+  const row = await env.DB.prepare('SELECT role FROM users WHERE username = ?').bind(username).first<{ role: string }>();
+  if (!row) return null;
+  return { role: row.role, mustChangePassword: false };
 }
 
 export async function authMiddleware(request: Request, env: Env): Promise<{ user: AuthResult } | Response> {
