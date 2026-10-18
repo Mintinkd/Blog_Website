@@ -16,6 +16,10 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request. See `docs/agents/testing.md`.
 
+## CI/CD
+
+GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules drift check), `backup.yml` copies out. Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
+
 ## Repo docs
 
 - `README.md` — main contract (API surface, structure, behaviour, deployment); the source of truth for implementation and review.
