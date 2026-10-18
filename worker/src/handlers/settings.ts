@@ -1,5 +1,6 @@
-import { Env } from '../index';
-import { successResponse, error, ErrorCodes } from '../utils/response';
+import { Env } from "../index";
+import { successResponse, error, ErrorCodes } from "../utils/response";
+import { isPlainObject } from "../utils/object";
 
 /**
  * 全站可视化配置中心 —— 后端逻辑
@@ -13,10 +14,17 @@ import { successResponse, error, ErrorCodes } from '../utils/response';
  *   今后新增任何敏感配置项时默认不公开，必须显式加入 PUBLIC_KEYS 才会暴露。
  */
 
-const SETTINGS_KEY = 'site_settings';
+const SETTINGS_KEY = "site_settings";
 
 /** 允许匿名公开的顶级字段白名单（均为纯展示性配置，不含密钥） */
-const PUBLIC_KEYS = ['theme', 'layout', 'background', 'features', 'motion', 'copy'] as const;
+const PUBLIC_KEYS = [
+  "theme",
+  "layout",
+  "background",
+  "features",
+  "motion",
+  "copy",
+] as const;
 
 /** 完整 settings -> 公开投影：未知/未来新增字段默认剔除 */
 export function toPublicSettings(s: SiteSettings): Partial<SiteSettings> {
@@ -70,7 +78,7 @@ export interface SiteSettings {
   };
   /** 动效强度与视差开关（后台可配） */
   motion: {
-    intensity: 'normal' | 'reduced' | 'off';
+    intensity: "normal" | "reduced" | "off";
     parallax: boolean;
     parallaxSpeed: number;
   };
@@ -80,39 +88,39 @@ export function getDefaultSettings(): SiteSettings {
   return {
     theme: {
       light: {
-        accent: '#49b1f5',
-        accentHover: '#3a9de8',
-        bgPrimary: '#fafafa',
-        bgSecondary: '#ffffff',
-        bgTertiary: '#f5f5f5',
-        textPrimary: '#1d1d1f',
-        textSecondary: '#5d5d64',
-        textTertiary: '#76767e',
-        border: '#e8e8ed',
-        borderLight: '#f0f0f5',
+        accent: "#49b1f5",
+        accentHover: "#3a9de8",
+        bgPrimary: "#fafafa",
+        bgSecondary: "#ffffff",
+        bgTertiary: "#f5f5f5",
+        textPrimary: "#1d1d1f",
+        textSecondary: "#5d5d64",
+        textTertiary: "#76767e",
+        border: "#e8e8ed",
+        borderLight: "#f0f0f5",
       },
       dark: {
-        accent: '#7cb8f0',
-        accentHover: '#a6d4f8',
-        bgPrimary: '#0a0a0a',
-        bgSecondary: '#1c1c1e',
-        bgTertiary: '#2c2c2e',
-        textPrimary: '#f5f5f7',
-        textSecondary: '#a1a1a6',
-        textTertiary: '#6e6e73',
-        border: '#38383a',
-        borderLight: '#15151a',
+        accent: "#7cb8f0",
+        accentHover: "#a6d4f8",
+        bgPrimary: "#0a0a0a",
+        bgSecondary: "#1c1c1e",
+        bgTertiary: "#2c2c2e",
+        textPrimary: "#f5f5f7",
+        textSecondary: "#a1a1a6",
+        textTertiary: "#6e6e73",
+        border: "#38383a",
+        borderLight: "#15151a",
       },
     },
     layout: {
-      contentMaxWidth: '1200px',
-      headerHeight: '64px',
-      radiusSm: '6px',
-      radiusMd: '10px',
-      radiusLg: '16px',
+      contentMaxWidth: "1200px",
+      headerHeight: "64px",
+      radiusSm: "6px",
+      radiusMd: "10px",
+      radiusLg: "16px",
     },
     background: {
-      bgImage: '/bg-placeholder.svg',
+      bgImage: "/bg-placeholder.svg",
       // 与前端 settings.ts 同步：bgOpacity 语义为「图片可见度」而非「遮罩浓度」
       bgOpacity: 0.55,
       bgBlur: 6,
@@ -129,25 +137,22 @@ export function getDefaultSettings(): SiteSettings {
     },
     copy: { zh: {}, en: {} },
     motion: {
-      intensity: 'normal',
+      intensity: "normal",
       parallax: true,
       parallaxSpeed: 0.04,
     },
   };
 }
 
-function isObj(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 /** 只保留 base 中存在的键，深度合并 override，过滤未知键（防止任意字段注入） */
 function deepMerge<T>(base: T, override: any): T {
-  if (!isObj(base) || !isObj(override)) {
+  if (!isPlainObject(base) || !isPlainObject(override)) {
     return (override === undefined ? base : override) as T;
   }
   const out: any = { ...base };
   for (const k of Object.keys(base as any)) {
-    if (k in override) out[k] = deepMerge((base as any)[k], (override as any)[k]);
+    if (k in override)
+      out[k] = deepMerge((base as any)[k], (override as any)[k]);
   }
   return out;
 }
@@ -163,11 +168,13 @@ const LOCAL_PATH_RE = /^\/[A-Za-z0-9\-._~/%]+$/;
 const HTTPS_URL_RE = /^https:\/\/[A-Za-z0-9\-._~:/?#@!$&*+,;=%]+$/;
 
 function isSafeUrl(v: unknown): v is string {
-  return typeof v === 'string' && (LOCAL_PATH_RE.test(v) || HTTPS_URL_RE.test(v));
+  return (
+    typeof v === "string" && (LOCAL_PATH_RE.test(v) || HTTPS_URL_RE.test(v))
+  );
 }
 
 function isNumberInRange(v: unknown, min: number, max: number): v is number {
-  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
 }
 
 /** 返回非法字段路径列表；空数组 = 全部合法 */
@@ -178,41 +185,59 @@ export function validateSettings(s: SiteSettings): string[] {
   };
   const d = getDefaultSettings();
 
-  for (const mode of ['light', 'dark'] as const) {
-    const t = (s.theme as unknown as Record<string, unknown> | undefined)?.[mode] as Record<string, unknown> | undefined;
+  for (const mode of ["light", "dark"] as const) {
+    const t = (s.theme as unknown as Record<string, unknown> | undefined)?.[
+      mode
+    ] as Record<string, unknown> | undefined;
     for (const k of Object.keys(d.theme[mode]) as (keyof ThemeColors)[]) {
-      const v = t && typeof t === 'object' ? t[k] : undefined;
-      req(typeof v === 'string' && HEX_COLOR_RE.test(v), `theme.${mode}.${k}`);
+      const v = t && typeof t === "object" ? t[k] : undefined;
+      req(typeof v === "string" && HEX_COLOR_RE.test(v), `theme.${mode}.${k}`);
     }
   }
-  for (const k of Object.keys(d.layout) as (keyof SiteSettings['layout'])[]) {
+  for (const k of Object.keys(d.layout) as (keyof SiteSettings["layout"])[]) {
     const v = s.layout?.[k];
-    req(typeof v === 'string' && SIZE_RE.test(v), `layout.${k}`);
+    req(typeof v === "string" && SIZE_RE.test(v), `layout.${k}`);
   }
-  req(isSafeUrl(s.background?.bgImage), 'background.bgImage');
-  req(isNumberInRange(s.background?.bgOpacity, 0, 1), 'background.bgOpacity');
-  req(isNumberInRange(s.background?.bgBlur, 0, 30), 'background.bgBlur');
-  req(isNumberInRange(s.background?.bgBrightness, 0.7, 1.3), 'background.bgBrightness');
-  for (const k of Object.keys(d.features) as (keyof SiteSettings['features'])[]) {
-    req(typeof s.features?.[k] === 'boolean', `features.${k}`);
+  req(isSafeUrl(s.background?.bgImage), "background.bgImage");
+  req(isNumberInRange(s.background?.bgOpacity, 0, 1), "background.bgOpacity");
+  req(isNumberInRange(s.background?.bgBlur, 0, 30), "background.bgBlur");
+  req(
+    isNumberInRange(s.background?.bgBrightness, 0.7, 1.3),
+    "background.bgBrightness"
+  );
+  for (const k of Object.keys(
+    d.features
+  ) as (keyof SiteSettings["features"])[]) {
+    req(typeof s.features?.[k] === "boolean", `features.${k}`);
   }
-  req(s.motion?.intensity === 'normal' || s.motion?.intensity === 'reduced' || s.motion?.intensity === 'off', 'motion.intensity');
-  req(typeof s.motion?.parallax === 'boolean', 'motion.parallax');
-  req(isNumberInRange(s.motion?.parallaxSpeed, 0, 0.1), 'motion.parallaxSpeed');
-  for (const loc of ['zh', 'en'] as const) {
+  req(
+    s.motion?.intensity === "normal" ||
+      s.motion?.intensity === "reduced" ||
+      s.motion?.intensity === "off",
+    "motion.intensity"
+  );
+  req(typeof s.motion?.parallax === "boolean", "motion.parallax");
+  req(isNumberInRange(s.motion?.parallaxSpeed, 0, 0.1), "motion.parallaxSpeed");
+  for (const loc of ["zh", "en"] as const) {
     const m = (s.copy as unknown as Record<string, unknown> | undefined)?.[loc];
-    if (!isObj(m)) {
+    if (!isPlainObject(m)) {
       bad.push(`copy.${loc}`);
       continue;
     }
-    const badKey = Object.entries(m).find(([, v]) => typeof v !== 'string' || (v as string).length > 2000);
+    const badKey = Object.entries(m).find(
+      ([, v]) => typeof v !== "string" || (v as string).length > 2000
+    );
     if (badKey) bad.push(`copy.${loc}.${badKey[0]}`);
   }
   return bad;
 }
 
 async function loadStored(env: Env): Promise<SiteSettings> {
-  const row = await env.DB.prepare('SELECT value FROM site_config WHERE key = ?').bind(SETTINGS_KEY).first();
+  const row = await env.DB.prepare(
+    "SELECT value FROM site_config WHERE key = ?"
+  )
+    .bind(SETTINGS_KEY)
+    .first();
   const raw = row && (row as any).value ? (row as any).value : null;
   if (raw) {
     try {
@@ -228,62 +253,94 @@ async function save(env: Env, settings: SiteSettings): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO site_config (key, value, is_public, updated_at) VALUES (?, ?, 1, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_public = 1, updated_at = excluded.updated_at`
-  ).bind(SETTINGS_KEY, JSON.stringify(settings), new Date().toISOString()).run();
+  )
+    .bind(SETTINGS_KEY, JSON.stringify(settings), new Date().toISOString())
+    .run();
 }
 
-export async function handleGetSettings(_req: Request, env: Env): Promise<Response> {
+export async function handleGetSettings(
+  _req: Request,
+  env: Env
+): Promise<Response> {
   const settings = await loadStored(env);
   return successResponse(settings);
 }
 
 /** 公开投影（匿名可访问）：仅白名单字段，未来新增敏感字段不会意外泄露 */
-export async function handleGetPublicSettings(_req: Request, env: Env): Promise<Response> {
+export async function handleGetPublicSettings(
+  _req: Request,
+  env: Env
+): Promise<Response> {
   const settings = await loadStored(env);
   return successResponse(toPublicSettings(settings));
 }
 
-export async function handleUpdateSettings(req: Request, env: Env): Promise<Response> {
+export async function handleUpdateSettings(
+  req: Request,
+  env: Env
+): Promise<Response> {
   try {
     const body = await req.json();
     const merged = deepMerge(getDefaultSettings(), body);
     const invalid = validateSettings(merged);
     if (invalid.length) {
-      return error(ErrorCodes.VALIDATION_FAILED, '非法设置值（已拒绝保存）：' + invalid.join('；'));
+      return error(
+        ErrorCodes.VALIDATION_FAILED,
+        "非法设置值（已拒绝保存）：" + invalid.join("；")
+      );
     }
     await save(env, merged);
-    return successResponse(merged, '设置已保存');
+    return successResponse(merged, "设置已保存");
   } catch (e) {
-    return error(ErrorCodes.PARAM_ERROR, '保存失败：' + (e instanceof Error ? e.message : '格式错误'));
+    return error(
+      ErrorCodes.PARAM_ERROR,
+      "保存失败：" + (e instanceof Error ? e.message : "格式错误")
+    );
   }
 }
 
-export async function handleResetSettings(_req: Request, env: Env): Promise<Response> {
+export async function handleResetSettings(
+  _req: Request,
+  env: Env
+): Promise<Response> {
   const def = getDefaultSettings();
   await save(env, def);
-  return successResponse(def, '已恢复默认设置');
+  return successResponse(def, "已恢复默认设置");
 }
 
-export async function handleExportSettings(_req: Request, env: Env): Promise<Response> {
+export async function handleExportSettings(
+  _req: Request,
+  env: Env
+): Promise<Response> {
   const settings = await loadStored(env);
   return new Response(JSON.stringify(settings, null, 2), {
     headers: {
-      'Content-Type': 'application/json',
-      'Content-Disposition': 'attachment; filename=site-settings.json',
+      "Content-Type": "application/json",
+      "Content-Disposition": "attachment; filename=site-settings.json",
     },
   });
 }
 
-export async function handleImportSettings(req: Request, env: Env): Promise<Response> {
+export async function handleImportSettings(
+  req: Request,
+  env: Env
+): Promise<Response> {
   try {
     const body = await req.json();
     const merged = deepMerge(getDefaultSettings(), body);
     const invalid = validateSettings(merged);
     if (invalid.length) {
-      return error(ErrorCodes.VALIDATION_FAILED, '非法设置值（已拒绝导入）：' + invalid.join('；'));
+      return error(
+        ErrorCodes.VALIDATION_FAILED,
+        "非法设置值（已拒绝导入）：" + invalid.join("；")
+      );
     }
     await save(env, merged);
-    return successResponse(merged, '配置导入成功');
+    return successResponse(merged, "配置导入成功");
   } catch (e) {
-    return error(ErrorCodes.PARAM_ERROR, '导入失败：' + (e instanceof Error ? e.message : '格式错误'));
+    return error(
+      ErrorCodes.PARAM_ERROR,
+      "导入失败：" + (e instanceof Error ? e.message : "格式错误")
+    );
   }
 }

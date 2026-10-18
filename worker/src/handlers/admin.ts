@@ -1,6 +1,7 @@
 import { Env } from "../index";
 import { successResponse, error, ErrorCodes } from "../utils/response";
 import { sanitizeHtml } from "../utils/sanitizer";
+import { isPlainObject } from "../utils/object";
 
 /**
  * 管理端数据导出/导入（P1-7 / issue #12 安全改造）
@@ -174,10 +175,6 @@ export async function handleExport(
       },
     }
   );
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
 /** D1 bind 仅接受原始值；嵌套对象/数组一律视为非法输入 */
