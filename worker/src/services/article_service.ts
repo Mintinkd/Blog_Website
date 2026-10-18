@@ -1,5 +1,5 @@
 import { Env } from '../index';
-import { Article, ArticleListItem, ArticleDetail, CreateArticleRequest, UpdateArticleRequest } from '../models/article';
+import { ArticleListItem, ArticleDetail, CreateArticleRequest, UpdateArticleRequest } from '../models/article';
 import type { AuthResult } from '../middleware/auth';
 
 function generateSlug(title: string): string {
@@ -162,7 +162,7 @@ export async function getArticleBySlug(env: Env, slug: string): Promise<ArticleD
   };
 }
 
-export async function createArticle(env: Env, data: CreateArticleRequest, auth_result?: AuthResult): Promise<Article> {
+export async function createArticle(env: Env, data: CreateArticleRequest, auth_result?: AuthResult): Promise<ArticleDetail> {
   let slug = (data.slug && data.slug.trim()) ? data.slug.trim() : generateSlug(data.title);
   if (!slug) slug = generateSlug(data.title);
   // 唯一性兜底：冲突时追加 -n 后缀

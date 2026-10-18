@@ -24,6 +24,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install Worker dependencies
+        run: npm install
+        working-directory: worker
+
+      - name: Typecheck Worker
+        run: npm run typecheck
+        working-directory: worker
+
       - name: Build Astro site
         run: npm run build
 
@@ -34,10 +42,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           nodeVersion: '22'
           command: pages deploy dist --project-name=blog-website-page
-
-      - name: Install Worker dependencies
-        run: npm install
-        working-directory: worker
 
       - name: Deploy Worker
         run: npx wrangler deploy
