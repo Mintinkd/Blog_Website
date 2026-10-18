@@ -187,7 +187,8 @@ CREATE TABLE IF NOT EXISTS users (
 -- IMPORTANT: Change password after first login!
 -- 单一来源：TS 侧为 worker/src/utils/seed.ts（DEFAULT_SEED_PASSWORD /
 -- INITIAL_ADMIN_PASSWORD_HASH）。SQL 文件无法 import TS，下方字面量属已接受的重复
--- —— 改种子口令时 TS 与本文件必须同步修改（契约面同步规则，见 CODING_STANDARDS.md）。
+-- —— 改种子口令时 seed.ts、本文件种子 INSERT 与迁移 UPDATE（文件尾部）三处同改
+-- （契约面同步规则，见 CODING_STANDARDS.md；一致性由 worker/tests/seed_constants.test.ts 机械守卫）。
 INSERT OR IGNORE INTO users (username, password_hash, display_name, role) VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8', '管理员', 'admin');
 
 -- Migration: Add author_id to articles

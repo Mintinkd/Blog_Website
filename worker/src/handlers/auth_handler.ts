@@ -21,7 +21,8 @@ import {
 } from "../utils/seed";
 
 // P1-5 / issue #8：初始/默认口令检测与登录失败锁定
-// （种子口令/初始哈希单一来源见 utils/seed.ts，issue #24——本处只保留与种子无关的门禁常量）
+// （种子口令/初始哈希的单一来源见 utils/seed.ts。注意：WEAK_DEFAULT_PASSWORDS 首项
+//   "password" 与种子口令同值——改种子口令时本名单须同步复核，否则弱口令拦截失准）
 const WEAK_DEFAULT_PASSWORDS = ["password", "changeme"];
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 10 * 60 * 1000;

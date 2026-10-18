@@ -81,8 +81,11 @@
 │       ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │       ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+│   ├── types/
+│       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
-│   └── patch-csp.mjs           # 构建后 CSP 收紧（astro:build:done 自动调用，注入内联脚本 sha256）
+│   ├── patch-csp.mjs            # 构建后 CSP 收紧（astro:build:done 自动调用，注入内联脚本 sha256）
+│   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
