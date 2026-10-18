@@ -30,6 +30,7 @@
 │   └── deploy.yml              # CI/CD 自动部署
 ├── public/
 │   ├── .assetsignore             # Workers+Assets 排除 _worker.js
+│   ├── _headers                  # 生成物：安全响应头（安全头模块单源渲染，禁止手工编辑，issue #28）
 │   ├── bg-placeholder.svg       # 默认全站背景图
 │   └── robots.txt
 ├── src/
@@ -86,7 +87,9 @@
 │   ├── types/
 │       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
-│   ├── patch-csp.mjs            # 构建后 CSP 收紧（astro:build:done 自动调用，注入内联脚本 sha256）
+│   ├── security-headers.mjs      # 安全响应头单一事实源（5 头声明式常量 + 同目录 .d.mts 类型声明；middleware 直接 import，issue #28 / ADR 0002）
+│   ├── generate-headers.mjs      # public/_headers 生成器（prebuild 自动执行；CI 漂移断言）
+│   ├── patch-csp.mjs             # 构建后 CSP 收紧（astro:build:done 自动调用；以安全头模块为源构造 + 注入内联脚本 sha256 + 残留断言；同目录 .d.mts）
 │   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
@@ -379,7 +382,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是设置白名单生成物漂移断言（`npm run gen:settings` 重新生成 → git diff 必须为空，issue #27 / ADR 0001），随后才是 worker typecheck / worker 测试、前端 check、构建。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、构建。
 
 ### 初始化数据库
 
@@ -426,7 +429,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建Astro站点
+1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`，构建后钩子收紧 CSP 产物）
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 

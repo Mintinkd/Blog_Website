@@ -1,0 +1,2 @@
+# 生成物 public/_headers 以 LF 检出与比对（CI 漂移断言 / 字节对读测试按确切内容核对；issue #28 / ADR 0002）
+public/_headers text eol=lf

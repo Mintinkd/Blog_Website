@@ -25,5 +25,8 @@ worker 的设置写入路径：对非法字段值直接拒绝（400）。
 声明态 CSP（script-src 含 `'unsafe-inline'`），由安全头模块单源持有；只存在于源码与 dev，绝不进入生产产物。
 _Avoid_: dev CSP、开发态 CSP
 
+**安全头模块**：
+持有全部 5 个响应头（含 CSP 基线）声明式常量的手写 `.mjs` 单源（`scripts/security-headers.mjs`）：middleware 直接 import，`_headers` 由其渲染，收紧后的 CSP 由其构造。
+
 **收紧**：
 构建期把 CSP 基线的 script-src 从 `'unsafe-inline'` 替换为 dist 内联脚本的 sha256 hash 清单（patch-csp）。

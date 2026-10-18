@@ -5,11 +5,13 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
+    "prebuild": "npm run gen:headers",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
     "prepare": "husky",
     "check": "node scripts/run-astro-check.mjs",
+    "gen:headers": "node scripts/generate-headers.mjs",
     "gen:settings": "node scripts/generate-settings-rules.mjs"
   },
   "dependencies": {
