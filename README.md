@@ -79,17 +79,18 @@
 │   │   └── prose.css            # 文章排版样式
 │   ├── generated/
 │   │   └── settings-rules.ts    # 生成物：设置白名单规则（双端同构，禁止手工编辑，issue #27）
+│   ├── middleware.ts            # SSR 安全响应头中间件（消费安全头单源，issue #28 / ADR 0002）
 │   ├── utils/
-│       ├── api.ts               # API请求工具
-│       ├── markdown.ts          # Markdown渲染
-│       ├── escape.ts            # 转义工具（escapeHtml/escapeAttr/safePathSegment/sanitizeHighlight）
-│       ├── theme.ts             # 主题切换
-│       ├── categoryColors.ts    # 分类专属色映射（徽标/渐变横幅；hexToRgba/shade 等）
-│       ├── siteConfig.ts        # 站点基础配置读取与应用
-│       ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
-│       ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
-│       └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
-│   ├── types/
+│   │   ├── api.ts               # API请求工具
+│   │   ├── markdown.ts          # Markdown渲染
+│   │   ├── escape.ts            # 转义工具（escapeHtml/escapeAttr/safePathSegment/sanitizeHighlight）
+│   │   ├── theme.ts             # 主题切换
+│   │   ├── categoryColors.ts    # 分类专属色映射（徽标/渐变横幅；hexToRgba/shade 等）
+│   │   ├── siteConfig.ts        # 站点基础配置读取与应用
+│   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
+│   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
+│   │   └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+│   └── types/
 │       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
 │   ├── security-headers.mjs      # 安全响应头单一事实源（5 头声明式常量 + 同目录 .d.mts 类型声明；middleware 直接 import，issue #28 / ADR 0002）
@@ -103,6 +104,8 @@
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
 │   ├── schema.sql               # 数据库Schema
+│   ├── package.json             # 后端依赖与脚本（typecheck / test）
+│   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
 │   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核等）
 │   └── src/
 │       ├── generated/
@@ -112,7 +115,8 @@
 │       ├── middleware/
 │       │   ├── auth.ts          # JWT认证
 │       │   ├── cors.ts          # 跨域
-│       │   └── rate_limit.ts    # 限流
+│       │   ├── rate_limit.ts    # 限流
+│       │   └── security_headers.ts  # API 安全响应头（CSP default-src 'none'，渗透报告 002）
 │       ├── handlers/            # API处理器
 │       │   ├── article.ts
 │       │   ├── category.ts
