@@ -27,20 +27,21 @@ Worker (worker/src/handlers/settings.ts)
 
 ## 数据模型（SiteSettings）
 
-| 分组 | 字段 | 说明 |
-|---|---|---|
-| `theme.light` / `theme.dark` | accent, accentHover, bgPrimary, bgSecondary, bgTertiary, textPrimary, textSecondary, textTertiary, border, borderLight | 浅色/深色各 10 个配色，注入为 `--color-*` 变量 |
-| `layout` | contentMaxWidth, headerHeight, radiusSm, radiusMd, radiusLg | 布局相关 CSS 变量 |
-| `background` | bgImage(URL), bgOpacity(0~1) | 背景图路径 + 浓度（遮罩由主题背景色 + 浓度自动生成，保证文字对比度） |
-| `features` | comments, likes, friendLinks, search, rss, darkMode, i18n | 功能开关，关掉则在对应 DOM 上隐藏 |
-| `copy` | zh{}, en{} | 文案覆盖，键名复用 i18n key（如 `nav.home`），按当前语言生效 |
-| `motion` | intensity(normal\|reduced\|off), parallax(bool), parallaxSpeed(0~0.1) | 动效强度与背景视差开关。intensity=off 时全站禁用入场/微动/进度条；reduced 时仅保留轻量入场与进度条、禁用磁吸/视差；parallax 关时背景层不位移。视差 speed 默认 0.04，位移=滚动进度(0~1)×视口高×speed（有界，不露边） |
+| 分组                         | 字段                                                                                                                   | 说明                                                                                                                                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme.light` / `theme.dark` | accent, accentHover, bgPrimary, bgSecondary, bgTertiary, textPrimary, textSecondary, textTertiary, border, borderLight | 浅色/深色各 10 个配色，注入为 `--color-*` 变量                                                                                                                                                                      |
+| `layout`                     | contentMaxWidth, headerHeight, radiusSm, radiusMd, radiusLg                                                            | 布局相关 CSS 变量                                                                                                                                                                                                   |
+| `background`                 | bgImage(URL), bgOpacity(0~1)                                                                                           | 背景图路径 + 浓度（遮罩由主题背景色 + 浓度自动生成，保证文字对比度）                                                                                                                                                |
+| `features`                   | comments, likes, friendLinks, search, rss, darkMode, i18n                                                              | 功能开关，关掉则在对应 DOM 上隐藏                                                                                                                                                                                   |
+| `copy`                       | zh{}, en{}                                                                                                             | 文案覆盖，键名复用 i18n key（如 `nav.home`），按当前语言生效                                                                                                                                                        |
+| `motion`                     | intensity(normal\|reduced\|off), parallax(bool), parallaxSpeed(0~0.1)                                                  | 动效强度与背景视差开关。intensity=off 时全站禁用入场/微动/进度条；reduced 时仅保留轻量入场与进度条、禁用磁吸/视差；parallax 关时背景层不位移。视差 speed 默认 0.04，位移=滚动进度(0~1)×视口高×speed（有界，不露边） |
 
 默认值见 `worker/src/handlers/settings.ts` 与 `src/utils/settings.ts` 的 `getDefaultSettings()`（与 `src/styles/variables.css` 当前外观保持一致，故「恢复默认」= 还原当前外观）。
 
 ### 动效开关（motion）用法
 
 后台「外观与个性化 → 动效」分组可实时配置：
+
 - **动效强度**：`normal`（全部动效）/ `reduced`（仅轻量入场与进度条，禁用磁吸与视差）/ `off`（无动效，元素直接可见，等价于 `prefers-reduced-motion`）。
 - **启用背景视差**：开关背景层（`.site-bg` 的 `data-parallax-fixed`）极轻微滚动位移，增强沉浸感且不干扰阅读；移动端自动禁用。
 - **视差速度**：0~0.1，越大位移越明显，默认 0.04。
@@ -49,14 +50,14 @@ Worker (worker/src/handlers/settings.ts)
 
 ## API 接口
 
-| 方法 | 路径 | 鉴权 | 说明 |
-|---|---|---|---|
-| GET | `/api/v1/settings` | 公开 | 拉取全量设置（已与默认合并，供前台运行时套用） |
-| GET | `/api/v1/settings/all` | admin | 同上（管理端读取用） |
-| PUT | `/api/v1/settings` | admin | 整体保存设置（深度合并校验，过滤未知键） |
-| POST | `/api/v1/settings/reset` | admin | 恢复默认 |
-| GET | `/api/v1/settings/export` | admin | 导出 JSON 文件 |
-| POST | `/api/v1/settings/import` | admin | 导入 JSON（深度合并后保存） |
+| 方法 | 路径                      | 鉴权  | 说明                                           |
+| ---- | ------------------------- | ----- | ---------------------------------------------- |
+| GET  | `/api/v1/settings`        | 公开  | 拉取全量设置（已与默认合并，供前台运行时套用） |
+| GET  | `/api/v1/settings/all`    | admin | 同上（管理端读取用）                           |
+| PUT  | `/api/v1/settings`        | admin | 整体保存设置（深度合并校验，过滤未知键）       |
+| POST | `/api/v1/settings/reset`  | admin | 恢复默认                                       |
+| GET  | `/api/v1/settings/export` | admin | 导出 JSON 文件                                 |
+| POST | `/api/v1/settings/import` | admin | 导入 JSON（深度合并后保存）                    |
 
 > 注：既有整站导出/导入（`/admin/export`、`/admin/import`）会连带 `site_config` 表（含 `site_settings`）一起备份，因此设置也会随整站备份走。
 
@@ -78,7 +79,7 @@ Worker (worker/src/handlers/settings.ts)
 ## 部署注意
 
 - **Worker（新接口）**：按现有约定随 `worker/` 源码 git push 自动部署（Cloudflare 读 `wrangler.jsonc` 自行 build）。
-- **前端（dist）**：按现有约定需 `npx wrangler pages deploy dist --project-name blog-website-page`（或 git push `dist`）。
+- **前端（dist）**：构建期生成（先 `npm run build`），再 `npx wrangler pages deploy dist --project-name blog-website-page`；或推 `main` 由 CI 构建部署（`dist` 不入库）。
 - 两者都更新后，配置中心才完整可用。
 
 ## 扩展新配置项

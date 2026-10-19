@@ -4,6 +4,9 @@ node_modules
 .workbuddy/
 build_tmp.log
 
+# 前端构建期生成（npm run build 产出），不进 git
+dist/
+
 # worker 自动部署时 Cloudflare 自己 build 生成，不进 git
 worker/dist/
 

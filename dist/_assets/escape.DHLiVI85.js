@@ -1,1 +1,0 @@
-import e from"./purify.es.Csrj9YNg.js";function r(t){return String(t??"").replace(/[&<>"']/g,n=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[n])}function a(t){return r(t)}function o(t){return encodeURIComponent(String(t??""))}function s(t){return e.sanitize(String(t??""),{ALLOWED_TAGS:["mark"],ALLOWED_ATTR:[]})}export{s as a,a as b,r as e,o as s};
