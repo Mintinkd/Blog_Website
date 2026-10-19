@@ -1,6 +1,6 @@
 # 全站可视化配置中心（外观与个性化）
 
-让所有个性化设置（配色、布局、背景、功能开关、文案覆盖）都能在**管理员面板**里可视化修改，保存后实时生效，无需改动代码；并支持**导出 / 导入 / 一键恢复默认**。
+让所有个性化设置（配色、布局、背景、功能开关、文案覆盖、动效）都能在**管理员面板**里可视化修改，保存后实时生效，无需改动代码；并支持**导出 / 导入 / 一键恢复默认**。
 
 > 本功能是既有 `site_config` 配置体系的扩展：原来的 `site_title/subtitle/...` 等仍走 `/config` 旧接口，新增的「外观与个性化」走 `/settings` 系列新接口（前台读取为公开投影 `GET /settings/public`），互不干扰。
 
@@ -10,7 +10,7 @@
 
 ```
 后台面板 (src/admin/App.vue 「外观与个性化」)
-   │  PUT /settings · POST /settings/reset · GET /settings/export · POST /settings/import
+   │  GET /settings · PUT /settings · POST /settings/reset · GET /settings/export · POST /settings/import
    ▼
 Worker (worker/src/handlers/settings.ts)
    │  读写 site_config 表中 key='site_settings' 的 JSON blob（深度合并默认值 + 过滤未知键）

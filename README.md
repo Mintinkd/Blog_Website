@@ -295,7 +295,7 @@ D1 (SQLite) 共 9 张表：
 
 所有个性化设置（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效）统一存为 `site_config` 表中的 JSON blob（key = `site_settings`），由后台「外观与个性化」面板可视化编辑，前后端实时生效。
 
-- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `DEFAULT_SETTINGS` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开白名单投影读取（`GET /settings/public`）+ admin 全量读取 / 写 / 导出 / 导入 / 恢复默认接口。
+- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `getDefaultSettings()` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开白名单投影读取（`GET /settings/public`）+ admin 全量读取 / 写 / 导出 / 导入 / 恢复默认接口。
 - **前端注入器**：`src/utils/settings.ts` 的 `applySettings()` 把配置转成可直接生效的视觉与行为：
   1. **配色 / 布局 / 背景** → 注入 CSS 变量覆盖 `variables.css` 默认值（`!important` 保证生效），按 `[data-theme="light"/"dark"]` 分写，日 / 夜切换照常生效；
   2. **功能开关** → 在 `<html>` 写 `data-feature-<name>="off"`，配合 `[data-feature]` 钩子隐藏对应模块（评论 / 点赞 / 友链 / 搜索 / RSS / 暗色 / 双语）；
