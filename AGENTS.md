@@ -18,7 +18,7 @@ vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request
 
 ## CI/CD
 
-GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules / security-headers drift checks), `backup.yml` copies out. Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
+GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules / security-headers drift checks). Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
 
 ## Repo docs
 
