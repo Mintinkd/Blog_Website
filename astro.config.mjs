@@ -45,6 +45,12 @@ const articleUrls = await getPublishedArticleUrls();
 export default defineConfig({
   site: "https://blog.zenfishlog.dpdns.org",
   output: "static",
+  // ClientRouter 默认 hover 预取（悬停生成 <link rel="prefetch">），浏览器会带上
+  // Sec-Purpose: prefetch；Cloudflare 边缘对预取一律 503 空响应（cf-speculation-refused:
+  // prefetch refused: not eligible），预取必然失败并污染控制台（ERR_ABORTED 503）。
+  // 站点经 Workers/Pages 动态响应，预取不生效 → 关闭 Astro 预取（编译期
+  // __PREFETCH_DISABLED__ 摘除 ClientRouter bundle 内的整段预取初始化）。
+  prefetch: false,
   adapter: cloudflare(),
   integrations: [
     vue(),
