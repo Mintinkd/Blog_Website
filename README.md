@@ -44,8 +44,7 @@
 │   │   │   ├── EmptyState.astro
 │   │   │   └── ScrollProgress.astro  # 顶部滚动进度条
 │   │   └── layout/
-│   │       ├── BaseLayout.astro  # 全局布局（毛玻璃导航栏）
-│   │       └── Sidebar.astro
+│   │       └── BaseLayout.astro  # 全局布局（毛玻璃导航栏）
 │   ├── islands/                 # Vue交互组件（Astro岛屿架构）
 │   │   ├── ThemeToggle.vue
 │   │   ├── SearchBox.vue
@@ -57,8 +56,12 @@
 │   │   ├── articles/
 │   │   │   ├── index.astro      # 文章列表
 │   │   │   └── [slug].astro      # 文章详情（SSR）
-│   │   ├── categories/[slug].astro  # 分类（SSR）
-│   │   ├── tags/[slug].astro        # 标签（SSR）
+│   │   ├── categories/
+│   │   │   ├── index.astro      # 分类云（SSR）
+│   │   │   └── [slug].astro     # 分类文章（SSR）
+│   │   ├── tags/
+│   │   │   ├── index.astro      # 标签云（SSR）
+│   │   │   └── [slug].astro     # 标签文章（SSR）
 │   │   ├── api/v1/[...path].ts      # API代理路由（SSR）
 │   │   ├── rss.xml.ts               # RSS订阅源（SSR）
 │   │   ├── archives.astro       # 归档
@@ -79,7 +82,9 @@
 │   ├── utils/
 │       ├── api.ts               # API请求工具
 │       ├── markdown.ts          # Markdown渲染
+│       ├── escape.ts            # 转义工具（escapeHtml/escapeAttr/safePathSegment/sanitizeHighlight）
 │       ├── theme.ts             # 主题切换
+│       ├── categoryColors.ts    # 分类专属色映射（徽标/渐变横幅；hexToRgba/shade 等）
 │       ├── siteConfig.ts        # 站点基础配置读取与应用
 │       ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │       ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
@@ -91,6 +96,8 @@
 │   ├── generate-headers.mjs      # public/_headers 生成器（prebuild 自动执行；CI 漂移断言）
 │   ├── patch-csp.mjs             # 构建后 CSP 收紧（astro:build:done 自动调用；以安全头模块为源构造 + 注入内联脚本 sha256 + 残留断言；同目录 .d.mts）
 │   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
+│   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
+│   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
@@ -134,17 +141,23 @@
 ├── tsconfig.json
 ├── .node-version
 ├── .npmrc
+├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
+├── CODING_STANDARDS.md          # 判断类编码规则（code-review Standards 轴依据）
+├── GLOSSARY.md                  # 领域术语表（domain-modeling 沉淀）
 └── docs/                         # 设计与功能文档
     ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
     ├── SITE_SETTINGS.md         # 可视化配置中心说明
+    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源）
+    ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing）
+    ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
     └── security/
         └── csp-evaluation.md    # CSP 收紧评估（script-src 内联哈希 / style-src 取舍）
 ```
 
 ## 数据库设计
 
-D1 (SQLite) 共 9 张表：
+D1 (SQLite) 共 10 张表：
 
 | 表名            | 说明                                                                                         |
 | --------------- | -------------------------------------------------------------------------------------------- |
@@ -250,7 +263,9 @@ D1 (SQLite) 共 9 张表：
 | `/`                 | 首页（Hero + 最新文章卡片网格） | 静态     |
 | `/articles`         | 文章列表（分页）                | 静态     |
 | `/articles/:slug`   | 文章详情（Markdown渲染）        | SSR      |
+| `/categories`       | 分类云（全部分类）              | SSR      |
 | `/categories/:slug` | 分类文章                        | SSR      |
+| `/tags`             | 标签云（全部标签）              | SSR      |
 | `/tags/:slug`       | 标签文章                        | SSR      |
 | `/api/v1/*`         | API代理到Worker                 | SSR      |
 | `/rss.xml`          | RSS订阅源                       | SSR      |
@@ -432,6 +447,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`，构建后钩子收紧 CSP 产物）
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
+4. 等待 120 秒待 Git 集成自动部署落定，再对 Pages 与 Worker 各执行一次覆盖部署——即使 Cloudflare 侧 Git 自动部署未关闭，最终生效的也始终是本次构建产物
 
 ### 部署架构
 
