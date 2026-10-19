@@ -2,7 +2,7 @@
 
 让所有个性化设置（配色、布局、背景、功能开关、文案覆盖）都能在**管理员面板**里可视化修改，保存后实时生效，无需改动代码；并支持**导出 / 导入 / 一键恢复默认**。
 
-> 本功能是既有 `site_config` 配置体系的扩展：原来的 `site_title/subtitle/...` 等仍走 `/config` 旧接口，新增的「外观与个性化」走 `/settings` 新接口，互不干扰。
+> 本功能是既有 `site_config` 配置体系的扩展：原来的 `site_title/subtitle/...` 等仍走 `/config` 旧接口，新增的「外观与个性化」走 `/settings` 系列新接口（前台读取为公开投影 `GET /settings/public`），互不干扰。
 
 ---
 
@@ -16,7 +16,7 @@ Worker (worker/src/handlers/settings.ts)
    │  读写 site_config 表中 key='site_settings' 的 JSON blob（深度合并默认值 + 过滤未知键）
    ▼
 前台运行时 (src/utils/settings.ts)
-   │  GET /settings → applySettings()
+   │  GET /settings/public → applySettings()
    │   · 注入 CSS 变量覆盖（配色/布局/背景，!important）
    │   · <html> 写 data-feature-*="off" 控制功能开关
    │   · <html> 写 data-motion-intensity / data-parallax，写 --parallax-speed（动效强度与视差开关，供 motion.ts / motion.css 读取）
@@ -50,14 +50,15 @@ Worker (worker/src/handlers/settings.ts)
 
 ## API 接口
 
-| 方法 | 路径                      | 鉴权  | 说明                                           |
-| ---- | ------------------------- | ----- | ---------------------------------------------- |
-| GET  | `/api/v1/settings`        | 公开  | 拉取全量设置（已与默认合并，供前台运行时套用） |
-| GET  | `/api/v1/settings/all`    | admin | 同上（管理端读取用）                           |
-| PUT  | `/api/v1/settings`        | admin | 整体保存设置（深度合并校验，过滤未知键）       |
-| POST | `/api/v1/settings/reset`  | admin | 恢复默认                                       |
-| GET  | `/api/v1/settings/export` | admin | 导出 JSON 文件                                 |
-| POST | `/api/v1/settings/import` | admin | 导入 JSON（深度合并后保存）                    |
+| 方法 | 路径                      | 鉴权  | 说明                                                                         |
+| ---- | ------------------------- | ----- | ---------------------------------------------------------------------------- |
+| GET  | `/api/v1/settings/public` | 公开  | 白名单投影（theme/layout/background/features/motion/copy），供前台运行时套用 |
+| GET  | `/api/v1/settings`        | admin | 全量视图（已与默认合并；管理端读取用）                                       |
+| GET  | `/api/v1/settings/all`    | admin | 全量视图（与 `/settings` 等价入口）                                          |
+| PUT  | `/api/v1/settings`        | admin | 整体保存设置（深度合并校验，过滤未知键）                                     |
+| POST | `/api/v1/settings/reset`  | admin | 恢复默认                                                                     |
+| GET  | `/api/v1/settings/export` | admin | 导出 JSON 文件                                                               |
+| POST | `/api/v1/settings/import` | admin | 导入 JSON（深度合并后保存）                                                  |
 
 > 注：既有整站导出/导入（`/admin/export`、`/admin/import`）会连带 `site_config` 表（含 `site_settings`）一起备份，因此设置也会随整站备份走。
 
@@ -74,7 +75,7 @@ Worker (worker/src/handlers/settings.ts)
 - **中/英不破**：文案覆盖按 `currentLocale` 生效，`t()` 优先读覆盖层；语言切换后 `[data-i18n]` 用新文案刷新。
 - **功能开关**：在 `<html>` 上写 `data-feature-<name>="off"`，配合各处的 `data-feature` 钩子（`BaseLayout` 的暗色/语言/搜索/RSS/友链按钮，以及 `CommentSection`、`LikeButton` 根元素）隐藏，不影响其它逻辑。
 - **性能**：仅覆盖 CSS 变量（不触发重排），无第三方库；减动偏好不受影响（本功能不引入动画）。
-- **安全**：后端 `deepMerge` 只保留已知字段、过滤未知键，防止任意字段注入；设置不含任何密钥，故 `/settings` 可公开读取。
+- **安全**：后端 `deepMerge` 只保留已知字段、过滤未知键，防止任意字段注入；设置不含任何密钥，公开读取仅走 `/settings/public` 白名单投影，全量视图与写操作均要求 admin。
 
 ## 部署注意
 

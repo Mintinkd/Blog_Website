@@ -172,7 +172,7 @@ D1 (SQLite) 共 9 张表：
 | GET  | `/health`                           | 健康检查                                                                                                                                            |
 | POST | `/auth/login`                       | 登录（返回JWT token和用户信息）                                                                                                                     |
 | GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
-| GET  | `/articles/:slug`                   | 文章详情                                                                                                                                            |
+| GET  | `/articles/:slug`                   | 文章详情（流程内自增阅读量：Cookie 去重、24 小时 TTL）                                                                                              |
 | GET  | `/categories`                       | 分类列表                                                                                                                                            |
 | GET  | `/tags`                             | 标签列表                                                                                                                                            |
 | GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
@@ -180,11 +180,10 @@ D1 (SQLite) 共 9 张表：
 | GET  | `/search`                           | 全文搜索                                                                                                                                            |
 | POST | `/articles/:article_id/like`        | 点赞/取消                                                                                                                                           |
 | GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
-| GET  | `/articles/:article_id/view`        | 增加阅读量（Cookie去重，24小时TTL）                                                                                                                 |
 | GET  | `/media/serve/*`                    | 媒体文件访问                                                                                                                                        |
 | GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
 | GET  | `/config`                           | 公开站点配置                                                                                                                                        |
-| GET  | `/settings`                         | 公开可视化配置（前台运行时套用）                                                                                                                    |
+| GET  | `/settings/public`                  | 公开白名单投影（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效），前台运行时套用                                                                       |
 | GET  | `/img-proxy?url=`                   | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存）                                                  |
 | GET  | `/text-proxy?url=`                  | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；与图片通道共用 SSRF（含解析后 IP 复核）/域名/限流校验，text/json/xml 白名单 + CORS 头） |
 
@@ -212,12 +211,12 @@ D1 (SQLite) 共 9 张表：
 
 #### 编辑锁接口
 
-| 方法   | 路径                       | 说明                    |
-| ------ | -------------------------- | ----------------------- |
-| POST   | `/articles/:id/lock`       | 获取编辑锁（30分钟TTL） |
-| DELETE | `/articles/:id/lock`       | 释放编辑锁              |
-| GET    | `/articles/:id/lock`       | 查询编辑锁状态          |
-| POST   | `/articles/:id/lock/force` | 强制接管编辑锁（admin） |
+| 方法   | 路径                            | 说明                    |
+| ------ | ------------------------------- | ----------------------- |
+| POST   | `/articles/:id/edit-lock`       | 获取编辑锁（30分钟TTL） |
+| DELETE | `/articles/:id/edit-lock`       | 释放编辑锁              |
+| GET    | `/articles/:id/edit-lock`       | 查询编辑锁状态          |
+| POST   | `/articles/:id/edit-lock/force` | 强制接管编辑锁（admin） |
 
 #### 管理员专属接口（需 admin 角色）
 
@@ -237,6 +236,7 @@ D1 (SQLite) 共 9 张表：
 | DELETE | `/friend-links/:id` | 删除友链                                                               |
 | GET    | `/admin/export`     | 导出数据                                                               |
 | POST   | `/admin/import`     | 导入数据                                                               |
+| GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                |
 | GET    | `/settings/all`     | 拉取全部可视化配置                                                     |
 | PUT    | `/settings`         | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）              |
 | POST   | `/settings/reset`   | 恢复默认可视化配置                                                     |
@@ -295,7 +295,7 @@ D1 (SQLite) 共 9 张表：
 
 所有个性化设置（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效）统一存为 `site_config` 表中的 JSON blob（key = `site_settings`），由后台「外观与个性化」面板可视化编辑，前后端实时生效。
 
-- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `DEFAULT_SETTINGS` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开读取 + admin 写 / 导出 / 导入 / 恢复默认接口。
+- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `DEFAULT_SETTINGS` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开白名单投影读取（`GET /settings/public`）+ admin 全量读取 / 写 / 导出 / 导入 / 恢复默认接口。
 - **前端注入器**：`src/utils/settings.ts` 的 `applySettings()` 把配置转成可直接生效的视觉与行为：
   1. **配色 / 布局 / 背景** → 注入 CSS 变量覆盖 `variables.css` 默认值（`!important` 保证生效），按 `[data-theme="light"/"dark"]` 分写，日 / 夜切换照常生效；
   2. **功能开关** → 在 `<html>` 写 `data-feature-<name>="off"`，配合 `[data-feature]` 钩子隐藏对应模块（评论 / 点赞 / 友链 / 搜索 / RSS / 暗色 / 双语）；
@@ -303,7 +303,7 @@ D1 (SQLite) 共 9 张表：
   4. **动效** → 写 `data-motion-intensity` 与 `data-parallax` 及 `--parallax-speed`。
 - **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度 / 雾化 / 亮度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
 - **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
-- **数据安全**：这些设置不含任何密钥，`/settings` 作为公开接口供前台拉取；写 / 导出 / 导入 / 恢复均为 admin 专属。
+- **数据安全**：这些设置不含任何密钥，`/settings/public` 白名单投影作为公开接口供前台拉取；全量读取（`/settings`、`/settings/all`）与写 / 导出 / 导入 / 恢复均为 admin 专属。
 - **合法性单源（issue #27 / ADR 0001）**：读侧回落与写侧拒绝共享同一套校验规则 —— 手写单源为仓库根 `settings.rules.json`（规则描述符），`npm run gen:settings` 从其生成 `src/generated/settings-rules.ts` 与 `worker/src/generated/settings-rules.ts` 两份字节一致的规则模块，两侧校验逻辑只消费生成物；生成物禁止手工编辑，CI 以「重新生成 → diff 必须为空」的漂移断言最早门禁守护，漂移修复流程为改描述符 → 重跑生成 → 一并提交。
 
 ### 外链内容智能代理
