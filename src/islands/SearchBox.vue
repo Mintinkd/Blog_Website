@@ -9,15 +9,36 @@
         @keyup.enter="doSearch"
       />
       <button class="search-btn" @click="doSearch" :disabled="loading">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
       </button>
     </div>
 
     <div v-if="activeFilter" class="active-filter">
       <span class="active-filter-label">
-        {{ activeFilter.type === 'tag' ? '标签' : '分类' }}：<strong>{{ activeFilter.name }}</strong>
+        {{ activeFilter.type === "tag" ? "标签" : "分类" }}：<strong>{{
+          activeFilter.name
+        }}</strong>
       </span>
-      <button class="active-filter-clear" @click="clearFilter" aria-label="清除筛选">&times;</button>
+      <button
+        class="active-filter-clear"
+        @click="clearFilter"
+        aria-label="清除筛选"
+      >
+        &times;
+      </button>
     </div>
 
     <div v-if="results.length > 0" class="search-results">
@@ -28,16 +49,26 @@
       <TransitionGroup name="result" tag="div" class="search-results-list">
         <div v-for="item in results" :key="item.id" class="search-result-item">
           <h3 class="result-title">
-            <a :href="`/articles/${safePathSegment(item.slug)}`" v-html="sanitizeHighlight(item.title_highlight || item.title)"></a>
+            <a
+              :href="`/articles/${safePathSegment(item.slug)}`"
+              v-html="sanitizeHighlight(item.title_highlight || item.title)"
+            ></a>
           </h3>
-          <p class="result-excerpt" v-html="sanitizeHighlight(item.content_highlight || item.summary)"></p>
-          <span class="result-date">{{ formatDate(item.published_at || item.created_at) }}</span>
+          <p
+            class="result-excerpt"
+            v-html="sanitizeHighlight(item.content_highlight || item.summary)"
+          ></p>
+          <span class="result-date">{{
+            formatDate(item.published_at || item.created_at)
+          }}</span>
         </div>
       </TransitionGroup>
     </div>
 
     <div v-else-if="searched && !loading" class="no-results">
-      <p v-if="activeFilter">该{{ activeFilter.type === 'tag' ? '标签' : '分类' }}下暂无文章</p>
+      <p v-if="activeFilter">
+        该{{ activeFilter.type === "tag" ? "标签" : "分类" }}下暂无文章
+      </p>
       <p v-else>未找到相关文章，试试其他关键词？</p>
     </div>
 
@@ -48,15 +79,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { sanitizeHighlight, safePathSegment } from '../utils/escape';
+import { ref, onMounted, onUnmounted } from "vue";
+import { sanitizeHighlight, safePathSegment } from "../utils/escape";
 
-const query = ref('');
+const query = ref("");
 const results = ref<any[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const searched = ref(false);
-const activeFilter = ref<{ type: 'tag' | 'category'; slug: string; name: string } | null>(null);
+const activeFilter = ref<{
+  type: "tag" | "category";
+  slug: string;
+  name: string;
+} | null>(null);
 
 async function doSearch() {
   const q = query.value.trim();
@@ -68,7 +103,9 @@ async function doSearch() {
   searched.value = true;
 
   try {
-    const response = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}&page_size=20`);
+    const response = await fetch(
+      `/api/v1/search?q=${encodeURIComponent(q)}&page_size=20`
+    );
     const data = await response.json();
 
     if (data.code === 0 && data.data) {
@@ -76,26 +113,33 @@ async function doSearch() {
       total.value = data.data.total || 0;
     }
   } catch (e) {
-    console.error('Search failed:', e);
+    console.error("Search failed:", e);
   } finally {
     loading.value = false;
   }
 }
 
-async function filterByTaxonomy(type: 'tag' | 'category', slug: string, name: string) {
+async function filterByTaxonomy(
+  type: "tag" | "category",
+  slug: string,
+  name: string
+) {
   if (!slug) return;
 
   activeFilter.value = { type, slug, name };
-  query.value = '';
+  query.value = "";
   loading.value = true;
   searched.value = true;
   results.value = [];
 
   try {
-    const param = type === 'tag'
-      ? `tag_slug=${encodeURIComponent(slug)}`
-      : `category_slug=${encodeURIComponent(slug)}`;
-    const response = await fetch(`/api/v1/articles?page=1&page_size=20&status=published&${param}`);
+    const param =
+      type === "tag"
+        ? `tag_slug=${encodeURIComponent(slug)}`
+        : `category_slug=${encodeURIComponent(slug)}`;
+    const response = await fetch(
+      `/api/v1/articles?page=1&page_size=20&status=published&${param}`
+    );
     const data = await response.json();
 
     if (data.code === 0 && data.data) {
@@ -103,7 +147,7 @@ async function filterByTaxonomy(type: 'tag' | 'category', slug: string, name: st
       total.value = data.data.total || 0;
     }
   } catch (e) {
-    console.error('Filter failed:', e);
+    console.error("Filter failed:", e);
   } finally {
     loading.value = false;
   }
@@ -123,16 +167,16 @@ function handleTaxonomyFilter(e: Event) {
 }
 
 onMounted(() => {
-  window.addEventListener('taxonomy-filter', handleTaxonomyFilter);
+  window.addEventListener("taxonomy-filter", handleTaxonomyFilter);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('taxonomy-filter', handleTaxonomyFilter);
+  window.removeEventListener("taxonomy-filter", handleTaxonomyFilter);
 });
 
 function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('zh-CN');
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("zh-CN");
 }
 </script>
 
@@ -149,6 +193,8 @@ function formatDate(dateStr: string): string {
 
 .search-input {
   flex: 1;
+  /* 输入框默认 min-width:auto（约 20 字符）会撑住 flex 行，窄屏时把按钮挤出面板 */
+  min-width: 0;
   padding: 0.75rem 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -156,7 +202,9 @@ function formatDate(dateStr: string): string {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .search-input:focus {
@@ -247,8 +295,9 @@ function formatDate(dateStr: string): string {
 }
 .result-enter-active,
 .result-leave-active {
-  transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
-              transform var(--motion-duration-base) var(--motion-ease-standard);
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-standard),
+    transform var(--motion-duration-base) var(--motion-ease-standard);
 }
 .result-enter-from,
 .result-leave-to {
@@ -282,7 +331,8 @@ function formatDate(dateStr: string): string {
   font-size: 0.8rem;
 }
 
-.no-results, .search-loading {
+.no-results,
+.search-loading {
   text-align: center;
   padding: 2rem;
   color: var(--color-text-secondary);
