@@ -155,16 +155,48 @@ describe("buildScrapeDraft", () => {
   });
 
   it("Readability 识别不出正文时回退 <body> 并给 no_article 警告", () => {
-    // hidden 子树不会进入 Readability，但仍在 <body> 里，用于验证回退内容
+    // hidden 子树不会进入 Readability，但仍在 <body> 里，用于验证回退内容；
+    // 页面标题应优先于回退内容里的导航/Logo H1
     const html = `<!doctype html>
 <html><head><title>App Shell</title></head>
-<body><div id="app" hidden><p>Fallback body text</p></div></body></html>`;
+<body>
+  <h1 hidden>Site Name</h1>
+  <div id="app" hidden><p>Fallback body text</p></div>
+</body></html>`;
 
     const draft = buildScrapeDraft(html, "https://publisher.example/app");
 
     expect(draft.warnings).toContain("no_article");
     expect(draft.markdown).toContain("Fallback body text");
     expect(draft.title).toBe("App Shell");
+  });
+
+  it("selector 命中表格行时保留单元格与表头上下文", () => {
+    const html = `<!doctype html>
+<html><head><title>Table</title></head>
+<body><table>
+  <thead><tr><th>Name</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Alpha</td><td>1</td></tr>
+    <tr><td>Beta</td><td>2</td></tr>
+  </tbody>
+</table></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/table", {
+      selector: "tbody tr",
+    });
+
+    // 表头不来自命中行，但作为 GFM 表格结构上下文一并保留
+    expect(draft.markdown).toContain("| Name | Value |");
+    expect(draft.markdown).toContain("| Alpha | 1 |");
+    expect(draft.markdown).toContain("| Beta | 2 |");
+
+    // 命中全部 tr（含表头）时不能再补一遍 thead
+    const allRows = buildScrapeDraft(html, "https://publisher.example/table", {
+      selector: "tr",
+    });
+    expect(allRows.markdown.match(/\| Name \| Value \|/g)).toHaveLength(1);
+    expect(allRows.markdown).toContain("| Alpha | 1 |");
   });
 
   it("统计正文图片数量，并标记缺少可用地址的图片", () => {

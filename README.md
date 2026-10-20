@@ -150,7 +150,7 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（jsdom）：抓取管线测试
-├── tests/                        # 前端单元测试（抓取管线 HTML fixture）
+├── tests/                        # 前端单元测试（抓取管线 HTML/字节 fixture）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
@@ -356,9 +356,9 @@ D1 (SQLite) 共 10 张表：
 
 - **入口** `GET /api/v1/admin/scrape?url=`：路由层 `requireAuth + requireAdmin`（editor 403），handler 内再次校验角色；editor 在管理端也看不到该标签页。
 - **流程**：URL 校验（SSRF）→ robots.txt 预检 → 抓取目标 HTML（逐跳重定向复核）→ 返回原始 HTML 字节；前端按 BOM / `Content-Type` / `<meta charset>` 解码字节，以 `X-Final-URL` 绝对化相对链接、按 `X-Robots-Status` 决定是否显示「未做 robots 检查」警告，再生成预览。原始 HTML 保留在管理页内存，供 selector 本地重提取。
-- **提取与转换**：默认用 Readability；识别不出正文时回退 `<body>` 并显示 no-article 警告。手动 CSS selector 覆盖提取（多个命中按文档顺序拼接），「重新提取」在已抓取的 HTML 上重跑、不重新请求源站；selector 语法错误 / 未命中给出明确错误并保留上一份预览。Markdown 保留标题、列表、引用、带语言标注的围栏代码、GFM 表格、图片与行内强调；正文中与标题同名的 h1 去重。相对链接 / 图片按页面自带 `<base>` 或 final URL 解析；iframe/embed/object 在 http/https 时降级为链接，否则丢弃；`javascript:` / `data:` / `vbscript:` 地址一律剥除。
+- **提取与转换**：默认用 Readability；识别不出正文时回退 `<body>` 并显示 no-article 警告。手动 CSS selector 覆盖提取（多个命中按文档顺序拼接；命中表格行/单元格时保留表格与表头上下文），「重新提取」在已抓取的 HTML 上重跑、不重新请求源站；selector 语法错误 / 未命中给出明确错误并保留上一份预览。Markdown 保留标题、列表、引用、带语言标注的围栏代码、GFM 表格、图片与行内强调；正文中与标题同名的 h1 去重。懒加载图片先提升 `data-src` / `srcset` 中的真实地址；相对链接 / 图片按页面自带 `<base>` 或 final URL 解析；iframe/embed/object 在 http/https 时降级为链接，否则丢弃；`javascript:` / `data:` / `vbscript:` 地址一律剥除。
 - **字符集**：按 BOM → `Content-Type` → `<meta charset>` / XML 声明解码，覆盖 GBK / GB2312；未知或不支持的字符集回退 UTF-8 并显示警告。
-- **预览**：显示正文图片数量；缺少可用地址的图片提示可能坏图，其余外链图片提示防盗链风险。
+- **预览**：显示字符集与正文图片数量；缺少可用地址的图片提示可能坏图，其余外链图片提示防盗链风险。
 - **安全**：与图片 / 文字通道共用 SSRF 护栏（仅 http/https、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`、解析后 IP 复核、每一跳重定向复核）、仅 `text/html` 与 `application/xhtml+xml`、≤2MB、目标 10s 超时（robots 预检另有 5s 上限）、每管理员 10 次/分限流、仅透传上游 `Content-Type`（其余上游头一律剥离）、`Cache-Control: no-store`、不缓存不写库。
 - **robots.txt**：明确的 `Disallow` 命中 → 403 且不发起目标请求（响应里带命中规则）；404 / 410 / 非 2xx / 网络异常 / 超 500KB → 放行并置 `X-Robots-Status: unchecked`，UI 显示警告。
 - **草稿交接**：预览区「生成草稿并编辑」复用现有文章编辑器（预填标题 / Markdown 正文 / 分类 1 / `draft`），取消不创建任何数据；保存仍走既有 `POST /articles`。
@@ -426,7 +426,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、URL/嵌入降级与字符集解码输出。该命令已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级与字符集解码输出。该命令已接入 CI，位于前端类型检查之后、构建之前。
 
 ### Worker 后端开发
 

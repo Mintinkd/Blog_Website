@@ -176,6 +176,7 @@
   "admin.scrape_generate_draft": "Generate Draft & Edit",
   "admin.scrape_final_url": "Final URL",
   "admin.scrape_images": "Images: {count}",
+  "admin.scrape_charset": "Charset",
   "admin.scrape_images_broken": "{count} image(s) have no usable URL and may not display in the draft.",
   "admin.scrape_images_external": "Remote images may fail to display because of hotlink protection or source-site limits; spot-check the draft.",
   "admin.scrape_markdown": "Markdown preview",

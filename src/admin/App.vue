@@ -211,6 +211,7 @@
               {{
                 t("admin.scrape_images", { count: scrapePreview.images.total })
               }}
+              · {{ t("admin.scrape_charset") }}: {{ scrapePreview.charset }}
             </p>
             <p
               v-if="scrapePreview.images.unresolved > 0"
@@ -265,7 +266,11 @@
               >
                 {{ t("admin.scrape_again") }}
               </button>
-              <button class="btn-primary" @click="editScrapedDraft">
+              <button
+                class="btn-primary"
+                :disabled="!scrapePreview.markdown.trim()"
+                @click="editScrapedDraft"
+              >
                 {{ t("admin.scrape_generate_draft") }}
               </button>
             </div>
@@ -1434,7 +1439,7 @@ import {
 import zh from "../i18n/zh.json";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import type { ScrapeDraft, ScrapeImageStats } from "../utils/scrape";
+import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
 // （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
@@ -1495,16 +1500,13 @@ const previewHtml = ref("");
 interface ScrapeSource {
   html: string;
   finalUrl: string;
-  charsetWarnings: string[];
+  decodeWarnings: ScrapeWarning[];
 }
 
-interface ScrapePreview {
-  title: string;
-  markdown: string;
-  warnings: string[];
+interface ScrapePreview extends ScrapeDraft {
   finalUrl: string;
   robotsStatus: "allowed" | "unchecked";
-  images: ScrapeImageStats;
+  charset: string;
 }
 const scrapeUrl = ref("");
 const scrapeLoading = ref(false);
@@ -1899,19 +1901,29 @@ function openNewArticle() {
   showArticleEditor.value = true;
 }
 
-function scrapeWarningText(warning: string): string {
-  switch (warning) {
-    case "no_article":
-      return t("admin.scrape_warning_no_article");
-    case "readability_failed":
-      return t("admin.scrape_warning_readability_failed");
-    case "convert_failed":
-      return t("admin.scrape_warning_convert_failed");
-    case "charset_fallback":
-      return t("admin.scrape_warning_charset_fallback");
-    default:
-      return warning;
-  }
+const SCRAPE_WARNING_KEYS: Record<ScrapeWarning, string> = {
+  no_article: "admin.scrape_warning_no_article",
+  readability_failed: "admin.scrape_warning_readability_failed",
+  convert_failed: "admin.scrape_warning_convert_failed",
+  charset_fallback: "admin.scrape_warning_charset_fallback",
+};
+
+function scrapeWarningText(warning: ScrapeWarning): string {
+  return t(SCRAPE_WARNING_KEYS[warning]);
+}
+
+function previewFromDraft(
+  draft: ScrapeDraft,
+  warnings: ScrapeWarning[],
+  meta: Pick<ScrapePreview, "finalUrl" | "robotsStatus" | "charset">
+): ScrapePreview {
+  return {
+    ...meta,
+    title: draft.title,
+    markdown: draft.markdown,
+    warnings: [...warnings, ...draft.warnings],
+    images: draft.images,
+  };
 }
 
 async function runScrape() {
@@ -1964,26 +1976,23 @@ async function runScrape() {
     // #34：按 BOM / Content-Type / <meta charset> 解码字节，未知字符集回退 UTF-8
     const decoded = decodeHtmlBytes(bytes, res.headers.get("Content-Type"));
     const draft: ScrapeDraft = buildScrapeDraft(decoded.html, finalUrl);
-    if (!draft.markdown.trim()) {
-      scrapeError.value = t("admin.scrape_empty");
-      return;
-    }
 
     // 原始 HTML 留在内存，供 selector「重新提取」本地重跑（不重新请求源站）
     scrapeSource.value = {
       html: decoded.html,
       finalUrl,
-      charsetWarnings: decoded.warnings,
+      decodeWarnings: decoded.warnings,
     };
     scrapeSelector.value = "";
-    scrapePreview.value = {
-      title: draft.title,
-      markdown: draft.markdown,
-      warnings: [...decoded.warnings, ...draft.warnings],
+    scrapePreview.value = previewFromDraft(draft, decoded.warnings, {
       finalUrl,
       robotsStatus,
-      images: draft.images,
-    };
+      charset: decoded.charset,
+    });
+    // 空正文也保留预览与 selector，允许在已抓取的 HTML 上手动覆盖
+    if (!draft.markdown.trim()) {
+      scrapeSelectorError.value = t("admin.scrape_empty");
+    }
   } catch {
     scrapeError.value = t("admin.scrape_failed");
   } finally {
@@ -2014,18 +2023,15 @@ async function reextractScrape() {
     const draft = mod.buildScrapeDraft(source.html, source.finalUrl, {
       selector: scrapeSelector.value,
     });
+    scrapePreview.value = previewFromDraft(draft, source.decodeWarnings, {
+      finalUrl: current.finalUrl,
+      robotsStatus: current.robotsStatus,
+      charset: current.charset,
+    });
+    // 命中但正文为空（例如只选中了标题 H1）仍算命中，预览照常替换
     if (!draft.markdown.trim()) {
       scrapeSelectorError.value = t("admin.scrape_empty");
-      return;
     }
-
-    scrapePreview.value = {
-      ...current,
-      title: draft.title || current.title,
-      markdown: draft.markdown,
-      warnings: [...source.charsetWarnings, ...draft.warnings],
-      images: draft.images,
-    };
   } catch (error) {
     if (error instanceof mod.ScrapeSelectorError) {
       scrapeSelectorError.value =

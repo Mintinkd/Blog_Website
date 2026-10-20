@@ -67,6 +67,33 @@ describe("URL 解析与嵌入降级", () => {
     expect(draft.markdown).not.toContain("vbscript:");
   });
 
+  it("懒加载图片 / srcset 提升真实地址后按 final URL 绝对化", () => {
+    const html = `<!doctype html>
+<html><head><title>Lazy</title></head>
+<body><article>
+  <h1>Lazy</h1>
+  <p>Enough text to let Readability treat this as the article body for the test.</p>
+  <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/img/lazy.png" alt="lazy" class="lazy">
+  <img srcset="/img/a.png 1x, /img/b.png 2x" alt="srcset">
+  <picture><source data-srcset="/img/pic.png 1x"><img alt="picture"></picture>
+</article></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/post");
+
+    expect(draft.markdown).toContain(
+      "![lazy](https://publisher.example/img/lazy.png)"
+    );
+    expect(draft.markdown).toContain(
+      "![srcset](https://publisher.example/img/a.png)"
+    );
+    expect(draft.markdown).toContain(
+      "![picture](https://publisher.example/img/pic.png)"
+    );
+    // 不能落到管理页 origin（jsdom 下为 localhost）
+    expect(draft.markdown).not.toContain("localhost");
+    expect(draft.images.unresolved).toBe(0);
+  });
+
   it("iframe/embed/object 安全时降级为链接，危险时整体丢弃", () => {
     const html = `<!doctype html>
 <html><head><title>Embeds</title></head>

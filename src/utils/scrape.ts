@@ -22,10 +22,13 @@ export interface ScrapeImageStats {
   unresolved: number;
 }
 
+export type ScrapeWarning =
+  "no_article" | "readability_failed" | "convert_failed" | "charset_fallback";
+
 export interface ScrapeDraft {
   title: string;
   markdown: string;
-  warnings: string[];
+  warnings: ScrapeWarning[];
   images: ScrapeImageStats;
 }
 
@@ -54,7 +57,7 @@ export interface DecodedHtml {
   html: string;
   /** 实际采用的字符集标签（小写；未知声明已回退 utf-8） */
   charset: string;
-  warnings: string[];
+  warnings: ScrapeWarning[];
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -75,6 +78,93 @@ const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 /** 图片、嵌入内容与 base 只认 http/https（data: 会撑大草稿，其余协议无解析意义） */
 const SAFE_MEDIA_SCHEMES = new Set(["http:", "https:"]);
 
+function isSafeLink(url: URL | null): url is URL {
+  return !!url && SAFE_LINK_SCHEMES.has(url.protocol);
+}
+
+function isSafeMedia(url: URL | null): url is URL {
+  return !!url && SAFE_MEDIA_SCHEMES.has(url.protocol);
+}
+
+/** 懒加载图片的 src 常是 data: 占位图；真实地址在这些属性里。 */
+const LAZY_SRC_ATTRIBUTES = [
+  "data-src",
+  "data-original",
+  "data-lazy-src",
+  "data-actualsrc",
+  "data-echo",
+  "data-url",
+  "data-image",
+];
+const LAZY_SRCSET_ATTRIBUTES = ["data-srcset", "data-lazy-srcset"];
+
+function firstSrcsetUrl(value: string | null): string {
+  if (!value) return "";
+  const first = value.split(",")[0]?.trim() || "";
+  return first.split(/\s+/)[0] || "";
+}
+
+function isPlaceholderSrc(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return /^(?:data|javascript|vbscript|about|blob):/i.test(trimmed);
+}
+
+/**
+ * 懒加载图片：src 为 data: 占位图或为空时，把 data-src / srcset 里的真实
+ * 地址提升到 src，并移除懒加载属性。必须在 URL 绝对化之前执行——
+ * Readability 的 _fixLazyImages 在它自己的流程里才把 data-src 抄进 src，
+ * 那时相对地址会按管理页 baseURI 解析，草稿图片会指向管理端域名。
+ */
+function promoteLazyImages(root: ParentNode): void {
+  for (const img of Array.from(root.querySelectorAll("img"))) {
+    let src = img.getAttribute("src") || "";
+    if (isPlaceholderSrc(src)) src = "";
+
+    if (!src) {
+      for (const name of LAZY_SRC_ATTRIBUTES) {
+        const value = img.getAttribute(name);
+        if (value && !isPlaceholderSrc(value)) {
+          src = value;
+          break;
+        }
+      }
+    }
+
+    if (!src) {
+      const srcset = [img.getAttribute("srcset")]
+        .concat(LAZY_SRCSET_ATTRIBUTES.map((name) => img.getAttribute(name)))
+        .find((value) => !!value);
+      src = firstSrcsetUrl(srcset || null);
+    }
+
+    if (!src) {
+      const source = img
+        .closest("picture")
+        ?.querySelector(
+          "source[srcset], source[data-srcset], source[data-lazy-srcset]"
+        );
+      const srcset =
+        source?.getAttribute("srcset") ||
+        source?.getAttribute("data-srcset") ||
+        source?.getAttribute("data-lazy-srcset");
+      src = firstSrcsetUrl(srcset || null);
+    }
+
+    if (src) img.setAttribute("src", src);
+    for (const name of [...LAZY_SRC_ATTRIBUTES, ...LAZY_SRCSET_ATTRIBUTES]) {
+      img.removeAttribute(name);
+    }
+  }
+
+  // picture/figure 上的 data-* 懒加载属性会被 Readability 复制回 img
+  for (const element of Array.from(root.querySelectorAll("picture, figure"))) {
+    for (const name of [...LAZY_SRC_ATTRIBUTES, ...LAZY_SRCSET_ATTRIBUTES]) {
+      element.removeAttribute(name);
+    }
+  }
+}
+
 /**
  * 页面自带 <base> 优先、final URL 兜底，得到 URL 解析基准。
  * <base> 本身非 http/https（或解析失败）时忽略，退回 final URL。
@@ -83,9 +173,7 @@ function resolveBaseUrl(doc: Document, finalUrl: string): URL | null {
   const finalBase = resolveUrl(finalUrl, null);
   const baseAttr = doc.querySelector("base[href]")?.getAttribute("href") || "";
   const docBase = resolveUrl(baseAttr, finalBase);
-  return docBase && SAFE_MEDIA_SCHEMES.has(docBase.protocol)
-    ? docBase
-    : finalBase;
+  return docBase && isSafeMedia(docBase) ? docBase : finalBase;
 }
 
 /**
@@ -99,7 +187,7 @@ function downgradeEmbeds(root: ParentNode, base: URL | null): void {
   )) {
     const raw = embed.getAttribute("src") || embed.getAttribute("data") || "";
     const url = resolveUrl(raw, base);
-    if (!url || !SAFE_MEDIA_SCHEMES.has(url.protocol)) {
+    if (!isSafeMedia(url)) {
       embed.remove();
       continue;
     }
@@ -126,7 +214,7 @@ function resolveDocumentUrls(root: ParentNode, base: URL | null): void {
 
   for (const link of Array.from(root.querySelectorAll("a[href]"))) {
     const url = resolveUrl(link.getAttribute("href") || "", base);
-    if (url && SAFE_LINK_SCHEMES.has(url.protocol)) {
+    if (isSafeLink(url)) {
       link.setAttribute("href", url.href);
     } else {
       link.removeAttribute("href");
@@ -135,7 +223,7 @@ function resolveDocumentUrls(root: ParentNode, base: URL | null): void {
 
   for (const img of Array.from(root.querySelectorAll("img[src]"))) {
     const url = resolveUrl(img.getAttribute("src") || "", base);
-    if (url && SAFE_MEDIA_SCHEMES.has(url.protocol)) {
+    if (isSafeMedia(url)) {
       img.setAttribute("src", url.href);
     } else {
       img.removeAttribute("src");
@@ -169,10 +257,49 @@ function collectImageStats(
   for (const img of images) {
     const src = img.getAttribute("src") || "";
     const url = resolveUrl(src, base);
-    if (!url || !SAFE_MEDIA_SCHEMES.has(url.protocol)) unresolved += 1;
+    if (!isSafeMedia(url)) unresolved += 1;
   }
 
   return { total: images.length, unresolved };
+}
+
+const TABLE_ROW_TAGS = new Set(["TR"]);
+const TABLE_CELL_TAGS = new Set(["TD", "TH"]);
+const TABLE_SECTION_TAGS = new Set([
+  "THEAD",
+  "TBODY",
+  "TFOOT",
+  "CAPTION",
+  "COLGROUP",
+]);
+
+/**
+ * selector 直接命中表格内部节点（tr/td/thead…）时，outerHTML 脱离 table
+ * 后重新解析会被 HTML 解析器丢掉标签、只剩文本。这里补回最小表格上下文；
+ * 行命中还带上原表 thead，避免表头丢失、GFM 表格退化成 HTML。
+ */
+function wrapSelectedTableParts(matches: Element[], html: string): string {
+  if (matches.length === 0) return html;
+  const tags = matches.map((element) => element.tagName);
+
+  if (tags.every((tag) => TABLE_ROW_TAGS.has(tag))) {
+    // 若选中的行已包含表头行，不再额外补 thead，避免重复表头
+    const includesHeadRow = matches.some((row) => !!row.closest("thead"));
+    const thead = includesHeadRow
+      ? null
+      : matches[0].closest("table")?.querySelector("thead");
+    return `<table>${thead ? thead.outerHTML : ""}<tbody>${html}</tbody></table>`;
+  }
+  if (tags.every((tag) => TABLE_CELL_TAGS.has(tag))) {
+    const row = `<tr>${html}</tr>`;
+    return tags.every((tag) => tag === "TH")
+      ? `<table><thead>${row}</thead></table>`
+      : `<table><tbody>${row}</tbody></table>`;
+  }
+  if (tags.every((tag) => TABLE_SECTION_TAGS.has(tag))) {
+    return `<table>${html}</table>`;
+  }
+  return html;
 }
 
 /**
@@ -189,7 +316,8 @@ function extractBySelector(doc: Document, selector: string): string {
   if (matches.length === 0) {
     throw new ScrapeSelectorError("selector_no_match");
   }
-  return matches.map((element) => element.outerHTML).join("\n");
+  const html = matches.map((element) => element.outerHTML).join("\n");
+  return wrapSelectedTableParts(matches, html);
 }
 
 function dedupeTitleHeading(contentDoc: Document, title: string): void {
@@ -206,10 +334,11 @@ function dedupeTitleHeading(contentDoc: Document, title: string): void {
  *   no_article 警告，避免静默产出空草稿。
  * - 传入 selector 时跳过 Readability，直接拼所选子树；语法错误 / 未命中
  *   抛 ScrapeSelectorError，由 UI 保留上一份预览。
- * - 标题优先取 Readability title，其次正文 H1、页面 <title>、页面 H1；
- *   正文里与标题同名的 H1 会被移除，防止文章页重复渲染标题。
- * - 源文档先做 URL 绝对化、协议白名单与嵌入内容降级，正文里的相对链接
- *   不会残留成管理端地址或可点击的 javascript: 链接。
+ * - 标题默认取 Readability title，其次页面 <title>、正文 H1、页面 H1；
+ *   selector 模式优先所选子树的 H1。正文里与标题同名的 H1 会被移除，
+ *   防止文章页重复渲染标题。
+ * - 源文档先提升懒加载图片地址，再做 URL 绝对化、协议白名单与嵌入内容降级，
+ *   正文里的相对链接不会残留成管理端地址或可点击的 javascript: 链接。
  * - 使用 Turndown + GFM 保留标题、列表、引用、带语言标注的围栏代码、
  *   表格、图片与行内强调。
  */
@@ -218,8 +347,9 @@ export function buildScrapeDraft(
   finalUrl: string,
   options: ScrapeOptions = {}
 ): ScrapeDraft {
-  const warnings: string[] = [];
+  const warnings: ScrapeWarning[] = [];
   const doc = new DOMParser().parseFromString(html, "text/html");
+  promoteLazyImages(doc);
   const base = resolveBaseUrl(doc, finalUrl);
   resolveDocumentUrls(doc, base);
   annotateCodeLanguages(doc);
@@ -252,11 +382,17 @@ export function buildScrapeDraft(
   resolveDocumentUrls(contentDoc, base);
   annotateCodeLanguages(contentDoc);
 
-  title =
-    normalizeText(title) ||
-    normalizeText(contentDoc.body.querySelector("h1")?.textContent) ||
-    normalizeText(doc.querySelector("title")?.textContent) ||
-    normalizeText(doc.querySelector("h1")?.textContent);
+  const contentH1 = normalizeText(
+    contentDoc.body.querySelector("h1")?.textContent
+  );
+  const pageTitle = normalizeText(doc.querySelector("title")?.textContent);
+  const pageH1 = normalizeText(doc.querySelector("h1")?.textContent);
+
+  // selector 模式下所选子树就是正文，优先用它自己的 H1；默认路径保持
+  // T1 的 <title> 优先，避免整页回退时把导航/Logo 的 H1 当成文章标题
+  title = selector
+    ? normalizeText(title) || contentH1 || pageTitle || pageH1
+    : normalizeText(title) || pageTitle || contentH1 || pageH1;
 
   dedupeTitleHeading(contentDoc, title);
   const images = collectImageStats(contentDoc, base);
@@ -272,8 +408,8 @@ export function buildScrapeDraft(
     linkStyle: "inlined",
   });
   turndown.use(gfm);
-  // 代码块：语言标注来自 pre[data-language]（Readability 会清 class），
-  // 兼容未经过 Readability 的 class="language-*" 写法
+  // 代码块：语言标注来自 pre[data-language]（annotateCodeLanguages 已把
+  // Readability 会清掉的 class="language-*" 搬过去）
   turndown.addRule("fencedCodeBlock", {
     filter: (node, options) =>
       options.codeBlockStyle === "fenced" &&
@@ -282,11 +418,7 @@ export function buildScrapeDraft(
     replacement: (_content, node, options) => {
       const pre = node as HTMLElement;
       const code = pre.firstChild as HTMLElement;
-      const className = code.getAttribute("class") || "";
-      const language =
-        pre.getAttribute("data-language") ||
-        (/(?:language|lang)-(\S+)/.exec(className) || [null, ""])[1] ||
-        "";
+      const language = pre.getAttribute("data-language") || "";
       const text = (code.textContent || "").replace(/\n$/, "");
       return `\n\n${options.fence}${language}\n${text}\n${options.fence}\n\n`;
     },
@@ -350,13 +482,10 @@ function charsetFromMarkup(bytes: Uint8Array): string {
  * TextDecoder 的 Encoding Standard 别名支持）。
  */
 export function decodeHtmlBytes(
-  input: ArrayBuffer | ArrayBufferView,
+  input: ArrayBuffer | Uint8Array,
   contentType?: string | null
 ): DecodedHtml {
-  const bytes =
-    input instanceof ArrayBuffer
-      ? new Uint8Array(input)
-      : new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
 
   const declared =
     charsetFromBom(bytes) ||

@@ -176,6 +176,7 @@
   "admin.scrape_generate_draft": "生成草稿并编辑",
   "admin.scrape_final_url": "最终地址",
   "admin.scrape_images": "图片：{count} 张",
+  "admin.scrape_charset": "字符集",
   "admin.scrape_images_broken": "其中 {count} 张图片缺少可用地址，生成草稿后可能无法显示。",
   "admin.scrape_images_external": "外链图片可能因防盗链或源站限制无法显示，建议生成草稿后抽查。",
   "admin.scrape_markdown": "Markdown 预览",
