@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  handleScrape,
-  MAX_HTML_SIZE,
-  SCRAPE_RATE_MAX,
-  SCRAPE_TIMEOUT_MS,
-  SCRAPER_TOKEN,
-} from "../src/handlers/scrape";
+import { handleScrape } from "../src/handlers/scrape";
 import type { Env } from "../src/index";
 import type { AuthResult } from "../src/middleware/auth";
 
@@ -15,9 +9,13 @@ import type { AuthResult } from "../src/middleware/auth";
  * fetch 以桩替换：robots.txt、目标页面、DoH 按 URL 分流并记录调用，
  * 用于断言「拒绝时不发起目标请求」。目标统一用公网 IP 字面量，
  * 避免解析后 IP 复核额外走 DoH（SSRF 地址矩阵已由 img_proxy.test.ts 覆盖）。
+ *
+ * 期望值全部写字面量（2MB / 10s / 10 次 / UA token），不从实现 import 常量，
+ * 否则常量漂移时测试会随之漂移、失去门禁意义。
  */
 
 const PUBLIC_TARGET = "https://93.184.216.34/article";
+const SCRAPER_TOKEN = "ZenFishBlogScraper";
 const HTML =
   "<!doctype html><html><head><title>Article</title></head><body><p>hello</p></body></html>";
 const ADMIN: AuthResult = {
@@ -323,7 +321,7 @@ describe("GET /admin/scrape 安全抓取代理", () => {
   });
 
   it("HTML 超过 2MB 时返回 413", async () => {
-    const oversized = "a".repeat(MAX_HTML_SIZE + 1);
+    const oversized = "a".repeat(2 * 1024 * 1024 + 1);
     installNetworkStub({
       target: () =>
         new Response(oversized, {
@@ -364,7 +362,7 @@ describe("GET /admin/scrape 安全抓取代理", () => {
     const { env } = makeEnv();
 
     const promise = run(env);
-    await vi.advanceTimersByTimeAsync(SCRAPE_TIMEOUT_MS + 1);
+    await vi.advanceTimersByTimeAsync(10_000 + 1);
     const res = await promise;
 
     expect(res.status).toBe(504);
@@ -375,7 +373,7 @@ describe("GET /admin/scrape 安全抓取代理", () => {
     const calls = installNetworkStub({});
     const { env } = makeEnv({
       key: rateKey(),
-      count: SCRAPE_RATE_MAX,
+      count: 10,
     });
 
     const res = await run(env);
@@ -389,7 +387,7 @@ describe("GET /admin/scrape 安全抓取代理", () => {
     const calls = installNetworkStub({});
     const { env, store } = makeEnv({
       key: rateKey("another-admin"),
-      count: SCRAPE_RATE_MAX,
+      count: 10,
     });
 
     // 另一个管理员已用满额度，不影响 admin

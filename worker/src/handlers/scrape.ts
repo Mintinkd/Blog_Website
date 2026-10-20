@@ -1,11 +1,13 @@
 import { Env } from "../index";
 import type { AuthResult } from "../middleware/auth";
+import { error } from "../utils/response";
 import {
   FETCH_TIMEOUT_MS,
   RATE_WINDOW_MS,
   readBodyWithLimit,
   validateTargetUrl,
   fetchWithValidatedRedirects,
+  mapFetchedFailure,
 } from "./img_proxy";
 
 /**
@@ -22,7 +24,7 @@ import {
  */
 
 export const MAX_HTML_SIZE = 2 * 1024 * 1024; // 2MB
-export const SCRAPE_TIMEOUT_MS = FETCH_TIMEOUT_MS; // 10s 总超时
+export const SCRAPE_TIMEOUT_MS = FETCH_TIMEOUT_MS; // 目标抓取 10s（robots 预检另有 5s 上限）
 export const SCRAPE_RATE_MAX = 10; // 每管理员每分钟
 export const ROBOTS_MAX_SIZE = 500 * 1024; // 500KB
 export const ROBOTS_TIMEOUT_MS = 5_000;
@@ -195,10 +197,6 @@ async function checkRobots(target: URL): Promise<RobotsDecision> {
   }
 }
 
-function fail(status: number, message: string): Response {
-  return Response.json({ code: status, message, data: null }, { status });
-}
-
 export async function handleScrape(
   request: Request,
   env: Env,
@@ -206,17 +204,19 @@ export async function handleScrape(
   auth?: AuthResult
 ): Promise<Response> {
   if (!auth || auth.role !== "admin") {
-    return fail(403, "权限不足，仅管理员可执行此操作");
+    return error(403, "权限不足，仅管理员可执行此操作", 403);
   }
 
   const targetRaw = new URL(request.url).searchParams.get("url") || "";
   const validation = validateTargetUrl(targetRaw);
   if (!validation.ok) {
-    return fail(validation.status, validation.message);
+    return error(validation.status, validation.message, validation.status);
   }
   const target = validation.url;
 
-  // 每管理员独立限流（不是每 IP；admin token 已由路由层校验）
+  // 每管理员独立限流（不是每 IP；admin token 已由路由层校验）。
+  // KV 无原子自增，get/put 之间存在并发窗口、可能少量超发；管理端单用户场景接受，
+  // 强一致需要 Durable Objects（#33 明确不新增绑定）。
   const rlKey = `scrape:${auth.username}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
   const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
   if (rlCount >= SCRAPE_RATE_MAX) {
@@ -224,9 +224,10 @@ export async function handleScrape(
       1,
       Math.ceil((RATE_WINDOW_MS - (Date.now() % RATE_WINDOW_MS)) / 1000)
     );
-    return fail(
+    return error(
       429,
-      `抓取请求过于频繁（每个管理员每分钟 ${SCRAPE_RATE_MAX} 次），请 ${retryIn} 秒后重试`
+      `抓取请求过于频繁（每个管理员每分钟 ${SCRAPE_RATE_MAX} 次），请 ${retryIn} 秒后重试`,
+      429
     );
   }
   ctx.waitUntil(
@@ -235,7 +236,7 @@ export async function handleScrape(
 
   const robots = await checkRobots(target);
   if (!robots.allowed) {
-    return fail(403, `robots.txt 禁止抓取该路径（${robots.rule}）`);
+    return error(403, `robots.txt 禁止抓取该路径（${robots.rule}）`, 403);
   }
 
   // 目标抓取：manual 重定向逐跳复核；总超时覆盖响应头 + 响应体读取
@@ -250,25 +251,22 @@ export async function handleScrape(
       signal: ctrl.signal,
     });
 
-    if (fetched.kind === "blocked") {
-      return fail(403, "目标地址被禁止代理");
-    }
     if (ctrl.signal.aborted) {
-      return fail(504, "抓取超时（10 秒）");
+      return error(504, "抓取超时（10 秒）", 504);
     }
     if (fetched.kind !== "ok") {
-      return fail(502, "上游页面拉取失败");
+      return mapFetchedFailure(fetched, "上游页面拉取失败");
     }
 
     const upstream = fetched.response;
     if (!upstream.ok) {
-      return fail(502, `上游返回 ${upstream.status}`);
+      return error(502, `上游返回 ${upstream.status}`, 502);
     }
 
     const contentType = (upstream.headers.get("Content-Type") || "").trim();
     const mediaType = contentType.split(";")[0].trim().toLowerCase();
     if (!HTML_MIME.has(mediaType)) {
-      return fail(415, "目标不是 HTML 页面");
+      return error(415, "目标不是 HTML 页面", 415);
     }
 
     const declaredLen = parseInt(
@@ -276,17 +274,17 @@ export async function handleScrape(
       10
     );
     if (declaredLen > MAX_HTML_SIZE) {
-      return fail(413, "HTML 超过 2MB 限制");
+      return error(413, "HTML 超过 2MB 限制", 413);
     }
 
     const read = await readBodyWithLimit(upstream, MAX_HTML_SIZE);
     if (read.kind === "too_large") {
-      return fail(413, "HTML 超过 2MB 限制");
+      return error(413, "HTML 超过 2MB 限制", 413);
     }
     if (read.kind === "read_failed") {
       return ctrl.signal.aborted
-        ? fail(504, "抓取超时（10 秒）")
-        : fail(502, "上游页面读取失败");
+        ? error(504, "抓取超时（10 秒）", 504)
+        : error(502, "上游页面读取失败", 502);
     }
 
     return new Response(read.body, {

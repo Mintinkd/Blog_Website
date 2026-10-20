@@ -176,7 +176,7 @@
   "admin.scrape_failed": "Scrape failed. Please retry.",
   "admin.scrape_empty": "No content was extracted",
   "admin.scrape_replace_confirm": "The current preview will be replaced. Continue?",
-  "admin.scrape_robots_unchecked": "robots.txt could not be checked (404/410/network error), so this scrape skipped the robots check.",
+  "admin.scrape_robots_unchecked": "robots.txt could not be verified (missing, unreachable, or too large), so this scrape ran without a robots check.",
   "admin.scrape_warning_no_article": "No article was detected; fell back to the full page.",
   "admin.scrape_warning_readability_failed": "Article extraction failed; fell back to the full page.",
   "admin.scrape_warning_convert_failed": "Markdown conversion failed. Check the source page."

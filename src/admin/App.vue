@@ -1397,6 +1397,7 @@ import {
 import zh from "../i18n/zh.json";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import type { ScrapeDraft } from "../utils/scrape";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
 // （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
@@ -1433,16 +1434,22 @@ const articlesLoading = ref(false);
 const authorFilter = ref("");
 const showArticleEditor = ref(false);
 const editingArticle = ref<any>(null);
-const articleForm = ref({
-  title: "",
-  slug: "",
-  summary: "",
-  content: "",
-  cover_image: "",
-  category_id: "",
-  status: "draft",
-  tags: [] as string[],
-});
+
+/** 空白文章表单：新建文章与「生成草稿并编辑」共用的唯一初值来源 */
+function emptyArticleForm() {
+  return {
+    title: "",
+    slug: "",
+    summary: "",
+    content: "",
+    cover_image: "",
+    category_id: "",
+    status: "draft",
+    tags: [] as string[],
+  };
+}
+
+const articleForm = ref(emptyArticleForm());
 const newTagInput = ref("");
 const articleSaving = ref(false);
 const editorMode = ref<"edit" | "split" | "preview">("edit");
@@ -1840,16 +1847,7 @@ async function releaseEditLock() {
 
 function openNewArticle() {
   editingArticle.value = null;
-  articleForm.value = {
-    title: "",
-    slug: "",
-    summary: "",
-    content: "",
-    cover_image: "",
-    category_id: "",
-    status: "draft",
-    tags: [],
-  };
+  articleForm.value = emptyArticleForm();
   newTagInput.value = "";
   showArticleEditor.value = true;
 }
@@ -1908,12 +1906,12 @@ async function runScrape() {
       }
     }
     const robotsStatus =
-      res.headers.get("X-Robots-Status") === "unchecked"
-        ? "unchecked"
-        : "allowed";
+      res.headers.get("X-Robots-Status") === "allowed"
+        ? "allowed"
+        : "unchecked";
 
     const { buildScrapeDraft } = await import("../utils/scrape");
-    const draft = buildScrapeDraft(html, finalUrl);
+    const draft: ScrapeDraft = buildScrapeDraft(html, finalUrl);
     if (!draft.markdown.trim()) {
       scrapeError.value = t("admin.scrape_empty");
       return;
@@ -1938,14 +1936,11 @@ function editScrapedDraft() {
   if (!draft) return;
   editingArticle.value = null;
   articleForm.value = {
+    ...emptyArticleForm(),
     title: draft.title,
-    slug: "",
-    summary: "",
     content: draft.markdown,
-    cover_image: "",
+    // #33：抓取草稿预填分类 1，其余字段沿用空白表单（状态 draft）
     category_id: "1",
-    status: "draft",
-    tags: [],
   };
   newTagInput.value = "";
   editorMode.value = "edit";

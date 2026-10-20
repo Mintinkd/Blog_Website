@@ -57,4 +57,40 @@ describe("buildScrapeDraft", () => {
     expect(draft.markdown).not.toContain("# How to Build a Scraper");
     expect(draft.warnings).toEqual([]);
   });
+
+  it("相对链接与图片按 final URL 解析成绝对地址", () => {
+    const html = `<!doctype html>
+<html><head><title>Links</title></head>
+<body><article>
+  <h1>Links</h1>
+  <p><a href="/deep/post">relative link</a> and <a href="mailto:hi@example.com">mail</a>.</p>
+  <p><img src="/img/cover.png" alt="cover"></p>
+</article></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/a/b");
+
+    expect(draft.markdown).toContain("(https://publisher.example/deep/post)");
+    expect(draft.markdown).toContain("(mailto:hi@example.com)");
+    expect(draft.markdown).toContain(
+      "(https://publisher.example/img/cover.png)"
+    );
+  });
+
+  it("javascript:/data: 等危险协议被剥除，不进入草稿", () => {
+    const html = `<!doctype html>
+<html><head><title>Unsafe</title></head>
+<body><article>
+  <h1>Unsafe</h1>
+  <p><a href="javascript:alert(1)">click me</a></p>
+  <p><a href="data:text/html,%3Cb%3Ex%3C/b%3E">data link</a></p>
+  <p><img src="vbscript:msgbox(1)" alt="bad"></p>
+</article></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/post");
+
+    expect(draft.markdown).toContain("click me");
+    expect(draft.markdown).not.toContain("javascript:");
+    expect(draft.markdown).not.toContain("data:");
+    expect(draft.markdown).not.toContain("vbscript:");
+  });
 });

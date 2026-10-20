@@ -4,7 +4,7 @@ import { fetchWithValidatedRedirects } from '../src/handlers/img_proxy';
 /**
  * issue #19：解析后 IP 复核的测试。
  *
- * 接缝：fetchWithValidatedRedirects —— img/text 两通道共用的唯一拉取入口。
+ * 接缝：fetchWithValidatedRedirects —— img/text/scrape 三条通道共用的唯一拉取入口。
  * 网络边界（global fetch）以桩替换：DoH 查询与目标拉取按 URL 分流，
  * 目标拉取调用被记录下来，用于断言「拒绝时不发起真实请求」。
  */

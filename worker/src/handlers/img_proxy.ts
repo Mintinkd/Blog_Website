@@ -206,10 +206,10 @@ export type ProxyFetchResult =
 export type ProxyFetchFailure = Exclude<ProxyFetchResult, { kind: "ok" }>;
 
 /**
- * issue #22：fetched.kind → 错误 Response 的单一共享映射（img/text 两通道原同形 if 级联的收敛点）。
+ * issue #22：fetched.kind → 错误 Response 的单一共享映射（img/text 两通道原同形 if 级联的收敛点，#33 抓取通道复用）。
  * 行为契约（status / code / message 与收敛前两通道级联逐字一致，改失败规则只动这里）：
  *   blocked → 403；resolution_failed / too_many_redirects / fetch_failed → 502。
- * fetch_failed 的措辞按通道传入（图片「上游图片拉取失败」/ 文字「上游内容拉取失败」）。
+ * fetch_failed 的措辞按通道传入（图片「上游图片拉取失败」/ 文字「上游内容拉取失败」/ 抓取「上游页面拉取失败」）。
  * 输入不含 kind 'ok'；文字通道拿到返回的 Response 后统一 corsify() 补 CORS 头。
  */
 export function mapFetchedFailure(

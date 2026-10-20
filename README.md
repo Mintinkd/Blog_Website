@@ -109,7 +109,8 @@
 │   ├── schema.sql               # 数据库Schema
 │   ├── package.json             # 后端依赖与脚本（typecheck / test）
 │   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
-│   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核等）
+│   ├── vitest.config.mjs        # Worker 测试配置（node 环境，避免继承根级 jsdom）
+│   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核、抓取代理 robots/限流等）
 │   └── src/
 │       ├── generated/
 │       │   └── settings-rules.ts # 生成物：设置白名单规则（与根包同构，禁止手工编辑，issue #27）
@@ -345,6 +346,20 @@ D1 (SQLite) 共 10 张表：
 - **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
 - **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
 - 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`、前端逻辑在 `src/components/layout/BaseLayout.astro`。
+
+### 网页抓取（admin-only）
+
+管理端「网页抓取」标签页把静态文章 URL 变成可校对的 Markdown 草稿（issue #33 / ADR 0003）。职责切分为两段：Worker 只做「安全取回」，正文提取与格式转换在管理员浏览器执行（Readability → Turndown + GFM），原始 HTML 不进入管理页 DOM。
+
+注意：此「页面抓取」与上方「外链内容智能代理」是两条独立通道——代理负责前台运行时显示外链内容，抓取只服务管理端生成草稿。
+
+- **入口** `GET /api/v1/admin/scrape?url=`：路由层 `requireAuth + requireAdmin`（editor 403），handler 内再次校验角色；editor 在管理端也看不到该标签页。
+- **流程**：URL 校验（SSRF）→ robots.txt 预检 → 抓取目标 HTML（逐跳重定向复核）→ 返回原始 HTML 字节；前端以 `X-Final-URL` 绝对化相对链接、按 `X-Robots-Status` 决定是否显示「未做 robots 检查」警告，再生成预览。
+- **安全**：与图片 / 文字通道共用 SSRF 护栏（仅 http/https、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`、解析后 IP 复核、每一跳重定向复核）、仅 `text/html` 与 `application/xhtml+xml`、≤2MB、目标 10s 超时（robots 预检另有 5s 上限）、每管理员 10 次/分限流、仅透传上游 `Content-Type`（其余上游头一律剥离）、`Cache-Control: no-store`、不缓存不写库。
+- **robots.txt**：明确的 `Disallow` 命中 → 403 且不发起目标请求（响应里带命中规则）；404 / 410 / 非 2xx / 网络异常 / 超 500KB → 放行并置 `X-Robots-Status: unchecked`，UI 显示警告。
+- **草稿交接**：预览区「生成草稿并编辑」复用现有文章编辑器（预填标题 / Markdown 正文 / 分类 1 / `draft`），取消不创建任何数据；保存仍走既有 `POST /articles`。
+- **范围（T1）**：仅覆盖 UTF-8 页面与基础转换；字符集嗅探、元数据与来源脚注留给后续票。
+- 代码：`worker/src/handlers/scrape.ts`、`src/utils/scrape.ts`、管理端标签页在 `src/admin/App.vue`。
 
 ### UI 动效升级
 

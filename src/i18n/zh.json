@@ -176,7 +176,7 @@
   "admin.scrape_failed": "抓取失败，请重试",
   "admin.scrape_empty": "未提取到正文内容",
   "admin.scrape_replace_confirm": "当前预览将被替换，确认继续？",
-  "admin.scrape_robots_unchecked": "robots.txt 无法确认（404/410/网络异常），本次抓取未经过 robots 检查。",
+  "admin.scrape_robots_unchecked": "robots.txt 无法确认（不存在、无法访问或超出大小限制），本次抓取未做 robots 检查。",
   "admin.scrape_warning_no_article": "未识别到文章正文，已回退为整页内容。",
   "admin.scrape_warning_readability_failed": "正文提取失败，已回退为整页内容。",
   "admin.scrape_warning_convert_failed": "Markdown 转换失败，请检查原文。"
