@@ -30,7 +30,7 @@
 │   └── deploy.yml              # CI/CD 自动部署
 ├── public/
 │   ├── .assetsignore             # Workers+Assets 排除 _worker.js
-│   ├── _headers                  # 生成物：安全响应头（安全头模块单源渲染，禁止手工编辑，issue #28）
+│   ├── _headers                  # 生成物：安全响应头 + HTML 护栏（安全头 / 护栏模块单源渲染，禁止手工编辑，issue #28）
 │   ├── bg-placeholder.svg       # 默认全站背景图
 │   └── robots.txt
 ├── src/
@@ -64,6 +64,7 @@
 │   │   │   └── [slug].astro     # 标签文章（SSR）
 │   │   ├── api/v1/[...path].ts      # API代理路由（SSR）
 │   │   ├── rss.xml.ts               # RSS订阅源（SSR）
+│   │   ├── speculation-rules.ts     # 空预取规则集端点（SSR，覆盖 Cloudflare Speed Brain）
 │   │   ├── archives.astro       # 归档
 │   │   ├── about.astro          # 关于
 │   │   ├── search.astro         # 搜索
@@ -79,7 +80,7 @@
 │   │   └── prose.css            # 文章排版样式
 │   ├── generated/
 │   │   └── settings-rules.ts    # 生成物：设置白名单规则（双端同构，禁止手工编辑，issue #27）
-│   ├── middleware.ts            # SSR 安全响应头中间件（消费安全头单源，issue #28 / ADR 0002）
+│   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
 │   ├── utils/
 │   │   ├── api.ts               # API请求工具
 │   │   ├── markdown.ts          # Markdown渲染
@@ -94,6 +95,7 @@
 │       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
 │   ├── security-headers.mjs      # 安全响应头单一事实源（5 头声明式常量 + 同目录 .d.mts 类型声明；middleware 直接 import，issue #28 / ADR 0002）
+│   ├── cloudflare-guards.mjs     # Cloudflare 注入护栏单源（HTML no-transform / Speculation-Rules 空规则集；同目录 .d.mts）
 │   ├── generate-headers.mjs      # public/_headers 生成器（prebuild 自动执行；CI 漂移断言）
 │   ├── patch-csp.mjs             # 构建后 CSP 收紧（astro:build:done 自动调用；以安全头模块为源构造 + 注入内联脚本 sha256 + 残留断言；同目录 .d.mts）
 │   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
@@ -156,6 +158,7 @@
     ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing）
     ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
     └── security/
+        ├── cloudflare-guards.md # Cloudflare 注入护栏（JSD CSP violation / Speed Brain 预取 503）
         └── csp-evaluation.md    # CSP 收紧评估（script-src 内联哈希 / style-src 取舍）
 ```
 
@@ -262,21 +265,22 @@ D1 (SQLite) 共 10 张表：
 
 ## 前台页面
 
-| 路径                | 说明                            | 渲染模式 |
-| ------------------- | ------------------------------- | -------- |
-| `/`                 | 首页（Hero + 最新文章卡片网格） | 静态     |
-| `/articles`         | 文章列表（分页）                | 静态     |
-| `/articles/:slug`   | 文章详情（Markdown渲染）        | SSR      |
-| `/categories`       | 分类云（全部分类）              | SSR      |
-| `/categories/:slug` | 分类文章                        | SSR      |
-| `/tags`             | 标签云（全部标签）              | SSR      |
-| `/tags/:slug`       | 标签文章                        | SSR      |
-| `/api/v1/*`         | API代理到Worker                 | SSR      |
-| `/rss.xml`          | RSS订阅源                       | SSR      |
-| `/archives`         | 时间线归档                      | 静态     |
-| `/about`            | 关于页面                        | 静态     |
-| `/search`           | 搜索页                          | 静态     |
-| `/admin`            | 后台管理                        | 静态     |
+| 路径                 | 说明                            | 渲染模式 |
+| -------------------- | ------------------------------- | -------- |
+| `/`                  | 首页（Hero + 最新文章卡片网格） | 静态     |
+| `/articles`          | 文章列表（分页）                | 静态     |
+| `/articles/:slug`    | 文章详情（Markdown渲染）        | SSR      |
+| `/categories`        | 分类云（全部分类）              | SSR      |
+| `/categories/:slug`  | 分类文章                        | SSR      |
+| `/tags`              | 标签云（全部标签）              | SSR      |
+| `/tags/:slug`        | 标签文章                        | SSR      |
+| `/api/v1/*`          | API代理到Worker                 | SSR      |
+| `/rss.xml`           | RSS订阅源                       | SSR      |
+| `/speculation-rules` | 空预取规则集（Cloudflare 护栏） | SSR      |
+| `/archives`          | 时间线归档                      | 静态     |
+| `/about`             | 关于页面                        | 静态     |
+| `/search`            | 搜索页                          | 静态     |
+| `/admin`             | 后台管理                        | 静态     |
 
 ## 后台管理
 
@@ -448,10 +452,19 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`，构建后钩子收紧 CSP 产物）
+1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 4. 等待 120 秒待 Git 集成自动部署落定，再对 Pages 与 Worker 各执行一次覆盖部署——即使 Cloudflare 侧 Git 自动部署未关闭，最终生效的也始终是本次构建产物
+
+### Cloudflare 平台注入护栏
+
+自定义域会在 HTML 上追加 JavaScript Detections 内联脚本与 `Speculation-Rules: "/cdn-cgi/speculation"`（Speed Brain），分别触发 CSP violation 与预取 503。仓库不依赖 Dashboard 关闭这些功能，而由 `scripts/cloudflare-guards.mjs` 单源声明两个响应头：
+
+- `Cache-Control: … no-transform` — 停 JavaScript Detections 注入（代价：HTML 不经边缘 gzip / brotli；`/_assets/*` 等资产不受影响）；
+- `Speculation-Rules: "/speculation-rules"` — 以自有空规则集覆盖 Speed Brain（端点 `src/pages/speculation-rules.ts`，MIME 必须为 `application/speculationrules+json`）。
+
+静态 / 预渲染页面由 `public/_headers` 的 HTML 路由块覆盖，SSR 路由由 `src/middleware.ts` 按 `content-type: text/html` 追加；资产不携带这两个头。新增预渲染 HTML 路由需同步 `HTML_ROUTE_PATTERNS`。验证步骤与已知边界（未知路径 404、zone 级响应头改写）见 `docs/security/cloudflare-guards.md`。
 
 ### 部署架构
 

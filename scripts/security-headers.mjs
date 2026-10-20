@@ -15,7 +15,15 @@
  * img-src/media-src 放行 https: 以兼容外链封面图与文章内音视频；frame-src 仅
  * 放行 B 站/YouTube 播放器域（文章页媒体卡片注入 iframe 所需）。评估与维护说明
  * 见 docs/security/csp-evaluation.md。
+ *
+ * 生成物除 5 头规则块外，还附加 cloudflare-guards 模块的 HTML 路由护栏块
+ * （no-transform 关 JavaScript Detections 注入 / Speculation-Rules 覆盖 Speed
+ * Brain 预取），只挂在预渲染 HTML 路由上，资产不受影响。
  */
+import {
+  HTML_GUARD_HEADERS,
+  HTML_ROUTE_PATTERNS,
+} from "./cloudflare-guards.mjs";
 
 /** CSP 基线：声明态 CSP（script-src 含 'unsafe-inline'），#9/#10 指令内容原样 */
 export const CSP_BASELINE =
@@ -74,19 +82,29 @@ export function scriptSrcAllowsUnsafeInline(csp) {
 
 /**
  * 整文件渲染 public/_headers 生成物（prebuild 与 CI 漂移断言消费）：
- * 生成标记注释 + Cloudflare Pages 规则块（星号通配 + 5 头全量）。
+ * 生成标记注释 + Cloudflare Pages 规则块：`/*` 星号通配挂 5 个安全头；
+ * 预渲染 HTML 路由挂 cloudflare-guards 护栏头（资产走 `/*` 块，不吃 no-transform）。
  */
 export function renderHeadersFile() {
   const lines = [
     "# 生成物 —— 禁止手工编辑（issue #28 / ADR 0002）",
-    "# 单一事实源：scripts/security-headers.mjs（安全头模块）；生成命令：npm run gen:headers（prebuild 自动执行）",
+    "# 单一事实源：scripts/security-headers.mjs（安全头模块）+ scripts/cloudflare-guards.mjs（HTML 护栏）；生成命令：npm run gen:headers（prebuild 自动执行）",
     "# CI 漂移断言：重新生成后 git diff 非空即红（.github/workflows/deploy.yml）",
     "# 覆盖：Cloudflare Pages 静态资产与预渲染页面；SSR 动态路由由 src/middleware.ts 应用同一策略",
     "# CSP 基线（script-src 含 'unsafe-inline'）仅服务 dev；生产产物由 astro:build:done 钩子（scripts/patch-csp.mjs）收紧为 dist 内联脚本 sha256",
+    "# HTML 路由护栏（cloudflare-guards）：Cache-Control: no-transform 停 Cloudflare JS Detections 注入；Speculation-Rules 指向自有空规则集，覆盖 Speed Brain 预取（Worker 路由预取必 503）",
     "/*",
     ...Object.entries(SECURITY_HEADERS).map(
       ([name, value]) => `  ${name}: ${value}`
     ),
   ];
+  for (const pattern of HTML_ROUTE_PATTERNS) {
+    lines.push(
+      pattern,
+      ...Object.entries(HTML_GUARD_HEADERS).map(
+        ([name, value]) => `  ${name}: ${value}`
+      )
+    );
+  }
   return lines.join("\n") + "\n";
 }

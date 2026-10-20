@@ -50,6 +50,8 @@ export default defineConfig({
   // prefetch refused: not eligible），预取必然失败并污染控制台（ERR_ABORTED 503）。
   // 站点经 Workers/Pages 动态响应，预取不生效 → 关闭 Astro 预取（编译期
   // __PREFETCH_DISABLED__ 摘除 ClientRouter bundle 内的整段预取初始化）。
+  // Cloudflare Speed Brain 的同类预取由 HTML 响应头 Speculation-Rules 指向空规则集
+  // 覆盖，见 docs/security/cloudflare-guards.md。
   prefetch: false,
   adapter: cloudflare(),
   integrations: [

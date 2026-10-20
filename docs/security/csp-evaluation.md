@@ -36,3 +36,7 @@
 2. 抽查产物：`dist/_headers` 与 `dist/_worker.js/_astro-internal_middleware.mjs` 中 script-src 为 `'self' 'sha256-…'` 列表，无 `'unsafe-inline'`；
 3. `npx wrangler pages dev dist` 后浏览器打开主要页面（首页/文章列表/文章详情/搜索/归档/关于/后台），控制台无 CSP 拦截报错、主题切换等内联脚本正常执行；
 4. 语义对照：无 `'unsafe-inline'` 且无对应 hash 的内联脚本（如注入的 `onerror` 载荷）在产物中不再具备执行能力。
+
+## Cloudflare 边缘注入与 CSP（2026-10-20）
+
+Bot Fight Mode 的 JavaScript Detections 会向 HTML 注入无 hash / nonce 的内联 bootstrap，被收紧后的 `script-src` 拒绝并持续报 CSP violation。处置不是放松 CSP，而是让边缘停止注入：HTML 响应带 `Cache-Control: no-transform`。同文件的 `Speculation-Rules` 护栏解决 Speed Brain 预取 503。实现、取舍（HTML 不再经边缘压缩）与验证见 `docs/security/cloudflare-guards.md`；新增预渲染 HTML 路由时同步 `HTML_ROUTE_PATTERNS`。
