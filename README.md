@@ -93,7 +93,8 @@
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 │   │   └── scrape.ts            # 网页抓取管线（Readability → Turndown + GFM，管理端浏览器执行）
 │   └── types/
-│       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
+│       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
+│       └── turndown-plugin-gfm.d.ts  # turndown-plugin-gfm 的类型声明（包内无 .d.ts，#33）
 ├── scripts/
 │   ├── security-headers.mjs      # 安全响应头单一事实源（5 头声明式常量 + 同目录 .d.mts 类型声明；middleware 直接 import，issue #28 / ADR 0002）
 │   ├── cloudflare-guards.mjs     # Cloudflare 注入护栏单源（HTML no-transform / Speculation-Rules 空规则集；同目录 .d.mts）
