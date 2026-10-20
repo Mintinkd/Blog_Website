@@ -2,6 +2,10 @@
 
 `worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。
 
+## 前端单元测试
+
+根目录的抓取管线测试用 vitest + jsdom：`npm test`（配置见 `vitest.config.ts`，fixture 测试放 `tests/`）。CI 在前端 `npm run check` 之后、构建之前执行；测试外部行为（HTML + final URL → 标题/Markdown），不依赖真实站点。
+
 ## 约定
 
 - 测试文件放 `worker/tests/`；`tsconfig.test.json` 使其参与 `npm run typecheck`。

@@ -158,6 +158,87 @@
           </table>
         </div>
 
+        <div v-if="currentTab === 'scrape'" class="admin-panel">
+          <div class="panel-header">
+            <h2>{{ t("admin.scrape") }}</h2>
+          </div>
+          <div class="scrape-form">
+            <input
+              v-model="scrapeUrl"
+              type="url"
+              :placeholder="t('admin.scrape_url_placeholder')"
+              :disabled="scrapeLoading"
+              @keydown.enter.prevent="runScrape"
+            />
+            <button
+              class="btn-primary"
+              :disabled="scrapeLoading"
+              @click="runScrape"
+            >
+              {{
+                scrapeLoading
+                  ? t("admin.scrape_loading")
+                  : t("admin.scrape_button")
+              }}
+            </button>
+          </div>
+
+          <div v-if="scrapeError" class="scrape-error">
+            <p>{{ scrapeError }}</p>
+            <button
+              class="btn-secondary"
+              :disabled="scrapeLoading"
+              @click="runScrape"
+            >
+              {{ t("admin.scrape_retry") }}
+            </button>
+          </div>
+
+          <div v-if="scrapePreview" class="scrape-preview">
+            <h3>
+              {{ scrapePreview.title || t("admin.scrape_no_title") }}
+            </h3>
+            <p class="scrape-meta">
+              {{ t("admin.scrape_final_url") }}:
+              <a
+                :href="scrapePreview.finalUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                >{{ scrapePreview.finalUrl }}</a
+              >
+            </p>
+            <p
+              v-if="scrapePreview.robotsStatus === 'unchecked'"
+              class="scrape-warning"
+            >
+              {{ t("admin.scrape_robots_unchecked") }}
+            </p>
+            <p
+              v-for="warning in scrapePreview.warnings"
+              :key="warning"
+              class="scrape-warning"
+            >
+              {{ scrapeWarningText(warning) }}
+            </p>
+            <div class="scrape-actions">
+              <button
+                class="btn-secondary"
+                :disabled="scrapeLoading"
+                @click="runScrape"
+              >
+                {{ t("admin.scrape_again") }}
+              </button>
+              <button class="btn-primary" @click="editScrapedDraft">
+                {{ t("admin.scrape_generate_draft") }}
+              </button>
+            </div>
+            <div class="form-group">
+              <label>{{ t("admin.scrape_markdown") }}</label>
+              <pre class="scrape-markdown">{{ scrapePreview.markdown }}</pre>
+            </div>
+          </div>
+        </div>
+
         <div v-if="currentTab === 'categories'" class="admin-panel">
           <div class="panel-header">
             <h2>{{ t("admin.categories") }}</h2>
@@ -1367,6 +1448,18 @@ const articleSaving = ref(false);
 const editorMode = ref<"edit" | "split" | "preview">("edit");
 const previewHtml = ref("");
 
+interface ScrapePreview {
+  title: string;
+  markdown: string;
+  warnings: string[];
+  finalUrl: string;
+  robotsStatus: "allowed" | "unchecked";
+}
+const scrapeUrl = ref("");
+const scrapeLoading = ref(false);
+const scrapeError = ref("");
+const scrapePreview = ref<ScrapePreview | null>(null);
+
 const categories = ref<any[]>([]);
 const showCategoryForm = ref(false);
 const categoryForm = ref({ name: "", slug: "", description: "" });
@@ -1445,6 +1538,14 @@ const navItems = [
     ),
   },
   {
+    key: "scrape",
+    label: () => t("admin.scrape"),
+    minRole: "admin",
+    icon: SvgIcon(
+      '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'
+    ),
+  },
+  {
     key: "categories",
     label: () => t("admin.categories"),
     minRole: "editor",
@@ -1519,6 +1620,7 @@ const navItems = [
 ];
 
 const adminOnlyTabs = [
+  "scrape",
   "config",
   "users",
   "about",
@@ -1749,6 +1851,105 @@ function openNewArticle() {
     tags: [],
   };
   newTagInput.value = "";
+  showArticleEditor.value = true;
+}
+
+function scrapeWarningText(warning: string): string {
+  switch (warning) {
+    case "no_article":
+      return t("admin.scrape_warning_no_article");
+    case "readability_failed":
+      return t("admin.scrape_warning_readability_failed");
+    case "convert_failed":
+      return t("admin.scrape_warning_convert_failed");
+    default:
+      return warning;
+  }
+}
+
+async function runScrape() {
+  const target = scrapeUrl.value.trim();
+  if (!target) {
+    scrapeError.value = t("admin.scrape_url_required");
+    return;
+  }
+  if (scrapePreview.value && !confirm(t("admin.scrape_replace_confirm"))) {
+    return;
+  }
+
+  scrapeLoading.value = true;
+  scrapeError.value = "";
+  try {
+    const res = await fetch(
+      `${API}/admin/scrape?url=${encodeURIComponent(target)}`,
+      { headers: { Authorization: `Bearer ${token.value}` } }
+    );
+    if (!res.ok) {
+      let message = t("admin.scrape_failed");
+      try {
+        const data = await res.json();
+        if (data?.message) message = data.message;
+      } catch {
+        // 非 JSON 错误响应保留通用文案
+      }
+      scrapeError.value = message;
+      return;
+    }
+
+    const bytes = await res.arrayBuffer();
+    const html = new TextDecoder("utf-8").decode(bytes);
+    const finalHeader = res.headers.get("X-Final-URL");
+    let finalUrl = target;
+    if (finalHeader) {
+      try {
+        finalUrl = decodeURIComponent(finalHeader);
+      } catch {
+        finalUrl = finalHeader;
+      }
+    }
+    const robotsStatus =
+      res.headers.get("X-Robots-Status") === "unchecked"
+        ? "unchecked"
+        : "allowed";
+
+    const { buildScrapeDraft } = await import("../utils/scrape");
+    const draft = buildScrapeDraft(html, finalUrl);
+    if (!draft.markdown.trim()) {
+      scrapeError.value = t("admin.scrape_empty");
+      return;
+    }
+
+    scrapePreview.value = {
+      title: draft.title,
+      markdown: draft.markdown,
+      warnings: draft.warnings,
+      finalUrl,
+      robotsStatus,
+    };
+  } catch {
+    scrapeError.value = t("admin.scrape_failed");
+  } finally {
+    scrapeLoading.value = false;
+  }
+}
+
+function editScrapedDraft() {
+  const draft = scrapePreview.value;
+  if (!draft) return;
+  editingArticle.value = null;
+  articleForm.value = {
+    title: draft.title,
+    slug: "",
+    summary: "",
+    content: draft.markdown,
+    cover_image: "",
+    category_id: "1",
+    status: "draft",
+    tags: [],
+  };
+  newTagInput.value = "";
+  editorMode.value = "edit";
+  updatePreview();
   showArticleEditor.value = true;
 }
 
@@ -2411,6 +2612,89 @@ watch(currentTab, (tab) => {
 .panel-header h2 {
   font-size: 1.25rem;
   font-weight: 600;
+}
+
+.scrape-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.scrape-form input {
+  flex: 1;
+  min-width: 240px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.scrape-form input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.scrape-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 59, 48, 0.08);
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
+
+.scrape-preview h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.scrape-meta {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  margin-bottom: 0.5rem;
+}
+
+.scrape-meta a {
+  color: var(--color-accent);
+}
+
+.scrape-warning {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  margin-bottom: 0.4rem;
+}
+
+.scrape-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.scrape-markdown {
+  margin: 0;
+  padding: 1rem;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .btn-primary {

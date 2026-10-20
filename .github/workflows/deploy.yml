@@ -49,6 +49,9 @@ jobs:
       - name: Check Frontend Types
         run: npm run check
 
+      - name: Test Frontend
+        run: npm test
+
       - name: Build Astro site
         run: npm run build
 

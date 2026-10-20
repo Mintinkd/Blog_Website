@@ -196,7 +196,7 @@ export function validateTargetUrl(raw: string): UrlValidation {
 }
 
 export type ProxyFetchResult =
-  | { kind: "ok"; response: Response }
+  | { kind: "ok"; response: Response; finalUrl: string }
   | { kind: "blocked" }
   | { kind: "resolution_failed" }
   | { kind: "too_many_redirects" }
@@ -356,7 +356,8 @@ export async function fetchWithValidatedRedirects(
 
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("Location");
-      if (!loc) return { kind: "ok", response: res };
+      if (!loc)
+        return { kind: "ok", response: res, finalUrl: current.toString() };
 
       let next: URL;
       try {
@@ -372,7 +373,7 @@ export async function fetchWithValidatedRedirects(
       continue;
     }
 
-    return { kind: "ok", response: res };
+    return { kind: "ok", response: res, finalUrl: current.toString() };
   }
 
   return { kind: "too_many_redirects" };

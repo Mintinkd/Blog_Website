@@ -16,6 +16,7 @@ import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from '.
 import { handleGetPublicSettings, handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
 import { handleImgProxy } from './handlers/img_proxy';
 import { handleTextProxy } from './handlers/text_proxy';
+import { handleScrape } from './handlers/scrape';
 import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
 import { handleExport, handleImport } from './handlers/admin';
 import { handleAcquireLock, handleReleaseLock, handleGetLockStatus, handleForceReleaseLock } from './handlers/edit_lock';
@@ -126,6 +127,9 @@ addRoute('GET', '/img-proxy', async (req, env, ctx) => handleImgProxy(req, env, 
 
 // 外链文字/接口内容代理（前端 fetch 直连失败/CORS 受限时自动降级，text/json/xml 白名单 + CORS 头）
 addRoute('GET', '/text-proxy', async (req, env, ctx) => handleTextProxy(req, env, ctx));
+
+// 网页抓取代理（admin-only；SSRF/robots/2MB/10s/每管理员限流；#33 / ADR 0003）
+addRoute('GET', '/admin/scrape', async (req, env, ctx, _params, auth) => handleScrape(req, env, ctx, auth), true, true);
 
 addRoute('GET', '/config', async (req, env) => handleGetPublicConfig(req, env));
 addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env), true, true);

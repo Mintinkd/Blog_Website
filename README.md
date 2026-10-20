@@ -90,7 +90,8 @@
 │   │   ├── siteConfig.ts        # 站点基础配置读取与应用
 │   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
-│   │   └── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+│   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+│   │   └── scrape.ts            # 网页抓取管线（Readability → Turndown + GFM，管理端浏览器执行）
 │   └── types/
 │       └── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 ├── scripts/
@@ -132,6 +133,7 @@
 │       │   ├── friend_link.ts
 │       │   ├── img_proxy.ts     # 外链图片代理（防盗链兜底，SSRF/限流校验 + KV TTL 缓存）
 │       │   ├── text_proxy.ts    # 外链文字/接口代理（CORS + text/json/xml 白名单 + KV TTL 缓存）
+│       │   ├── scrape.ts        # 网页抓取代理（admin-only；SSRF/robots/2MB/10s/每管理员限流）
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
 │       │   └── admin.ts
@@ -145,6 +147,8 @@
 ├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
+├── vitest.config.ts              # 根级 vitest（jsdom）：抓取管线测试
+├── tests/                        # 前端单元测试（抓取管线 HTML fixture）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
@@ -154,7 +158,7 @@
     ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
     ├── SITE_SETTINGS.md         # 可视化配置中心说明
-    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源）
+    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源 / 0003 抓取代理与浏览器端提取）
     ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing）
     ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
     └── security/
@@ -240,28 +244,29 @@ D1 (SQLite) 共 10 张表：
 
 #### 管理员专属接口（需 admin 角色）
 
-| 方法   | 路径                | 说明                                                                   |
-| ------ | ------------------- | ---------------------------------------------------------------------- |
-| DELETE | `/categories/:id`   | 删除分类                                                               |
-| DELETE | `/tags/:id`         | 删除标签                                                               |
-| GET    | `/users`            | 用户列表                                                               |
-| POST   | `/users`            | 创建用户                                                               |
-| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定） |
-| DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                          |
-| GET    | `/config/all`       | 全部配置                                                               |
-| PUT    | `/config`           | 更新配置                                                               |
-| GET    | `/friend-links/all` | 全部友链                                                               |
-| POST   | `/friend-links`     | 创建友链                                                               |
-| PUT    | `/friend-links/:id` | 更新友链                                                               |
-| DELETE | `/friend-links/:id` | 删除友链                                                               |
-| GET    | `/admin/export`     | 导出数据                                                               |
-| POST   | `/admin/import`     | 导入数据                                                               |
-| GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                |
-| GET    | `/settings/all`     | 拉取全部可视化配置                                                     |
-| PUT    | `/settings`         | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）              |
-| POST   | `/settings/reset`   | 恢复默认可视化配置                                                     |
-| GET    | `/settings/export`  | 导出配置 JSON                                                          |
-| POST   | `/settings/import`  | 导入配置 JSON                                                          |
+| 方法   | 路径                | 说明                                                                                                                       |
+| ------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| DELETE | `/categories/:id`   | 删除分类                                                                                                                   |
+| DELETE | `/tags/:id`         | 删除标签                                                                                                                   |
+| GET    | `/users`            | 用户列表                                                                                                                   |
+| POST   | `/users`            | 创建用户                                                                                                                   |
+| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定）                                                     |
+| DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                                                                              |
+| GET    | `/config/all`       | 全部配置                                                                                                                   |
+| PUT    | `/config`           | 更新配置                                                                                                                   |
+| GET    | `/friend-links/all` | 全部友链                                                                                                                   |
+| POST   | `/friend-links`     | 创建友链                                                                                                                   |
+| PUT    | `/friend-links/:id` | 更新友链                                                                                                                   |
+| DELETE | `/friend-links/:id` | 删除友链                                                                                                                   |
+| GET    | `/admin/export`     | 导出数据                                                                                                                   |
+| POST   | `/admin/import`     | 导入数据                                                                                                                   |
+| GET    | `/admin/scrape`     | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`） |
+| GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                    |
+| GET    | `/settings/all`     | 拉取全部可视化配置                                                                                                         |
+| PUT    | `/settings`         | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                  |
+| POST   | `/settings/reset`   | 恢复默认可视化配置                                                                                                         |
+| GET    | `/settings/export`  | 导出配置 JSON                                                                                                              |
+| POST   | `/settings/import`  | 导入配置 JSON                                                                                                              |
 
 ## 前台页面
 
@@ -295,6 +300,7 @@ D1 (SQLite) 共 10 张表：
 - **标签管理** — 增（editor创建的），删除仅admin
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
 - **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
+- **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability + Turndown 生成 Markdown 预览；「生成草稿并编辑」打开现有文章编辑器并预填标题/正文/分类 1/draft，保存前不创建任何数据
 - **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
@@ -395,6 +401,14 @@ npm run dev
 
 > 前端类型门禁：`npm run check`（astro check，含 `.astro`/`.vue`/`.ts`；存在类型错误即非零退出）。入口为 `scripts/run-astro-check.mjs`——Node < 22.12 时自动补 `--experimental-require-module` 旗标（language-server 以 require 拉取 ESM-only 的 astro2tsx，组合钉版说明见脚本头注）。
 
+### 前端单元测试
+
+```bash
+npm test
+```
+
+根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML fixture → `src/utils/scrape.ts` 的标题/Markdown 输出。该命令已接入 CI，位于前端类型检查之后、构建之前。
+
 ### Worker 后端开发
 
 ```bash
@@ -405,7 +419,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、构建。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、构建。
 
 ### 初始化数据库
 
