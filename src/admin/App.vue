@@ -207,6 +207,24 @@
                 >{{ scrapePreview.finalUrl }}</a
               >
             </p>
+            <p class="scrape-meta">
+              {{
+                t("admin.scrape_images", { count: scrapePreview.images.total })
+              }}
+            </p>
+            <p
+              v-if="scrapePreview.images.unresolved > 0"
+              class="scrape-warning"
+            >
+              {{
+                t("admin.scrape_images_broken", {
+                  count: scrapePreview.images.unresolved,
+                })
+              }}
+            </p>
+            <p v-else-if="scrapePreview.images.total > 0" class="scrape-hint">
+              {{ t("admin.scrape_images_external") }}
+            </p>
             <p
               v-if="scrapePreview.robotsStatus === 'unchecked'"
               class="scrape-warning"
@@ -219,6 +237,25 @@
               class="scrape-warning"
             >
               {{ scrapeWarningText(warning) }}
+            </p>
+            <div class="scrape-selector">
+              <input
+                v-model="scrapeSelector"
+                type="text"
+                :placeholder="t('admin.scrape_selector_placeholder')"
+                :disabled="scrapeLoading"
+                @keydown.enter.prevent="reextractScrape"
+              />
+              <button
+                class="btn-secondary"
+                :disabled="scrapeLoading"
+                @click="reextractScrape"
+              >
+                {{ t("admin.scrape_selector_button") }}
+              </button>
+            </div>
+            <p v-if="scrapeSelectorError" class="scrape-selector-error">
+              {{ scrapeSelectorError }}
             </p>
             <div class="scrape-actions">
               <button
@@ -1397,7 +1434,7 @@ import {
 import zh from "../i18n/zh.json";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import type { ScrapeDraft } from "../utils/scrape";
+import type { ScrapeDraft, ScrapeImageStats } from "../utils/scrape";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
 // （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
@@ -1455,16 +1492,26 @@ const articleSaving = ref(false);
 const editorMode = ref<"edit" | "split" | "preview">("edit");
 const previewHtml = ref("");
 
+interface ScrapeSource {
+  html: string;
+  finalUrl: string;
+  charsetWarnings: string[];
+}
+
 interface ScrapePreview {
   title: string;
   markdown: string;
   warnings: string[];
   finalUrl: string;
   robotsStatus: "allowed" | "unchecked";
+  images: ScrapeImageStats;
 }
 const scrapeUrl = ref("");
 const scrapeLoading = ref(false);
 const scrapeError = ref("");
+const scrapeSource = ref<ScrapeSource | null>(null);
+const scrapeSelector = ref("");
+const scrapeSelectorError = ref("");
 const scrapePreview = ref<ScrapePreview | null>(null);
 
 const categories = ref<any[]>([]);
@@ -1860,6 +1907,8 @@ function scrapeWarningText(warning: string): string {
       return t("admin.scrape_warning_readability_failed");
     case "convert_failed":
       return t("admin.scrape_warning_convert_failed");
+    case "charset_fallback":
+      return t("admin.scrape_warning_charset_fallback");
     default:
       return warning;
   }
@@ -1877,6 +1926,7 @@ async function runScrape() {
 
   scrapeLoading.value = true;
   scrapeError.value = "";
+  scrapeSelectorError.value = "";
   try {
     const res = await fetch(
       `${API}/admin/scrape?url=${encodeURIComponent(target)}`,
@@ -1895,7 +1945,6 @@ async function runScrape() {
     }
 
     const bytes = await res.arrayBuffer();
-    const html = new TextDecoder("utf-8").decode(bytes);
     const finalHeader = res.headers.get("X-Final-URL");
     let finalUrl = target;
     if (finalHeader) {
@@ -1910,24 +1959,82 @@ async function runScrape() {
         ? "allowed"
         : "unchecked";
 
-    const { buildScrapeDraft } = await import("../utils/scrape");
-    const draft: ScrapeDraft = buildScrapeDraft(html, finalUrl);
+    const { buildScrapeDraft, decodeHtmlBytes } =
+      await import("../utils/scrape");
+    // #34：按 BOM / Content-Type / <meta charset> 解码字节，未知字符集回退 UTF-8
+    const decoded = decodeHtmlBytes(bytes, res.headers.get("Content-Type"));
+    const draft: ScrapeDraft = buildScrapeDraft(decoded.html, finalUrl);
     if (!draft.markdown.trim()) {
       scrapeError.value = t("admin.scrape_empty");
       return;
     }
 
+    // 原始 HTML 留在内存，供 selector「重新提取」本地重跑（不重新请求源站）
+    scrapeSource.value = {
+      html: decoded.html,
+      finalUrl,
+      charsetWarnings: decoded.warnings,
+    };
+    scrapeSelector.value = "";
     scrapePreview.value = {
       title: draft.title,
       markdown: draft.markdown,
-      warnings: draft.warnings,
+      warnings: [...decoded.warnings, ...draft.warnings],
       finalUrl,
       robotsStatus,
+      images: draft.images,
     };
   } catch {
     scrapeError.value = t("admin.scrape_failed");
   } finally {
     scrapeLoading.value = false;
+  }
+}
+
+/**
+ * 在已抓取的 HTML 上按手动 selector 重新提取；失败时保留上一份预览，
+ * 错误只显示在 selector 行下方（不影响「重新抓取」的错误区）。
+ */
+async function reextractScrape() {
+  const source = scrapeSource.value;
+  const current = scrapePreview.value;
+  if (!source || !current) return;
+
+  scrapeSelectorError.value = "";
+
+  let mod: typeof import("../utils/scrape");
+  try {
+    mod = await import("../utils/scrape");
+  } catch {
+    scrapeSelectorError.value = t("admin.scrape_selector_failed");
+    return;
+  }
+
+  try {
+    const draft = mod.buildScrapeDraft(source.html, source.finalUrl, {
+      selector: scrapeSelector.value,
+    });
+    if (!draft.markdown.trim()) {
+      scrapeSelectorError.value = t("admin.scrape_empty");
+      return;
+    }
+
+    scrapePreview.value = {
+      ...current,
+      title: draft.title || current.title,
+      markdown: draft.markdown,
+      warnings: [...source.charsetWarnings, ...draft.warnings],
+      images: draft.images,
+    };
+  } catch (error) {
+    if (error instanceof mod.ScrapeSelectorError) {
+      scrapeSelectorError.value =
+        error.code === "selector_invalid"
+          ? t("admin.scrape_selector_invalid")
+          : t("admin.scrape_selector_no_match");
+    } else {
+      scrapeSelectorError.value = t("admin.scrape_selector_failed");
+    }
   }
 }
 
@@ -2616,7 +2723,8 @@ watch(currentTab, (tab) => {
   flex-wrap: wrap;
 }
 
-.scrape-form input {
+.scrape-form input,
+.scrape-selector input {
   flex: 1;
   min-width: 240px;
   padding: 0.5rem 0.75rem;
@@ -2628,9 +2736,23 @@ watch(currentTab, (tab) => {
   font-family: inherit;
 }
 
-.scrape-form input:focus {
+.scrape-form input:focus,
+.scrape-selector input:focus {
   outline: none;
   border-color: var(--color-accent);
+}
+
+.scrape-selector {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.4rem;
+  flex-wrap: wrap;
+}
+
+.scrape-selector-error {
+  font-size: 0.8rem;
+  color: var(--color-error);
+  margin-bottom: 0.5rem;
 }
 
 .scrape-error {
@@ -2667,6 +2789,12 @@ watch(currentTab, (tab) => {
 .scrape-warning {
   font-size: 0.8rem;
   color: var(--color-warning);
+  margin-bottom: 0.4rem;
+}
+
+.scrape-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
   margin-bottom: 0.4rem;
 }
 

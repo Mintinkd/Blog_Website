@@ -4,7 +4,7 @@
 
 ## 前端单元测试
 
-根目录的抓取管线测试用 vitest + jsdom：`npm test`（配置见 `vitest.config.ts`，fixture 测试放 `tests/`）。CI 在前端 `npm run check` 之后、构建之前执行；测试外部行为（HTML + final URL → 标题/Markdown），不依赖真实站点。
+根目录的抓取管线测试用 vitest + jsdom：`npm test`（配置见 `vitest.config.ts`，fixture 测试放 `tests/`）。CI 在前端 `npm run check` 之后、构建之前执行；测试外部行为（HTML + final URL / 字节 → 标题、Markdown、selector 提取与字符集解码），不依赖真实站点。
 
 ## 约定
 

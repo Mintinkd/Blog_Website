@@ -12,7 +12,7 @@
 
 - 抓取预览依赖管理员浏览器；关闭页面即丢失未生成草稿的预览（本来也不做历史）。
 - 原始 HTML 不落 KV；Q10 的 10 分钟缓存取消，selector 重提取在本地完成。
-- 前端新增 `@mozilla/readability`、`turndown`、`turndown-plugin-gfm`（懒加载，约 16KB gzip）；Worker 不新增提取依赖。
+- 前端新增 `@mozilla/readability`、`turndown`、`turndown-plugin-gfm`（懒加载，约 17KB gzip）；Worker 不新增提取依赖。
 - 原始 HTML 只在 `DOMParser` 的惰性文档中解析，绝不注入管理页 DOM；预览仍走现有 `marked + DOMPurify`。
 - HTML 上限降到 2MB（原代理通道为 10MB）：Free 的 10ms CPU 预算下，Worker 只做取回与透传，解析与转换在浏览器完成；2MB 对文章页足够，超限明确报错。
-- charset：Worker 只透传上游 `Content-Type` 里的 charset，不做转码；T1 前端固定按 UTF-8 解码，非 UTF-8 页面（GBK 等）留给后续票补字符集嗅探。
+- charset：Worker 只透传上游 `Content-Type` 里的 charset，不做转码；前端按 BOM → Content-Type → `<meta charset>` 嗅探解码（GBK / GB2312 等），未知字符集回退 UTF-8 并警告（#34 补齐 T1 遗留项）。

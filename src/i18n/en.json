@@ -168,8 +168,16 @@
   "admin.scrape_loading": "Scraping...",
   "admin.scrape_retry": "Retry",
   "admin.scrape_again": "Scrape Again",
+  "admin.scrape_selector_placeholder": "CSS selector (optional, e.g. article .post-content)",
+  "admin.scrape_selector_button": "Re-extract",
+  "admin.scrape_selector_invalid": "Invalid CSS selector syntax. Check it and try again.",
+  "admin.scrape_selector_no_match": "The selector matched no elements; the preview was kept.",
+  "admin.scrape_selector_failed": "Re-extraction failed; the preview was kept.",
   "admin.scrape_generate_draft": "Generate Draft & Edit",
   "admin.scrape_final_url": "Final URL",
+  "admin.scrape_images": "Images: {count}",
+  "admin.scrape_images_broken": "{count} image(s) have no usable URL and may not display in the draft.",
+  "admin.scrape_images_external": "Remote images may fail to display because of hotlink protection or source-site limits; spot-check the draft.",
   "admin.scrape_markdown": "Markdown preview",
   "admin.scrape_no_title": "(No title detected)",
   "admin.scrape_url_required": "Enter a URL to scrape",
@@ -179,5 +187,6 @@
   "admin.scrape_robots_unchecked": "robots.txt could not be verified (missing, unreachable, or too large), so this scrape ran without a robots check.",
   "admin.scrape_warning_no_article": "No article was detected; fell back to the full page.",
   "admin.scrape_warning_readability_failed": "Article extraction failed; fell back to the full page.",
-  "admin.scrape_warning_convert_failed": "Markdown conversion failed. Check the source page."
+  "admin.scrape_warning_convert_failed": "Markdown conversion failed. Check the source page.",
+  "admin.scrape_warning_charset_fallback": "The page declares an unsupported charset; it was decoded as UTF-8 and may contain garbled text."
 }
