@@ -27,7 +27,19 @@ export type ScrapeWarning =
 
 export interface ScrapeDraft {
   title: string;
+  summary: string;
+  /** 仅来自 og:image；缺失 / 非 http(s) 时留空 */
+  coverImage: string;
+  /** 只包含站点已有标签，未匹配的关键词直接丢弃 */
+  tags: string[];
+  /** 始终为空：slug 由现有创建接口生成并去重 */
+  slug: string;
+  /** 默认分类 id（未分类） */
+  categoryId: number;
+  status: "draft";
   markdown: string;
+  /** 正文字数：CJK 逐字 + 拉丁文逐词，不含来源脚注 */
+  wordCount: number;
   warnings: ScrapeWarning[];
   images: ScrapeImageStats;
 }
@@ -38,6 +50,13 @@ export interface ScrapeOptions {
    * 子树的 outerHTML；未命中或语法无效抛 ScrapeSelectorError。
    */
   selector?: string;
+  /**
+   * 站点已有标签名。抓取只保留精确命中的标签，不创建新标签；
+   * 不传或为空时草稿不带标签。
+   */
+  existingTags?: readonly string[];
+  /** 抓取日期，用于来源脚注；测试可注入固定日期 */
+  scrapedAt?: Date;
 }
 
 export type ScrapeSelectorErrorCode = "selector_invalid" | "selector_no_match";
@@ -62,6 +81,110 @@ export interface DecodedHtml {
 
 function normalizeText(value: string | null | undefined): string {
   return (value || "").replace(/\s+/g, " ").trim();
+}
+
+const DEFAULT_CATEGORY_ID = 1;
+const SUMMARY_FALLBACK_LENGTH = 120;
+const TAG_LINK_SELECTOR = 'a[rel~="tag"], a[href*="/tag/"], a[href*="/tags/"]';
+
+/** 按给定顺序返回第一个非空 meta content（DOMParser 已解码 HTML 实体）。 */
+function metaContent(doc: Document, selectors: readonly string[]): string {
+  for (const selector of selectors) {
+    const value = normalizeText(
+      doc.querySelector(selector)?.getAttribute("content")
+    );
+    if (value) return value;
+  }
+  return "";
+}
+
+/** 按 Unicode 码点截取，避免把代理对（emoji 等）切成半个字符。 */
+function firstCharacters(value: string, limit: number): string {
+  return Array.from(value).slice(0, limit).join("");
+}
+
+/** meta 描述里可能混入字面量标签；摘要展示前一并剥掉。 */
+function stripTags(value: string): string {
+  return normalizeText(value.replace(/<[^>]*>/g, " "));
+}
+
+const CJK_CHAR =
+  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/g;
+const LATIN_WORD = /[A-Za-z0-9]+(?:['’.-][A-Za-z0-9]+)*/g;
+
+/** CJK 按字符计，拉丁文按词计；用于预览字数与空正文判断。 */
+function countWords(plainText: string): number {
+  const cjk = plainText.match(CJK_CHAR)?.length || 0;
+  const latin = plainText.replace(CJK_CHAR, " ").match(LATIN_WORD)?.length || 0;
+  return cjk + latin;
+}
+
+/**
+ * 标签候选：meta keywords + 正文 tag 链接（rel="tag" 或 /tag(s)/ 路径）。
+ * 只保留站点已有标签的精确匹配，未匹配项直接丢弃；绝不创建新标签。
+ */
+function extractTags(doc: Document, existingTags: readonly string[]): string[] {
+  const allowed = new Set(
+    existingTags.map((name) => name.trim()).filter(Boolean)
+  );
+  if (allowed.size === 0) return [];
+
+  const candidates = (
+    doc.querySelector('meta[name="keywords"]')?.getAttribute("content") || ""
+  )
+    .split(/[,，]/)
+    .concat(
+      Array.from(doc.querySelectorAll(TAG_LINK_SELECTOR)).map((link) =>
+        normalizeText(link.textContent)
+      )
+    );
+
+  const matched: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    for (const raw of candidate.split(/[,，]/)) {
+      const name = raw.trim();
+      if (!name || seen.has(name) || !allowed.has(name)) continue;
+      seen.add(name);
+      matched.push(name);
+    }
+  }
+  return matched;
+}
+
+/** 封面只认 og:image；缺失或协议不在 http(s) 白名单时留空。 */
+function extractCoverImage(doc: Document, base: URL | null): string {
+  const raw = metaContent(doc, [
+    'meta[property="og:image"]',
+    'meta[name="og:image"]',
+  ]);
+  const url = resolveUrl(raw, base);
+  return isSafeMedia(url) ? url.href : "";
+}
+
+function formatScrapeDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function escapeFootnoteLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/]/g, "\\]");
+}
+
+/** 来源脚注：原文链接 + 抓取日期。标题为空时用 final URL 作链接文字。 */
+function appendSourceFootnote(
+  markdown: string,
+  title: string,
+  finalUrl: string,
+  scrapedAt: Date
+): string {
+  // 空正文不生成「只有脚注」的假草稿，保留 UI 的 scrape_empty 判定
+  if (!markdown) return "";
+  const label = escapeFootnoteLabel(title || finalUrl);
+  const footnote = `> 原文：[${label}](${finalUrl})（抓取于 ${formatScrapeDate(scrapedAt)}）`;
+  return `${markdown}\n\n---\n\n${footnote}`;
 }
 
 function resolveUrl(value: string, base: URL | null): URL | null {
@@ -332,11 +455,13 @@ function dedupeTitleHeading(contentDoc: Document, title: string): void {
  *
  * - 默认使用 Readability 提取正文；失败 / 空正文时回退到 <body> 并给出
  *   no_article 警告，避免静默产出空草稿。
- * - 传入 selector 时跳过 Readability，直接拼所选子树；语法错误 / 未命中
- *   抛 ScrapeSelectorError，由 UI 保留上一份预览。
- * - 标题默认取 Readability title，其次页面 <title>、正文 H1、页面 H1；
- *   selector 模式优先所选子树的 H1。正文里与标题同名的 H1 会被移除，
- *   防止文章页重复渲染标题。
+ * - 传入 selector 时跳过 Readability 正文，直接拼所选子树；语法错误 / 未命中
+ *   抛 ScrapeSelectorError，由 UI 保留上一份预览。Readability 仍用于提供标题。
+ * - 标题默认按 Readability → og:title → <title> 映射；selector 模式优先所选
+ *   子树的 H1。正文里与标题同名的 H1 会被移除，防止文章页重复渲染标题。
+ * - 摘要按 meta/OG description → 正文前 120 字映射；封面只取 og:image；
+ *   标签只保留站点已有标签；slug 留空、分类默认未分类、状态 draft。
+ * - 末尾追加来源脚注（final URL + 抓取日期），标题中的 `]` 会转义。
  * - 源文档先提升懒加载图片地址，再做 URL 绝对化、协议白名单与嵌入内容降级，
  *   正文里的相对链接不会残留成管理端地址或可点击的 javascript: 链接。
  * - 使用 Turndown + GFM 保留标题、列表、引用、带语言标注的围栏代码、
@@ -355,47 +480,69 @@ export function buildScrapeDraft(
   annotateCodeLanguages(doc);
 
   const selector = (options.selector || "").trim();
-  let title = "";
+  let readabilityTitle = "";
   let content = "";
+
+  // Readability 同时是标题映射的第一来源；selector 模式只忽略它的正文。
+  try {
+    const article = new Readability(doc.cloneNode(true) as Document).parse();
+    if (article) {
+      readabilityTitle = normalizeText(article.title);
+      if (!selector) content = article.content || "";
+    }
+  } catch {
+    if (!selector) warnings.push("readability_failed");
+  }
 
   if (selector) {
     content = extractBySelector(doc, selector);
-  } else {
-    try {
-      const article = new Readability(doc.cloneNode(true) as Document).parse();
-      if (article) {
-        title = normalizeText(article.title);
-        content = article.content || "";
-      }
-    } catch {
-      warnings.push("readability_failed");
-    }
-
-    if (!content) {
-      content = doc.body?.innerHTML || "";
-      warnings.push("no_article");
-    }
+  } else if (!content) {
+    content = doc.body?.innerHTML || "";
+    warnings.push("no_article");
   }
 
-  // 正文过一次「正文文档」：URL 安全网 + 标题去重 + 图片统计
+  // 正文过一次「正文文档」：URL 安全网 + 标题去重 + 统计
   const contentDoc = new DOMParser().parseFromString(content, "text/html");
   resolveDocumentUrls(contentDoc, base);
   annotateCodeLanguages(contentDoc);
+  // 非正文元素连同内容整体移除，避免脚本文本进入字数 / 摘要回退
+  for (const node of Array.from(
+    contentDoc.querySelectorAll("script, style, noscript")
+  )) {
+    node.remove();
+  }
 
   const contentH1 = normalizeText(
     contentDoc.body.querySelector("h1")?.textContent
   );
+  const ogTitle = metaContent(doc, [
+    'meta[property="og:title"]',
+    'meta[name="og:title"]',
+  ]);
   const pageTitle = normalizeText(doc.querySelector("title")?.textContent);
   const pageH1 = normalizeText(doc.querySelector("h1")?.textContent);
 
-  // selector 模式下所选子树就是正文，优先用它自己的 H1；默认路径保持
-  // T1 的 <title> 优先，避免整页回退时把导航/Logo 的 H1 当成文章标题
-  title = selector
-    ? normalizeText(title) || contentH1 || pageTitle || pageH1
-    : normalizeText(title) || pageTitle || contentH1 || pageH1;
+  // selector 模式下所选子树就是正文，优先用它自己的 H1；默认路径按
+  // Readability → og:title → <title>，最后才用 H1 兜底，避免整页回退时
+  // 把导航 / Logo 的 H1 当成文章标题。
+  const title = selector
+    ? contentH1 || readabilityTitle || ogTitle || pageTitle || pageH1
+    : readabilityTitle || ogTitle || pageTitle || contentH1 || pageH1;
 
   dedupeTitleHeading(contentDoc, title);
   const images = collectImageStats(contentDoc, base);
+  const plainText = normalizeText(contentDoc.body.textContent);
+  const wordCount = countWords(plainText);
+  const summary =
+    stripTags(
+      metaContent(doc, [
+        'meta[name="description"]',
+        'meta[property="og:description"]',
+        'meta[name="og:description"]',
+      ])
+    ) || firstCharacters(plainText, SUMMARY_FALLBACK_LENGTH);
+  const coverImage = extractCoverImage(doc, base);
+  const tags = extractTags(doc, options.existingTags || []);
   content = contentDoc.body.innerHTML;
 
   const turndown = new TurndownService({
@@ -423,8 +570,6 @@ export function buildScrapeDraft(
       return `\n\n${options.fence}${language}\n${text}\n${options.fence}\n\n`;
     },
   });
-  // script/style 等非正文元素连同内容整体移除；嵌入内容已在上面降级为链接
-  turndown.remove(["script", "style", "noscript"]);
 
   let markdown = "";
   try {
@@ -433,7 +578,24 @@ export function buildScrapeDraft(
     warnings.push("convert_failed");
   }
 
-  return { title, markdown, warnings, images };
+  return {
+    title,
+    summary,
+    coverImage,
+    tags,
+    slug: "",
+    categoryId: DEFAULT_CATEGORY_ID,
+    status: "draft",
+    markdown: appendSourceFootnote(
+      markdown,
+      title,
+      finalUrl,
+      options.scrapedAt || new Date()
+    ),
+    wordCount,
+    warnings,
+    images,
+  };
 }
 
 const HEADER_SNIFF_BYTES = 2048;

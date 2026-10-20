@@ -91,7 +91,7 @@
 │   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
-│   │   └── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM，管理端浏览器执行）
+│   │   └── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
 │   └── types/
 │       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 │       └── turndown-plugin-gfm.d.ts  # turndown-plugin-gfm 的类型声明（包内无 .d.ts，#33）
@@ -302,7 +302,7 @@ D1 (SQLite) 共 10 张表：
 - **标签管理** — 增（editor创建的），删除仅admin
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
 - **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
-- **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；「生成草稿并编辑」打开现有文章编辑器并预填标题/正文/分类 1/draft，保存前不创建任何数据
+- **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；自动映射标题/摘要/封面/已有标签并追加来源脚注；预览支持 Markdown/渲染切换；「生成草稿并编辑」打开现有文章编辑器并预填标题/slug/summary/封面/正文/分类 1/标签/draft，保存前不创建任何数据
 - **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
@@ -350,19 +350,21 @@ D1 (SQLite) 共 10 张表：
 
 ### 网页抓取（admin-only）
 
-管理端「网页抓取」标签页把静态文章 URL 变成可校对的 Markdown 草稿（issue #33 / #34 / ADR 0003）。职责切分为两段：Worker 只做「安全取回」，正文提取与格式转换在管理员浏览器执行（字符集嗅探 → Readability 或手动 selector → Turndown + GFM），原始 HTML 不进入管理页 DOM。
+管理端「网页抓取」标签页把静态文章 URL 变成可校对的 Markdown 草稿（issue #33 / #34 / #35 / ADR 0003）。职责切分为两段：Worker 只做「安全取回」，正文提取与格式转换在管理员浏览器执行（字符集嗅探 → Readability 或手动 selector → Turndown + GFM），原始 HTML 不进入管理页 DOM。
 
 注意：此「页面抓取」与上方「外链内容智能代理」是两条独立通道——代理负责前台运行时显示外链内容，抓取只服务管理端生成草稿。
 
 - **入口** `GET /api/v1/admin/scrape?url=`：路由层 `requireAuth + requireAdmin`（editor 403），handler 内再次校验角色；editor 在管理端也看不到该标签页。
 - **流程**：URL 校验（SSRF）→ robots.txt 预检 → 抓取目标 HTML（逐跳重定向复核）→ 返回原始 HTML 字节；前端按 BOM / `Content-Type` / `<meta charset>` 解码字节，以 `X-Final-URL` 绝对化相对链接、按 `X-Robots-Status` 决定是否显示「未做 robots 检查」警告，再生成预览。原始 HTML 保留在管理页内存，供 selector 本地重提取。
 - **提取与转换**：默认用 Readability；识别不出正文时回退 `<body>` 并显示 no-article 警告。手动 CSS selector 覆盖提取（多个命中按文档顺序拼接；命中表格行/单元格时保留表格与表头上下文），「重新提取」在已抓取的 HTML 上重跑、不重新请求源站；selector 语法错误 / 未命中给出明确错误并保留上一份预览。Markdown 保留标题、列表、引用、带语言标注的围栏代码、GFM 表格、图片与行内强调；正文中与标题同名的 h1 去重。懒加载图片先提升 `data-src` / `srcset` 中的真实地址；相对链接 / 图片按页面自带 `<base>` 或 final URL 解析；iframe/embed/object 在 http/https 时降级为链接，否则丢弃；`javascript:` / `data:` / `vbscript:` 地址一律剥除。
+- **元数据映射**：标题按 Readability → `og:title` → `<title>`（selector 模式优先所选子树 H1）；摘要按 meta/OG description → 正文前 120 字；封面只取 `og:image`（缺失留空）；标签只匹配站点已有标签（meta keywords + 正文 tag 链接，未匹配项丢弃、不创建新标签）；slug 留空由创建接口生成并去重；分类默认 id 1（未分类）；状态 `draft`；作者由后端按当前管理员写入。
+- **来源脚注**：正文末尾自动追加 `---` + `> 原文：[标题](final URL)（抓取于 YYYY-MM-DD）`，使用最终 URL，标题中的 `]` 会转义；selector 重提取沿用首次抓取日期。
 - **字符集**：按 BOM → `Content-Type` → `<meta charset>` / XML 声明解码，覆盖 GBK / GB2312；未知或不支持的字符集回退 UTF-8 并显示警告。
-- **预览**：显示字符集与正文图片数量；缺少可用地址的图片提示可能坏图，其余外链图片提示防盗链风险。
+- **预览**：显示标题、摘要、封面缩略图（缺失 / 加载失败时显示占位）、字数、字符集与正文图片数量；缺少可用地址的图片提示可能坏图，其余外链图片提示防盗链风险；Markdown / 渲染切换使用现有 `marked + DOMPurify` 渲染路径，切换标签页后预览与视图模式保留；新抓取覆盖未保存预览前弹出确认，失败抓取保留旧预览并提供「重试」。
 - **安全**：与图片 / 文字通道共用 SSRF 护栏（仅 http/https、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`、解析后 IP 复核、每一跳重定向复核）、仅 `text/html` 与 `application/xhtml+xml`、≤2MB、目标 10s 超时（robots 预检另有 5s 上限）、每管理员 10 次/分限流、仅透传上游 `Content-Type`（其余上游头一律剥离）、`Cache-Control: no-store`、不缓存不写库。
 - **robots.txt**：明确的 `Disallow` 命中 → 403 且不发起目标请求（响应里带命中规则）；404 / 410 / 非 2xx / 网络异常 / 超 500KB → 放行并置 `X-Robots-Status: unchecked`，UI 显示警告。
-- **草稿交接**：预览区「生成草稿并编辑」复用现有文章编辑器（预填标题 / Markdown 正文 / 分类 1 / `draft`），取消不创建任何数据；保存仍走既有 `POST /articles`。
-- **范围（T2）**：T1 的 UTF-8 限制已由字符集嗅探补齐；元数据与来源脚注仍留给后续票。
+- **草稿交接**：预览区「生成草稿并编辑」复用现有文章编辑器，预填标题 / 空 slug / 摘要 / 封面 / Markdown 正文 / 分类 1 / 匹配标签 / `draft`；所有字段仍可在编辑器中修改，取消不创建任何数据；保存仍走既有 `POST /articles`，slug 生成与去重、作者赋值、校验逻辑不变。
+- **范围（T3）**：元数据映射、来源脚注与预览体验已补齐；不做 `articles.source_url` 字段、抓取历史 / 查重、图片转存或自动发布。
 - 代码：`worker/src/handlers/scrape.ts`、`src/utils/scrape.ts`、管理端标签页在 `src/admin/App.vue`。
 
 ### UI 动效升级
@@ -426,7 +428,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级与字符集解码输出。该命令已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
 
 ### Worker 后端开发
 

@@ -198,6 +198,24 @@
             <h3>
               {{ scrapePreview.title || t("admin.scrape_no_title") }}
             </h3>
+            <p v-if="scrapePreview.summary" class="scrape-summary">
+              {{ scrapePreview.summary }}
+            </p>
+            <div
+              v-if="scrapePreview.coverImage && !scrapeCoverFailed"
+              class="scrape-cover"
+            >
+              <img
+                :src="scrapePreview.coverImage"
+                :alt="scrapePreview.title"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                @error="scrapeCoverFailed = true"
+              />
+            </div>
+            <p v-else class="scrape-hint">
+              {{ t("admin.scrape_no_cover") }}
+            </p>
             <p class="scrape-meta">
               {{ t("admin.scrape_final_url") }}:
               <a
@@ -209,9 +227,25 @@
             </p>
             <p class="scrape-meta">
               {{
+                t("admin.scrape_word_count", {
+                  count: scrapePreview.wordCount,
+                })
+              }}
+              ·
+              {{
                 t("admin.scrape_images", { count: scrapePreview.images.total })
               }}
               · {{ t("admin.scrape_charset") }}: {{ scrapePreview.charset }}
+            </p>
+            <p class="scrape-meta">
+              {{ t("admin.scrape_tags") }}:
+              {{
+                scrapePreview.tags.length
+                  ? scrapePreview.tags.join(", ")
+                  : t("admin.scrape_no_tags")
+              }}
+              · {{ t("admin.scrape_category") }}: {{ scrapeCategoryName }} ·
+              {{ t("admin.scrape_status") }}: {{ t("article.draft") }}
             </p>
             <p
               v-if="scrapePreview.images.unresolved > 0"
@@ -274,10 +308,37 @@
                 {{ t("admin.scrape_generate_draft") }}
               </button>
             </div>
-            <div class="form-group">
-              <label>{{ t("admin.scrape_markdown") }}</label>
-              <pre class="scrape-markdown">{{ scrapePreview.markdown }}</pre>
+            <div class="content-label-row">
+              <label>{{ t("admin.scrape_preview") }}</label>
+              <div class="preview-toggle">
+                <button
+                  :class="[
+                    'toggle-btn',
+                    { active: scrapeViewMode === 'markdown' },
+                  ]"
+                  @click="scrapeViewMode = 'markdown'"
+                >
+                  {{ t("admin.scrape_markdown") }}
+                </button>
+                <button
+                  :class="[
+                    'toggle-btn',
+                    { active: scrapeViewMode === 'rendered' },
+                  ]"
+                  @click="scrapeViewMode = 'rendered'"
+                >
+                  {{ t("admin.scrape_rendered") }}
+                </button>
+              </div>
             </div>
+            <pre v-if="scrapeViewMode === 'markdown'" class="scrape-markdown">{{
+              scrapePreview.markdown
+            }}</pre>
+            <div
+              v-else
+              class="scrape-rendered prose"
+              v-html="scrapePreviewHtml"
+            ></div>
           </div>
         </div>
 
@@ -1439,6 +1500,7 @@ import {
 import zh from "../i18n/zh.json";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { renderMarkdown } from "../utils/markdown";
 import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
@@ -1501,6 +1563,8 @@ interface ScrapeSource {
   html: string;
   finalUrl: string;
   decodeWarnings: ScrapeWarning[];
+  /** 首次抓取时间；selector 重提取沿用，避免脚注日期漂移 */
+  scrapedAt: Date;
 }
 
 interface ScrapePreview extends ScrapeDraft {
@@ -1515,6 +1579,8 @@ const scrapeSource = ref<ScrapeSource | null>(null);
 const scrapeSelector = ref("");
 const scrapeSelectorError = ref("");
 const scrapePreview = ref<ScrapePreview | null>(null);
+const scrapeViewMode = ref<"markdown" | "rendered">("markdown");
+const scrapeCoverFailed = ref(false);
 
 const categories = ref<any[]>([]);
 const showCategoryForm = ref(false);
@@ -1524,6 +1590,27 @@ const editingCategoryId = ref<number | null>(null);
 const tags = ref<any[]>([]);
 const showTagForm = ref(false);
 const tagForm = ref({ name: "", slug: "" });
+
+const scrapePreviewHtml = computed(() => {
+  const markdown = scrapePreview.value?.markdown;
+  if (!markdown) return "";
+  try {
+    return renderMarkdown(markdown);
+  } catch {
+    return "";
+  }
+});
+
+const scrapeCategoryName = computed(() => {
+  const id = scrapePreview.value?.categoryId;
+  const category = categories.value.find((item) => Number(item.id) === id);
+  return category?.name || t("admin.scrape_default_category");
+});
+
+// 新预览 / 重新提取后重置封面加载失败状态
+watch(scrapePreview, () => {
+  scrapeCoverFailed.value = false;
+});
 
 const configForm = ref({
   site_title: "",
@@ -1739,6 +1826,8 @@ async function handleLogin() {
       currentUserId.value = userId;
       localStorage.setItem("admin_role", role);
       localStorage.setItem("admin_user_id", String(userId));
+      // 换账号登录后回到文章页，避免沿用上一个会话的管理员专属标签
+      currentTab.value = "articles";
       isLoggedIn.value = true;
     } else {
       loginError.value = data.message || t("admin.login_error");
@@ -1759,6 +1848,7 @@ async function handleLogout() {
   localStorage.removeItem("admin_token");
   localStorage.removeItem("admin_role");
   localStorage.removeItem("admin_user_id");
+  currentTab.value = "articles";
   isLoggedIn.value = false;
 }
 
@@ -1919,10 +2009,8 @@ function previewFromDraft(
 ): ScrapePreview {
   return {
     ...meta,
-    title: draft.title,
-    markdown: draft.markdown,
+    ...draft,
     warnings: [...warnings, ...draft.warnings],
-    images: draft.images,
   };
 }
 
@@ -1939,6 +2027,7 @@ async function runScrape() {
   scrapeLoading.value = true;
   scrapeError.value = "";
   scrapeSelectorError.value = "";
+  const scrapedAt = new Date();
   try {
     const res = await fetch(
       `${API}/admin/scrape?url=${encodeURIComponent(target)}`,
@@ -1975,13 +2064,18 @@ async function runScrape() {
       await import("../utils/scrape");
     // #34：按 BOM / Content-Type / <meta charset> 解码字节，未知字符集回退 UTF-8
     const decoded = decodeHtmlBytes(bytes, res.headers.get("Content-Type"));
-    const draft: ScrapeDraft = buildScrapeDraft(decoded.html, finalUrl);
+    // #35：元数据映射只匹配已有标签；来源脚注日期固定为本次抓取日期
+    const draft: ScrapeDraft = buildScrapeDraft(decoded.html, finalUrl, {
+      existingTags: tags.value.map((tag) => tag.name),
+      scrapedAt,
+    });
 
     // 原始 HTML 留在内存，供 selector「重新提取」本地重跑（不重新请求源站）
     scrapeSource.value = {
       html: decoded.html,
       finalUrl,
       decodeWarnings: decoded.warnings,
+      scrapedAt,
     };
     scrapeSelector.value = "";
     scrapePreview.value = previewFromDraft(draft, decoded.warnings, {
@@ -2022,6 +2116,8 @@ async function reextractScrape() {
   try {
     const draft = mod.buildScrapeDraft(source.html, source.finalUrl, {
       selector: scrapeSelector.value,
+      existingTags: tags.value.map((tag) => tag.name),
+      scrapedAt: source.scrapedAt,
     });
     scrapePreview.value = previewFromDraft(draft, source.decodeWarnings, {
       finalUrl: current.finalUrl,
@@ -2051,9 +2147,13 @@ function editScrapedDraft() {
   articleForm.value = {
     ...emptyArticleForm(),
     title: draft.title,
+    slug: draft.slug,
+    summary: draft.summary,
     content: draft.markdown,
-    // #33：抓取草稿预填分类 1，其余字段沿用空白表单（状态 draft）
-    category_id: "1",
+    cover_image: draft.coverImage,
+    category_id: String(draft.categoryId),
+    status: draft.status,
+    tags: [...draft.tags],
   };
   newTagInput.value = "";
   editorMode.value = "edit";
@@ -2781,6 +2881,26 @@ watch(currentTab, (tab) => {
   margin-bottom: 0.4rem;
 }
 
+.scrape-summary {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+
+.scrape-cover {
+  margin-bottom: 0.75rem;
+}
+
+.scrape-cover img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .scrape-meta {
   font-size: 0.8rem;
   color: var(--color-text-secondary);
@@ -2822,6 +2942,15 @@ watch(currentTab, (tab) => {
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.scrape-rendered {
+  padding: 1rem;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   max-height: 60vh;
   overflow-y: auto;
 }

@@ -92,7 +92,7 @@ describe("buildScrapeDraft", () => {
     expect(draft.images).toEqual({ total: 1, unresolved: 0 });
   });
 
-  it("selector 命中时只转换所选子树，并跳过 Readability", () => {
+  it("selector 命中时只转换所选子树（Readability 仅提供标题）", () => {
     const html = `<!doctype html>
 <html><head><title>Page Title</title></head>
 <body>
@@ -109,8 +109,8 @@ describe("buildScrapeDraft", () => {
     expect(draft.markdown).toContain("Inside content.");
     expect(draft.markdown).not.toContain("Outside content.");
     expect(draft.markdown).not.toContain("Site menu");
-    // 正文 H1 与标题同名时去重
-    expect(draft.markdown).not.toContain("Selected Title");
+    // 正文 H1 与标题同名时去重（脚注里的标题不算正文重复）
+    expect(draft.markdown).not.toContain("# Selected Title");
     expect(draft.warnings).toEqual([]);
   });
 
@@ -221,5 +221,130 @@ describe("buildScrapeDraft", () => {
       "![ok](https://publisher.example/img/ok.png)"
     );
     expect(draft.markdown).not.toContain("data:");
+  });
+});
+
+const METADATA_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Title Tag</title>
+    <meta name="description" content="Meta <b>description</b> for the draft." />
+    <meta property="og:description" content="OG description should lose." />
+    <meta property="og:image" content="/images/cover.jpg" />
+    <meta name="keywords" content="TypeScript, Rust，Web" />
+  </head>
+  <body>
+    <article>
+      <h1>A Complete Article</h1>
+      <p>Body paragraph with enough words for Readability to keep it.</p>
+      <a rel="tag">Web</a>
+      <a rel="tag">Go</a>
+    </article>
+  </body>
+</html>`;
+
+describe("buildScrapeDraft 元数据", () => {
+  it("映射标题、摘要、封面、标签、slug、分类与状态", () => {
+    const draft = buildScrapeDraft(
+      METADATA_HTML,
+      "https://publisher.example/article",
+      { existingTags: ["TypeScript", "Web"] }
+    );
+
+    expect(draft.title).toBe("Title Tag");
+    expect(draft.summary).toBe("Meta description for the draft.");
+    expect(draft.coverImage).toBe("https://publisher.example/images/cover.jpg");
+    expect(draft.tags).toEqual(["TypeScript", "Web"]);
+    expect(draft.slug).toBe("");
+    expect(draft.categoryId).toBe(1);
+    expect(draft.status).toBe("draft");
+  });
+
+  it("摘要回退正文前 120 字，封面缺失时留空", () => {
+    const longText = "A".repeat(130);
+    const html = `<!doctype html>
+<html><head><title>Fallback Summary</title></head>
+<body><article><h1>Fallback Summary</h1><p>${longText}</p></article></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/post");
+
+    expect(draft.summary).toBe("A".repeat(120));
+    expect(draft.coverImage).toBe("");
+  });
+
+  it("标题按 og:title → <title> 回退", () => {
+    const html = `<!doctype html>
+<html><head>
+  <meta property="og:title" content="OG Title" />
+  <title>Title Tag</title>
+</head><body><h1 hidden>Site</h1></body></html>`;
+
+    const withOg = buildScrapeDraft(html, "https://publisher.example/post");
+    expect(withOg.title).toBe("OG Title");
+
+    const titleOnly = html.replace(
+      '<meta property="og:title" content="OG Title" />',
+      ""
+    );
+    expect(
+      buildScrapeDraft(titleOnly, "https://publisher.example/post").title
+    ).toBe("Title Tag");
+  });
+
+  it("标签只保留已有标签，未匹配的丢弃且不创建新标签", () => {
+    const draft = buildScrapeDraft(
+      METADATA_HTML,
+      "https://publisher.example/article",
+      { existingTags: ["TypeScript", "Web"] }
+    );
+    expect(draft.tags).toEqual(["TypeScript", "Web"]);
+
+    const noExisting = buildScrapeDraft(
+      METADATA_HTML,
+      "https://publisher.example/article"
+    );
+    expect(noExisting.tags).toEqual([]);
+  });
+
+  it("追加来源脚注，转义标题中的 ]，抓取日期可注入", () => {
+    const html = `<!doctype html>
+<html><head><title>A [Draft] Title</title></head>
+<body><article><h1>A [Draft] Title</h1><p>Body text for the footnote.</p></article></body></html>`;
+
+    const draft = buildScrapeDraft(
+      html,
+      "https://publisher.example/source?x=1",
+      { scrapedAt: new Date(2026, 9, 20) }
+    );
+
+    expect(draft.markdown).toContain(
+      "---\n\n> 原文：[A [Draft\\] Title](https://publisher.example/source?x=1)（抓取于 2026-10-20）"
+    );
+  });
+
+  it("标题为空时脚注链接文字回退为 final URL", () => {
+    const html = `<!doctype html>
+<html><head></head><body><div hidden>Fallback body</div></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/no-title", {
+      scrapedAt: new Date(2026, 9, 20),
+    });
+
+    expect(draft.title).toBe("");
+    expect(draft.markdown).toContain(
+      "> 原文：[https://publisher.example/no-title](https://publisher.example/no-title)（抓取于 2026-10-20）"
+    );
+  });
+
+  it("CJK 字数按汉字逐字、拉丁文按词统计", () => {
+    const html = `<!doctype html>
+<html><head><title>字数</title></head>
+<body><div class="content"><p>中文内容 Hello world</p></div></body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/post", {
+      selector: ".content",
+    });
+
+    expect(draft.wordCount).toBe(6);
   });
 });
