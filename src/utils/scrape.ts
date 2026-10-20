@@ -120,8 +120,10 @@ function countWords(plainText: string): number {
 }
 
 /**
- * 标签候选：meta keywords + 正文 tag 链接（rel="tag" 或 /tag(s)/ 路径）。
- * 只保留站点已有标签的精确匹配，未匹配项直接丢弃；绝不创建新标签。
+ * 标签候选：meta keywords + 正文区域 tag 链接（rel="tag" 或 /tag(s)/ 路径）。
+ * 链接优先限定在 <article>，其次 <main>，最后退回 <body>，避免侧栏标签云
+ * 把文章没有的标签带进草稿。只保留站点已有标签的精确匹配，未匹配项直接
+ * 丢弃；绝不创建新标签。
  */
 function extractTags(doc: Document, existingTags: readonly string[]): string[] {
   const allowed = new Set(
@@ -129,25 +131,27 @@ function extractTags(doc: Document, existingTags: readonly string[]): string[] {
   );
   if (allowed.size === 0) return [];
 
+  const tagRoot =
+    doc.querySelector("article") ||
+    doc.querySelector('main, [role="main"]') ||
+    doc.body;
   const candidates = (
     doc.querySelector('meta[name="keywords"]')?.getAttribute("content") || ""
   )
     .split(/[,，]/)
     .concat(
-      Array.from(doc.querySelectorAll(TAG_LINK_SELECTOR)).map((link) =>
-        normalizeText(link.textContent)
+      Array.from(tagRoot.querySelectorAll(TAG_LINK_SELECTOR)).flatMap((link) =>
+        normalizeText(link.textContent).split(/[,，]/)
       )
     );
 
   const matched: string[] = [];
   const seen = new Set<string>();
   for (const candidate of candidates) {
-    for (const raw of candidate.split(/[,，]/)) {
-      const name = raw.trim();
-      if (!name || seen.has(name) || !allowed.has(name)) continue;
-      seen.add(name);
-      matched.push(name);
-    }
+    const name = candidate.trim();
+    if (!name || seen.has(name) || !allowed.has(name)) continue;
+    seen.add(name);
+    matched.push(name);
   }
   return matched;
 }
@@ -170,7 +174,10 @@ function formatScrapeDate(date: Date): string {
 }
 
 function escapeFootnoteLabel(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/]/g, "\\]");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\[/g, "\\[")
+    .replace(/]/g, "\\]");
 }
 
 /** 来源脚注：原文链接 + 抓取日期。标题为空时用 final URL 作链接文字。 */

@@ -291,6 +291,26 @@ describe("buildScrapeDraft 元数据", () => {
     ).toBe("Title Tag");
   });
 
+  it("只采集正文区域的 tag 链接，忽略侧栏标签云", () => {
+    const html = `<!doctype html>
+<html><head><title>Tag Scope</title></head>
+<body>
+  <article>
+    <h1>Tag Scope</h1>
+    <p>Article body with enough words for Readability to keep it.</p>
+    <a rel="tag">Web</a>
+  </article>
+  <aside><a rel="tag">Rust</a></aside>
+  <footer><a href="/tags/go/">Go</a></footer>
+</body></html>`;
+
+    const draft = buildScrapeDraft(html, "https://publisher.example/post", {
+      existingTags: ["Web", "Rust", "Go"],
+    });
+
+    expect(draft.tags).toEqual(["Web"]);
+  });
+
   it("标签只保留已有标签，未匹配的丢弃且不创建新标签", () => {
     const draft = buildScrapeDraft(
       METADATA_HTML,
@@ -306,7 +326,7 @@ describe("buildScrapeDraft 元数据", () => {
     expect(noExisting.tags).toEqual([]);
   });
 
-  it("追加来源脚注，转义标题中的 ]，抓取日期可注入", () => {
+  it("追加来源脚注，转义标题中的方括号，抓取日期可注入", () => {
     const html = `<!doctype html>
 <html><head><title>A [Draft] Title</title></head>
 <body><article><h1>A [Draft] Title</h1><p>Body text for the footnote.</p></article></body></html>`;
@@ -318,7 +338,7 @@ describe("buildScrapeDraft 元数据", () => {
     );
 
     expect(draft.markdown).toContain(
-      "---\n\n> 原文：[A [Draft\\] Title](https://publisher.example/source?x=1)（抓取于 2026-10-20）"
+      "---\n\n> 原文：[A \\[Draft\\] Title](https://publisher.example/source?x=1)（抓取于 2026-10-20）"
     );
   });
 

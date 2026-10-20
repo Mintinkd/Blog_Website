@@ -2014,6 +2014,14 @@ function previewFromDraft(
   };
 }
 
+/** 初次抓取与 selector 重提取共用同一组标签/日期参数。 */
+function scrapeBuildOptions(scrapedAt: Date) {
+  return {
+    existingTags: tags.value.map((tag) => tag.name),
+    scrapedAt,
+  };
+}
+
 async function runScrape() {
   const target = scrapeUrl.value.trim();
   if (!target) {
@@ -2065,10 +2073,11 @@ async function runScrape() {
     // #34：按 BOM / Content-Type / <meta charset> 解码字节，未知字符集回退 UTF-8
     const decoded = decodeHtmlBytes(bytes, res.headers.get("Content-Type"));
     // #35：元数据映射只匹配已有标签；来源脚注日期固定为本次抓取日期
-    const draft: ScrapeDraft = buildScrapeDraft(decoded.html, finalUrl, {
-      existingTags: tags.value.map((tag) => tag.name),
-      scrapedAt,
-    });
+    const draft: ScrapeDraft = buildScrapeDraft(
+      decoded.html,
+      finalUrl,
+      scrapeBuildOptions(scrapedAt)
+    );
 
     // 原始 HTML 留在内存，供 selector「重新提取」本地重跑（不重新请求源站）
     scrapeSource.value = {
@@ -2116,8 +2125,7 @@ async function reextractScrape() {
   try {
     const draft = mod.buildScrapeDraft(source.html, source.finalUrl, {
       selector: scrapeSelector.value,
-      existingTags: tags.value.map((tag) => tag.name),
-      scrapedAt: source.scrapedAt,
+      ...scrapeBuildOptions(source.scrapedAt),
     });
     scrapePreview.value = previewFromDraft(draft, source.decodeWarnings, {
       finalUrl: current.finalUrl,
