@@ -100,6 +100,48 @@ describe("文章正文服务端渲染器", () => {
     expect(html).toContain("<a>data</a>");
   });
 
+  it("丢弃 iframe / template / 媒体子树文本，保留 textarea / option 文本", () => {
+    const html = renderMarkdownServer(
+      [
+        '<iframe src="https://evil.example/frame">iframe fallback</iframe>',
+        "",
+        "<template><p>template fallback</p></template>",
+        "",
+        "<audio>audio fallback</audio>",
+        "",
+        "<video>video fallback</video>",
+        "",
+        "<title>title fallback</title>",
+        "",
+        "<svg><text>svg fallback</text></svg>",
+        "",
+        "<textarea>textarea text</textarea>",
+        "",
+        "<option>option text</option>",
+      ].join("\n")
+    );
+
+    expect(html).not.toContain("fallback");
+    expect(html).toContain("textarea text");
+    expect(html).toContain("option text");
+  });
+
+  it("对 target / rel 执行 URL scheme 校验，安全值保留", () => {
+    const html = renderMarkdownServer(
+      [
+        '<a href="https://example.com" target="javascript:alert(1)" rel="javascript:alert(1)">bad</a>',
+        "",
+        '<a href="https://example.com" target="_blank" rel="noopener noreferrer">good</a>',
+      ].join("\n")
+    );
+
+    expect(html).toContain('<a href="https://example.com">bad</a>');
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain(
+      '<a href="https://example.com" target="_blank" rel="noopener noreferrer">good</a>'
+    );
+  });
+
   it("保留安全的原始 HTML（class/id/span）", () => {
     const html = renderMarkdownServer(
       '<div class="note" id="note">原始 <span>HTML</span></div>'

@@ -9,7 +9,7 @@
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
 - **Element Plus** — 后台管理UI组件库
-- **marked + DOMPurify / sanitize-html** — Markdown渲染（后台预览经 DOMPurify 消毒，服务端正文渲染器经 sanitize-html 消毒，共用一份正文白名单；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖与 prose.css 的 hljs 样式暂为渲染侧残留）
+- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览仍走既有的 `marked.parse` + 默认 DOMPurify；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖与 prose.css 的 hljs 样式暂为渲染侧残留）
 
 ### 后端
 
@@ -83,8 +83,8 @@
 │   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
 │   ├── utils/
 │   │   ├── api.ts               # API请求工具
-│   │   ├── markdown.ts          # Markdown渲染（后台预览，消费共享正文白名单）
-│   │   ├── markdownPolicy.ts    # 文章正文标签/属性/URL scheme 白名单（预览与服务端渲染共用）
+│   │   ├── markdown.ts          # Markdown渲染（DOMPurify 消毒，消费共享正文白名单）
+│   │   ├── markdownPolicy.ts    # 文章正文标签/属性/URL scheme 白名单（DOMPurify 与 sanitize-html 共用）
 │   │   ├── markdownServer.ts    # 服务端 Markdown 渲染（marked + sanitize-html，Workers 可用）
 │   │   ├── escape.ts            # 转义工具（escapeHtml/escapeAttr/safePathSegment/sanitizeHighlight）
 │   │   ├── theme.ts             # 主题切换

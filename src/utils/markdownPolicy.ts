@@ -55,6 +55,13 @@ export const ARTICLE_BODY_ATTRS = [
 ] as const;
 
 /**
+ * 需要做 URL scheme 校验的属性。DOMPurify 会检查所有非 URI 安全属性；
+ * 正文白名单中除 `href` / `src` 外，只有 `target` / `rel` 不在其
+ * URI_SAFE_ATTRIBUTES 内，因此这里与 DOMPurify 的实际校验面一致。
+ */
+export const ARTICLE_BODY_URI_ATTRS = ["href", "src", "target", "rel"] as const;
+
+/**
  * 正文允许的属性通配（与后台预览的 DOMPurify 默认口径一致：
  * data-* / aria-* 是惰性属性，不执行脚本）。
  */
@@ -87,6 +94,43 @@ const ARTICLE_BODY_URI_REGEXP = new RegExp(
   "i"
 );
 
+/**
+ * 内容随标签一起丢弃的标签：逐字对齐 DOMPurify 默认的 `FORBID_CONTENTS`。
+ * DOMPurify 剥除这些标签时不保留子树文本（script / iframe / template / svg 等），
+ * sanitize-html 需通过 `nonTextTags` 复现同一口径。
+ *
+ * 注：`thead` 虽在正文白名单内，但 sanitize-html 只对未放行标签应用
+ * nonTextTags，因此不会影响 GFM 表格的表头。
+ */
+export const ARTICLE_BODY_FORBID_CONTENT_TAGS = [
+  "annotation-xml",
+  "audio",
+  "colgroup",
+  "desc",
+  "foreignobject",
+  "head",
+  "iframe",
+  "math",
+  "mi",
+  "mn",
+  "mo",
+  "ms",
+  "mtext",
+  "noembed",
+  "noframes",
+  "noscript",
+  "plaintext",
+  "script",
+  "selectedcontent",
+  "style",
+  "svg",
+  "template",
+  "thead",
+  "title",
+  "video",
+  "xmp",
+] as const;
+
 /** 后台预览用配置（DOMPurify）。 */
 export const ARTICLE_BODY_DOMPURIFY_CONFIG: Config = {
   ALLOWED_TAGS: [...ARTICLE_BODY_TAGS],
@@ -101,6 +145,11 @@ export const ARTICLE_BODY_DOMPURIFY_CONFIG: Config = {
  * 服务端渲染器用配置（sanitize-html）。
  * `img` 额外放行 `data:`，与 DOMPurify 对媒体标签的 data URI 处理保持一致；
  * 链接上的 `data:` 仍会被剥除。
+ *
+ * 已知差异：DOMPurify 默认会丢弃与 document / form 属性同名的 `id`
+ * （DOM clobbering 保护，如 `id="body"`），sanitize-html 没有等价能力。
+ * 当前文章详情页仍会在客户端用 DOMPurify 复消毒后才插入正文，故暂不扩大暴露面；
+ * T2 移除客户端兜底前必须复核该差异（保留一次 DOMPurify 复消毒，或为 id 增加 denylist）。
  */
 export const ARTICLE_BODY_SANITIZE_HTML_OPTIONS: IOptions = {
   allowedTags: [...ARTICLE_BODY_TAGS],
@@ -109,7 +158,9 @@ export const ARTICLE_BODY_SANITIZE_HTML_OPTIONS: IOptions = {
   },
   allowedSchemes: [...ARTICLE_BODY_URI_SCHEMES],
   allowedSchemesByTag: { img: [...ARTICLE_BODY_URI_SCHEMES, "data"] },
+  allowedSchemesAppliedToAttributes: [...ARTICLE_BODY_URI_ATTRS],
   allowProtocolRelative: true,
+  nonTextTags: [...ARTICLE_BODY_FORBID_CONTENT_TAGS],
   disallowedTagsMode: "discard",
 };
 
