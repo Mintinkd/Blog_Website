@@ -23,6 +23,8 @@
   "article.not_found": "Article Not Found",
   "article.back_home": "Back to Home",
   "article.load_error": "Failed to load, please refresh",
+  "article.server_error": "The service is temporarily unavailable. Please try again later.",
+  "article.retry": "Retry",
   "article.loading": "Loading article...",
   "article.minutes_read": "min read",
   "article.views": "views",

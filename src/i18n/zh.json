@@ -23,6 +23,8 @@
   "article.not_found": "文章未找到",
   "article.back_home": "返回首页",
   "article.load_error": "加载失败，请刷新重试",
+  "article.server_error": "服务暂时不可用，请稍后重试。",
+  "article.retry": "重试",
   "article.loading": "加载文章中...",
   "article.minutes_read": "分钟",
   "article.views": "次阅读",
