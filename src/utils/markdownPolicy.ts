@@ -142,14 +142,200 @@ export const ARTICLE_BODY_DOMPURIFY_CONFIG: Config = {
 };
 
 /**
+ * DOM clobbering 高危 id：与 document / form 上会遮蔽应用代码的属性同名。
+ *
+ * DOMPurify 默认按 `value in document || value in formElement` 动态丢弃这类
+ * `id`；sanitize-html 运行在无 DOM 的 Workers 环境，无法做同样的动态检查。
+ * 这里维护一份保守名单（另在 transformTags 中丢弃 `on*` 事件处理器名），
+ * 覆盖会直接遮蔽常用 DOM API 的 id；普通锚点 id（如 `section-1`）原样保留。
+ * 新增依赖的 DOM API 时需同步补充此表与回归测试。
+ */
+export const ARTICLE_BODY_FORBIDDEN_IDS = [
+  // Document / Window
+  "URL",
+  "activeElement",
+  "adoptNode",
+  "anchors",
+  "applets",
+  "body",
+  "characterSet",
+  "charset",
+  "compatMode",
+  "contentType",
+  "cookie",
+  "createAttribute",
+  "createAttributeNS",
+  "createComment",
+  "createDocumentFragment",
+  "createElement",
+  "createElementNS",
+  "createEvent",
+  "createNodeIterator",
+  "createProcessingInstruction",
+  "createRange",
+  "createTextNode",
+  "createTreeWalker",
+  "currentScript",
+  "defaultView",
+  "designMode",
+  "dir",
+  "doctype",
+  "documentElement",
+  "documentURI",
+  "domain",
+  "embeds",
+  "execCommand",
+  "forms",
+  "getElementById",
+  "getElementsByClassName",
+  "getElementsByName",
+  "getElementsByTagName",
+  "getElementsByTagNameNS",
+  "getSelection",
+  "head",
+  "images",
+  "implementation",
+  "importNode",
+  "inputEncoding",
+  "lastModified",
+  "links",
+  "location",
+  "plugins",
+  "querySelector",
+  "querySelectorAll",
+  "readyState",
+  "referrer",
+  "scripts",
+  "styleSheets",
+  "title",
+  "visibilityState",
+  "write",
+  "writeln",
+  // Element / Node
+  "appendChild",
+  "attributes",
+  "baseURI",
+  "childElementCount",
+  "childNodes",
+  "children",
+  "classList",
+  "className",
+  "clientHeight",
+  "clientLeft",
+  "clientTop",
+  "clientWidth",
+  "cloneNode",
+  "closest",
+  "compareDocumentPosition",
+  "contains",
+  "firstChild",
+  "firstElementChild",
+  "getAttribute",
+  "getAttributeNS",
+  "getAttributeNames",
+  "getAttributeNode",
+  "getAttributeNodeNS",
+  "getBoundingClientRect",
+  "getClientRects",
+  "getRootNode",
+  "hasAttribute",
+  "hasAttributeNS",
+  "hasAttributes",
+  "hasChildNodes",
+  "id",
+  "innerHTML",
+  "insertAdjacentElement",
+  "insertAdjacentHTML",
+  "insertAdjacentText",
+  "insertBefore",
+  "isConnected",
+  "isDefaultNamespace",
+  "isEqualNode",
+  "isSameNode",
+  "lastChild",
+  "lastElementChild",
+  "localName",
+  "matches",
+  "namespaceURI",
+  "nextElementSibling",
+  "nextSibling",
+  "nodeName",
+  "nodeType",
+  "nodeValue",
+  "normalize",
+  "outerHTML",
+  "ownerDocument",
+  "parentElement",
+  "parentNode",
+  "previousElementSibling",
+  "previousSibling",
+  "removeAttribute",
+  "removeAttributeNS",
+  "removeAttributeNode",
+  "removeChild",
+  "replaceChild",
+  "replaceChildren",
+  "scrollHeight",
+  "scrollLeft",
+  "scrollTop",
+  "scrollWidth",
+  "setAttribute",
+  "setAttributeNS",
+  "setAttributeNode",
+  "setAttributeNodeNS",
+  "shadowRoot",
+  "slot",
+  "tagName",
+  "textContent",
+  "toggleAttribute",
+  // EventTarget
+  "addEventListener",
+  "dispatchEvent",
+  "removeEventListener",
+  // HTMLFormElement
+  "acceptCharset",
+  "action",
+  "autocomplete",
+  "checkValidity",
+  "elements",
+  "encoding",
+  "enctype",
+  "length",
+  "method",
+  "name",
+  "noValidate",
+  "rel",
+  "reportValidity",
+  "requestSubmit",
+  "reset",
+  "submit",
+  "target",
+  // Object.prototype
+  "constructor",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+] as const;
+
+const ARTICLE_BODY_FORBIDDEN_ID_SET = new Set<string>(
+  ARTICLE_BODY_FORBIDDEN_IDS
+);
+
+/**
  * 服务端渲染器用配置（sanitize-html）。
  * `img` 额外放行 `data:`，与 DOMPurify 对媒体标签的 data URI 处理保持一致；
  * 链接上的 `data:` 仍会被剥除。
  *
- * 已知差异：DOMPurify 默认会丢弃与 document / form 属性同名的 `id`
- * （DOM clobbering 保护，如 `id="body"`），sanitize-html 没有等价能力。
- * 当前文章详情页仍会在客户端用 DOMPurify 复消毒后才插入正文，故暂不扩大暴露面；
- * T2 移除客户端兜底前必须复核该差异（保留一次 DOMPurify 复消毒，或为 id 增加 denylist）。
+ * `transformTags` 复现 DOMPurify 的 DOM clobbering 防护：`id` 与 document /
+ * form 属性同名时整条属性丢弃，`on*` 事件处理器名同样丢弃。
  */
 export const ARTICLE_BODY_SANITIZE_HTML_OPTIONS: IOptions = {
   allowedTags: [...ARTICLE_BODY_TAGS],
@@ -162,6 +348,18 @@ export const ARTICLE_BODY_SANITIZE_HTML_OPTIONS: IOptions = {
   allowProtocolRelative: true,
   nonTextTags: [...ARTICLE_BODY_FORBID_CONTENT_TAGS],
   disallowedTagsMode: "discard",
+  transformTags: {
+    "*": (tagName, attribs) => {
+      const id = attribs.id;
+      if (
+        typeof id === "string" &&
+        (ARTICLE_BODY_FORBIDDEN_ID_SET.has(id) || /^on[a-z]+$/.test(id))
+      ) {
+        delete attribs.id;
+      }
+      return { tagName, attribs };
+    },
+  },
 };
 
 /** Markdown 解析选项：预览与服务端渲染共用，保证 GFM 输出一致。 */

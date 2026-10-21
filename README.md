@@ -83,6 +83,8 @@
 │   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
 │   ├── utils/
 │   │   ├── api.ts               # API请求工具
+│   │   ├── articleDate.ts       # 文章发布日期格式化（服务端首屏与客户端 locale 切换共用）
+│   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（ok / not-found / error → 200 / 404 / 502）
 │   │   ├── markdown.ts          # Markdown渲染（DOMPurify 消毒，消费共享正文白名单）
 │   │   ├── markdownPolicy.ts    # 文章正文标签/属性/URL scheme 白名单（DOMPurify 与 sanitize-html 共用）
 │   │   ├── markdownServer.ts    # 服务端 Markdown 渲染（marked + sanitize-html，Workers 可用）
@@ -93,6 +95,7 @@
 │   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
+│   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用）
 │   │   └── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
 │   └── types/
 │       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
@@ -152,7 +155,7 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（jsdom）：抓取管线测试
-├── tests/                        # 前端单元测试（抓取管线 HTML/字节 fixture）
+├── tests/                        # 前端单元测试（抓取管线 HTML/字节 fixture + 文章 SSR 取数接缝）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
@@ -191,7 +194,7 @@ D1 (SQLite) 共 10 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`，前端通过 Astro API 路由代理到 Worker。
+所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。
 
 ### 公开接口
 
@@ -430,7 +433,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（jsdom）覆盖抓取管线：`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的 SSR 取数接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射（该文件用 `@vitest-environment node` 覆盖默认 jsdom）。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
 
 ### Worker 后端开发
 
@@ -511,7 +514,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 | `blog-api`          | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）             |
 | `blog_website`      | Worker | —                                | Git集成自动创建（冗余，不冲突） |
 
-前端通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker。
+浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
 
 ### 手动部署
 
@@ -528,7 +531,7 @@ npx wrangler deploy
 ## 自定义域名
 
 - **前端（Pages）** — 在 Cloudflare Pages 项目设置中绑定自定义域名，例如本项目的 `blog.zenfishlog.dpdns.org`。
-- **API Worker** — 前端通过 Astro API 路由（`/api/v1/*`）同源代理到 `blog-api` Worker，因此**无需**为 Worker 单独配置自定义域名或路由；自定义域名仅作用于 Pages 即可覆盖全站访问。
+- **API Worker** — 浏览器通过 Astro API 路由（`/api/v1/*`）同源代理到 `blog-api` Worker，文章详情 SSR 页与 RSS 在服务端直连 Worker origin；因此**无需**为 Worker 单独配置自定义域名或路由。自定义域名仅作用于 Pages 即可覆盖全站访问。
 
 ## 多语言 (i18n)
 

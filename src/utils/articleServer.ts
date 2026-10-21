@@ -39,6 +39,9 @@ export interface LoadArticleOptions {
   origin?: string;
 }
 
+/** 上游取数超时；超时与网络失败一样映射为 error（502 + 重试入口）。 */
+const FETCH_TIMEOUT_MS = 8_000;
+
 /**
  * 文章详情页取数：请求时直连 Worker API（与 RSS 相同），不走同源代理。
  *
@@ -54,14 +57,19 @@ export async function loadArticleForPage(
   options: LoadArticleOptions = {}
 ): Promise<ArticleLoadResult> {
   const origin = options.origin ?? WORKER_ORIGIN;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let response: Response;
 
   try {
     response = await fetch(
-      `${origin}/api/v1/articles/${encodeURIComponent(slug)}`
+      `${origin}/api/v1/articles/${encodeURIComponent(slug)}`,
+      { signal: controller.signal }
     );
   } catch {
     return { status: "error" };
+  } finally {
+    clearTimeout(timer);
   }
 
   if (response.status === 404) return { status: "not-found" };

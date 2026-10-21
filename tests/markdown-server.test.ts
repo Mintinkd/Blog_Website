@@ -150,4 +150,24 @@ describe("文章正文服务端渲染器", () => {
     expect(html).toContain('<div class="note" id="note">');
     expect(html).toContain("<span>HTML</span>");
   });
+
+  it("丢弃与 document / form 属性同名的 id（DOM clobbering）", () => {
+    const html = renderMarkdownServer(
+      [
+        '<div id="body">body</div>',
+        '<div id="forms">forms</div>',
+        '<div id="cookie">cookie</div>',
+        '<div id="createElement">createElement</div>',
+        '<div id="onclick">onclick</div>',
+        '<div id="section-1">safe</div>',
+      ].join("")
+    );
+
+    expect(html).not.toContain('id="body"');
+    expect(html).not.toContain('id="forms"');
+    expect(html).not.toContain('id="cookie"');
+    expect(html).not.toContain('id="createElement"');
+    expect(html).not.toContain('id="onclick"');
+    expect(html).toContain('id="section-1"');
+  });
 });

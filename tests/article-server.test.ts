@@ -63,7 +63,8 @@ describe("文章页服务端取数", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.example.test/api/v1/articles/%E6%9C%8D%E5%8A%A1%E7%AB%AF%20%E6%B8%B2%E6%9F%93"
+      "https://api.example.test/api/v1/articles/%E6%9C%8D%E5%8A%A1%E7%AB%AF%20%E6%B8%B2%E6%9F%93",
+      { signal: expect.any(AbortSignal) }
     );
     expect(result).toEqual({ status: "ok", article: publishedArticle });
   });
@@ -148,6 +149,32 @@ describe("文章页服务端取数", () => {
     await expect(
       loadArticleForPage("offline", { origin: "https://api.example.test" })
     ).resolves.toEqual({ status: "error" });
+  });
+
+  it("上游长时间不响应时超时映射为 error", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_url: string, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener("abort", () => {
+                reject(new DOMException("Aborted", "AbortError"));
+              });
+            })
+        )
+      );
+
+      const pending = loadArticleForPage("slow", {
+        origin: "https://api.example.test",
+      });
+      await vi.advanceTimersByTimeAsync(8_000);
+
+      await expect(pending).resolves.toEqual({ status: "error" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("响应不是合法 JSON 映射为 error", async () => {

@@ -82,6 +82,15 @@ const initialCss = buildCss(initialSettings);
         else document.documentElement.setAttribute('data-locale', navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en');
       })();
     </script>
+    <noscript>
+      <style is:inline>
+        /* 无 JS 时 reveal 元素不能停留在初始 opacity: 0，保证正文/标题可读 */
+        [data-reveal] {
+          opacity: 1 !important;
+          transform: none !important;
+        }
+      </style>
+    </noscript>
     <ClientRouter />
     {/* SSR 阶段预内联 settings 生成的 CSS 变量；客户端 initSettings 会用同一 ID 覆盖，保持单一来源 */}
     <style id="dynamic-settings" set:html={initialCss}></style>
