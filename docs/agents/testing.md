@@ -1,4 +1,8 @@
-# Worker 测试
+# 测试
+
+本文件覆盖 worker、前端单元测试与 Playwright 浏览器回归；按改动面选择对应小节。
+
+## Worker 测试
 
 `worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。
 
@@ -55,9 +59,26 @@ node scripts/verify-article-ssr.mjs
 - 未知 slug 返回 404，上游失败返回 502 且渲染重试入口；
 - 控制台无页面脚本报错（404 / 502 导航文档自身触发的资源错误、以及被主动阻断的 motion chunk 资源错误按预期过滤）。
 
-回归上下文固定 `locale: zh-CN`，避免 CI 的 en-US 默认值让中文 UI 文案断言漂移。
+回归上下文固定 `locale: zh-CN`，保证中文 UI 文案断言稳定。
 
 `ARTICLE_API_ORIGIN` 只在 dev 且显式设置时生效；生产构建忽略它，继续走 `WORKER_ORIGIN`（`src/utils/workerOrigin.ts`）。
+
+### 新增回归检查单
+
+浏览器回归只锁只有在完整页面里才能确认的行为：SSR 首屏的可读性、水合、禁用 JS、computed style、资源加载失败。数据映射 / 三态 / 转发等接缝优先放 node vitest；同一行为不要两边重复测。
+
+先定最小矩阵：服务端 HTML 可读、JS 正常水合、禁用 JS、关键失败态（如 404 / 502）、资源失败兜底；按页面契约裁剪，不要只测 happy path。写完逐条过：
+
+- **SSR 证据来自 HTTP 响应。** 服务端正文 / meta 直接读页面响应（或禁用 JS 的首个文档），不要从水合后的 DOM 反推；浏览器用例只负责水合、交互和兜底。
+- **服务端请求也隔离了吗？** `page.route()` 只拦浏览器请求；SSR 的 fetch 用 dev-only origin 指向本地 mock，并在断言前确认 mock 命中数增加（文章 SSR 的 `/__stats` 预检）。
+- **能证明连的是本次 mock 吗？** 端口固定且与 origin 一致；回归模式启用 `strictPort`；冲突直接失败，避免顺延端口或复用别人的服务。
+- **无 JS / reveal 可见性是量出来的吗？** 用独立 context 关闭 JS，读取 `getComputedStyle` 的 `opacity` 与尺寸，并同时检查容器和子元素。
+- **兜底断言卡在看门狗之前吗？** 阻断资源后从 `DOMContentLoaded` 起算，用明显小于页面看门狗的预算断言失败标记；预算过宽会让看门狗掩盖 catch 分支失效。
+- **等待条件可观察吗？** 用 `waitForFunction` / locator 状态 / `expect.poll` 等条件等待，不用固定 `waitForTimeout` 猜时间；兜底预算从事件锚点起算。
+- **环境固定了吗？** 每个场景独立 context；固定 `locale`（CI Chromium 默认 en-US）、viewport，必要时时区；中文文案断言不能依赖本机语言，语义选择器优先。
+- **失败会变红吗？** 等待挂载 / 标记出现不要用空 `catch` 吞掉；控制台与 `pageerror` 过滤限定到具体 URL + 错误文本，宽泛的 `/ERR_FAILED/` 会把新错误变成通过。
+- **共享定义只有一份吗？** mock、脚本、断言共用的端口、路径、资源匹配器放同一 fixture 模块，避免三处各写一份后漂移。
+- **CI 化后还能稳定复现吗？** 本地按文档命令可复现；CI 入口拉起 dev server、等待就绪、失败打印日志、退出清理进程，mock 由脚本自己拉起；外部 API 指向本地不可达地址；先选高价值且稳定的一条，其余保留手动。
 
 ## 约定
 

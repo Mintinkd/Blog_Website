@@ -12,9 +12,9 @@ The five canonical triage roles use their default label strings. See `docs/agent
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
-### Worker tests
+### Tests
 
-vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request. See `docs/agents/testing.md`.
+vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request. Playwright regression commands and design checklist: `docs/agents/testing.md` (article SSR is a CI gate; nav is manual).
 
 ## Shell environment
 
