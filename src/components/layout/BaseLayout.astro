@@ -17,6 +17,10 @@ export interface Props {
   description?: string;
   keywords?: string[];
   ogImage?: string;
+  /** 文章页传 `article`，其余页面保持默认 `website`。 */
+  ogType?: 'website' | 'article';
+  /** `og:type=article` 时的 ISO 8601 发布时间。 */
+  publishedTime?: string;
   canonicalUrl?: string;
   friendLinks?: boolean;
 }
@@ -26,6 +30,8 @@ const {
   description = '',
   keywords = [],
   ogImage,
+  ogType = 'website',
+  publishedTime,
   canonicalUrl,
   friendLinks = true,
 } = Astro.props;
@@ -63,11 +69,14 @@ const initialCss = buildCss(initialSettings);
     <meta name="description" content={description} data-page-set={description ? 'true' : ''} />
     {keywords.length > 0 && <meta name="keywords" content={keywords.join(',')} />}
     <link rel="canonical" href={fullCanonicalUrl} />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:title" content={title} />
     {description && <meta property="og:description" content={description} />}
     <meta property="og:url" content={fullCanonicalUrl} />
     {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogType === 'article' && publishedTime && (
+      <meta property="article:published_time" content={publishedTime} />
+    )}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />

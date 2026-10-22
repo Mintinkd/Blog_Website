@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { buildArticlePageMeta } from '../../utils/articleMeta';
 import { httpStatusForArticleResult, loadArticleForPage } from '../../utils/articleServer';
 import { renderMarkdownServer } from '../../utils/markdownServer';
 import {
@@ -21,6 +22,11 @@ const result = slug
 
 Astro.response.status = httpStatusForArticleResult(result);
 
+// 每篇文章自己的 head 元信息：canonical / og:image 都以 Astro.site 绝对化。
+const seo = buildArticlePageMeta(result, {
+  siteUrl: Astro.site ?? new URL(Astro.url.origin),
+});
+
 const article = result.status === 'ok' ? result.article : null;
 const category = article?.category ?? null;
 const tags = article?.tags ?? [];
@@ -33,7 +39,14 @@ const categoryGradStyle = categoryGradVars(categoryColor);
 const categoryNameStyle = categoryNameVars(categoryColor);
 ---
 
-<BaseLayout title="文章详情" description="">
+<BaseLayout
+  title={seo.title}
+  description={seo.description}
+  canonicalUrl={seo.canonicalUrl}
+  ogImage={seo.ogImage}
+  ogType={seo.ogType}
+  publishedTime={seo.publishedTime}
+>
   {article ? (
     <article class="article-detail" id="article-detail">
       <header class="article-header" data-reveal-stagger>
