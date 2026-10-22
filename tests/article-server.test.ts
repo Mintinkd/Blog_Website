@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { guardHtmlResponse } from "../scripts/cloudflare-guards.mjs";
 import {
   applyArticleResponseHeaders,
   httpStatusForArticleResult,
@@ -99,7 +100,7 @@ describe("文章页服务端取数", () => {
     expect(forwarded.get("x-real-ip")).toBe("203.0.113.9");
   });
 
-  it("没有 cf-connecting-ip 时回退到 x-forwarded-for 的第一跳", async () => {
+  it("没有 cf-connecting-ip 时不转发 X-Real-IP（不采信客户端 X-Forwarded-For）", async () => {
     const fetchMock = stubFetch(
       jsonResponse({ code: 0, message: "ok", data: publishedArticle })
     );
@@ -112,7 +113,7 @@ describe("文章页服务端取数", () => {
     });
 
     const forwarded = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
-    expect(forwarded.get("x-real-ip")).toBe("198.51.100.7");
+    expect(forwarded.get("x-real-ip")).toBeNull();
     expect(forwarded.get("cookie")).toBeNull();
   });
 
@@ -273,6 +274,22 @@ describe("文章页服务端取数", () => {
     ).resolves.toEqual({ status: "error" });
   });
 
+  it("2xx 但响应体非法时仍回传已下发的 Set-Cookie（避免重试再计数）", async () => {
+    const response = new Response("<html>bad gateway</html>", { status: 200 });
+    response.headers.append(
+      "Set-Cookie",
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax"
+    );
+    stubFetch(response);
+
+    await expect(
+      loadArticleForPage("bad-json", { origin: "https://api.example.test" })
+    ).resolves.toEqual({
+      status: "error",
+      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax"],
+    });
+  });
+
   it("业务码非 0 映射为 error", async () => {
     stubFetch(jsonResponse({ code: 10008, message: "boom", data: null }));
 
@@ -346,6 +363,35 @@ describe("文章页响应头", () => {
       "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
       "view_8=1; Path=/; Max-Age=86400; SameSite=Lax",
     ]);
+  });
+
+  it("error 结果携带 Set-Cookie 时也原样回传", () => {
+    const headers = new Headers();
+
+    applyArticleResponseHeaders(headers, {
+      status: "error",
+      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax"],
+    });
+
+    expect(headers.getSetCookie()).toEqual([
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
+    ]);
+  });
+
+  it("与 HTML 护栏组合后仍保留私有缓存指令", () => {
+    const headers = new Headers();
+
+    applyArticleResponseHeaders(headers, {
+      status: "ok",
+      article: publishedArticle,
+      setCookies: [],
+    });
+    guardHtmlResponse(headers, "text/html; charset=utf-8");
+
+    const cacheControl = headers.get("cache-control") ?? "";
+    expect(cacheControl).toContain("private");
+    expect(cacheControl).toContain("no-cache");
+    expect(cacheControl).toContain("no-transform");
   });
 
   it("not-found / error 不带 Set-Cookie", () => {
