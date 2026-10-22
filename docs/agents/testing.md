@@ -6,6 +6,21 @@
 
 根目录的抓取管线测试用 vitest + jsdom：`npm test`（配置见 `vitest.config.ts`，fixture 测试放 `tests/`）。CI 在前端 `npm run check` 之后、构建之前执行；测试外部行为（HTML + final URL / 字节 → 标题、Markdown、selector 提取与字符集解码），不依赖真实站点。
 
+## 浏览器回归（Playwright）
+
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行：
+
+```bash
+npm i -D playwright
+npx playwright install chromium
+npx astro dev --port 4321
+node scripts/verify-all-pages-nav.mjs
+```
+
+端口用 `npx astro dev --port 4321`（`npm run dev -- --port` 的参数透传在本机不可靠）；脚本默认连 `http://localhost:4321`，可用 `BASE` 覆盖。
+
+文章详情是 SSR：取数发生在 Astro 服务端，`page.route()` 只能拦浏览器请求，拦不到 `loadArticleForPage` 的 fetch。离线验证 200 路径需要让页面在 dev 下读取可覆盖的 Worker origin（如 `ARTICLE_API_ORIGIN`）并启动本地 mock；具体接缝见 #41。禁用 JS 的可见性断言要检查 computed `opacity`，不能只用 Playwright 的 `toBeVisible()`——`opacity:0` 仍算 visible。
+
 ## 约定
 
 - 测试文件放 `worker/tests/`；`tsconfig.test.json` 使其参与 `npm run typecheck`。
