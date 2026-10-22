@@ -22,7 +22,7 @@ Windows `pwsh` runs `-NoProfile` with CP936; UTF-8 native output (`gh`, Chinese 
 
 ## CI/CD
 
-GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules / security-headers drift checks). Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
+GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules / security-headers drift checks; article SSR browser regression before build). Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
 
 ## Repo docs
 

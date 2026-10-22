@@ -8,14 +8,14 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` / `scripts/verify-article-ssr.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归。`scripts/verify-article-ssr.mjs` 同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；CI 只跑文章 SSR 一条，两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
 
 ```bash
 npm install --no-save playwright
 npx playwright install chromium
 ```
 
-Windows 也可直接用系统 Edge，跳过下载（脚本读 `PW_CHANNEL`）：
+CI 固定 `playwright@1.64.1` 并安装 Chromium。Windows 本地也可直接用系统 Edge，跳过下载（脚本读 `PW_CHANNEL`）：
 
 ```powershell
 $env:PW_CHANNEL='msedge'
@@ -30,13 +30,14 @@ node scripts/verify-all-pages-nav.mjs
 
 端口用 `npx astro dev --port 4321`（`npm run dev -- --port` 的参数透传在本机不可靠）；脚本默认连 `http://localhost:4321`，可用 `BASE` 覆盖。
 
-### 文章详情 SSR（#41）
+### 文章详情 SSR（#41，CI + 手动）
 
-文章取数发生在 Astro 服务端，`page.route()` 只拦浏览器请求，拦不到 `loadArticleForPage` 的 fetch。因此用 dev-only 的 `ARTICLE_API_ORIGIN` 覆盖 + 本地 mock：
+文章取数发生在 Astro 服务端，`page.route()` 只拦浏览器请求，拦不到 `loadArticleForPage` 的 fetch。因此用 dev-only 的 `ARTICLE_API_ORIGIN` 覆盖 + 本地 mock。CI 在构建前启动 dev server 并运行同一脚本；下面的双终端命令用于本地手动复现：
 
 ```powershell
 # 终端 1：启动开发服务器，文章页取数指向 mock
 $env:ARTICLE_API_ORIGIN='http://127.0.0.1:4322'
+$env:SITEMAP_API_BASE='http://127.0.0.1:9'   # 避免 dev 启动时访问真实 sitemap API
 npx astro dev --port 4321
 
 # 终端 2：脚本自己拉起 mock（端口 4322，MOCK_PORT 可覆盖）
@@ -44,7 +45,7 @@ $env:PW_CHANNEL='msedge'   # 仅用系统 Edge 时
 node scripts/verify-article-ssr.mjs
 ```
 
-4321 / 4322 必须空闲：设置 `ARTICLE_API_ORIGIN` 时 `astro.config.mjs` 会为 Vite 启用 `strictPort`，端口被占用直接启动失败，避免自动顺延后抢占 mock 的 4322。脚本启动后还会确认 dev server 确实把 SSR 取数打到了本次 mock（`/__stats` 命中数），不匹配就立即失败并打印正确的 `ARTICLE_API_ORIGIN` 启动命令；mock 端口被占用也会直接报错。若要换端口，`MOCK_PORT` 必须与 dev server 的 `ARTICLE_API_ORIGIN` 保持一致。
+4321 / 4322 必须空闲：设置 `ARTICLE_API_ORIGIN` 时 `astro.config.mjs` 会为 Vite 启用 `strictPort`，端口被占用直接启动失败，避免自动顺延后抢占 mock 的 4322。脚本启动后还会确认 dev server 确实把 SSR 取数打到了本次 mock（`/__stats` 命中数），不匹配就立即失败并打印正确的 `ARTICLE_API_ORIGIN` 启动命令；mock 端口被占用也会直接报错。若要换端口，`MOCK_PORT` 必须与 dev server 的 `ARTICLE_API_ORIGIN` 保持一致。`SITEMAP_API_BASE` 指向不可达本地端口，dev 启动时的 sitemap 取数会失败并回退为空列表，不影响文章页回归。
 
 脚本不访问真实 Worker：`scripts/mock-article-api.mjs` 提供 200（`ssr-regression`）/ 404（`missing-fixture`）/ 500→页面 502（`boom-fixture`）与站点标题；浏览器侧的同源 API 请求由 Playwright `page.route()` fulfill。`BASE` 可覆盖站点地址。断言范围：
 

@@ -52,6 +52,54 @@ jobs:
       - name: Test Frontend
         run: npm test
 
+      # P3：Playwright 不入 package.json；CI 固定回归验证过的版本。
+      - name: Install Playwright Chromium
+        timeout-minutes: 10
+        env:
+          PLAYWRIGHT_VERSION: "1.64.1"
+        run: |
+          npm install --no-save "playwright@${PLAYWRIGHT_VERSION}"
+          npx playwright install --with-deps chromium
+
+      # P3：文章 SSR 回归在部署前跑；两条导航回归仍手动，避免首版 CI 过重。
+      - name: Test Article SSR (Playwright)
+        timeout-minutes: 10
+        env:
+          ARTICLE_API_ORIGIN: http://127.0.0.1:4322
+          # 避免 dev 启动时为 sitemap 访问真实 API；失败会回退为空列表。
+          SITEMAP_API_BASE: http://127.0.0.1:9
+        run: |
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/astro-dev.log"
+          ./node_modules/.bin/astro dev --port 4321 >"$LOG" 2>&1 &
+          DEV_PID=$!
+          cleanup() {
+            pkill -P "$DEV_PID" 2>/dev/null || true
+            kill "$DEV_PID" 2>/dev/null || true
+            wait "$DEV_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://localhost:4321/ >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Astro dev server did not become ready within 60s." >&2
+            tail -n 200 "$LOG" >&2
+            exit 1
+          fi
+
+          if ! node scripts/verify-article-ssr.mjs; then
+            echo "Article SSR regression failed; Astro dev log:" >&2
+            tail -n 200 "$LOG" >&2
+            exit 1
+          fi
+
       - name: Build Astro site
         run: npm run build
 
