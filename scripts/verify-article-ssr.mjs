@@ -244,6 +244,8 @@ function collectErrors(page, { ignored = [] } = {}) {
 async function openPage(browser, options = {}) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
+    // CI 的 Chromium 默认 en-US；404/502 断言中文 UI，固定 locale 避免环境差异。
+    locale: "zh-CN",
     ...options.context,
   });
   const page = await context.newPage();

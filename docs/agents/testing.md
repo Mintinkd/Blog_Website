@@ -55,6 +55,8 @@ node scripts/verify-article-ssr.mjs
 - 未知 slug 返回 404，上游失败返回 502 且渲染重试入口；
 - 控制台无页面脚本报错（404 / 502 导航文档自身触发的资源错误、以及被主动阻断的 motion chunk 资源错误按预期过滤）。
 
+回归上下文固定 `locale: zh-CN`，避免 CI 的 en-US 默认值让中文 UI 文案断言漂移。
+
 `ARTICLE_API_ORIGIN` 只在 dev 且显式设置时生效；生产构建忽略它，继续走 `WORKER_ORIGIN`（`src/utils/workerOrigin.ts`）。
 
 ## 约定
