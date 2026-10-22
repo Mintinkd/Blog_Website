@@ -113,6 +113,7 @@
 │   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
 │   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
+│   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
@@ -163,7 +164,7 @@
 ├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖）
 ├── .node-version
 ├── .npmrc
-├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
+├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD / shell 导航）
 ├── CODING_STANDARDS.md          # 判断类编码规则（code-review Standards 轴依据）
 ├── GLOSSARY.md                  # 领域术语表（domain-modeling 沉淀）
 └── docs/                         # 设计与功能文档
@@ -171,7 +172,7 @@
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
     ├── SITE_SETTINGS.md         # 可视化配置中心说明
     ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源 / 0003 抓取代理与浏览器端提取 / 0004 文章正文请求时 SSR）
-    ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing）
+    ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing / windows-shell）
     ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
     └── security/
         ├── cloudflare-guards.md # Cloudflare 注入护栏（JSD CSP violation / Speed Brain 预取 503）

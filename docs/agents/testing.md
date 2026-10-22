@@ -8,10 +8,10 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` / `scripts/verify-article-ssr.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` / `scripts/verify-article-ssr.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
 
 ```bash
-npm i -D playwright
+npm install --no-save playwright
 npx playwright install chromium
 ```
 

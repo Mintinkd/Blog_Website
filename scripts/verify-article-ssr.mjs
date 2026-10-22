@@ -2,7 +2,7 @@
  * #41 文章详情 SSR 浏览器回归。
  *
  * 用法：
- *   1) npm i -D playwright && npx playwright install chromium
+ *   1) npm install --no-save playwright && npx playwright install chromium
  *      （Windows 也可直接用系统 Edge：PW_CHANNEL=msedge）
  *   2) 启动开发服务器，并把文章页 SSR 取数指向本地 mock：
  *      $env:ARTICLE_API_ORIGIN='http://127.0.0.1:4322'; npx astro dev --port 4321
@@ -17,7 +17,6 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
 import {
   ARTICLE,
   ARTICLE_PATH,
@@ -29,6 +28,19 @@ import {
   browserApiFixture,
   isMotionChunkUrl,
 } from "./article-ssr-fixture.mjs";
+
+let chromium;
+try {
+  ({ chromium } = await import("playwright"));
+} catch (error) {
+  if (error?.code === "ERR_MODULE_NOT_FOUND") {
+    console.error(
+      "缺少 Playwright。先运行 `npm install --no-save playwright`；Windows 也可用系统 Edge（$env:PW_CHANNEL='msedge'）。"
+    );
+    process.exit(2);
+  }
+  throw error;
+}
 
 const BASE = (process.env.BASE || "http://localhost:4321").replace(/\/+$/, "");
 const BASE_ORIGIN = new URL(BASE).origin;

@@ -16,6 +16,10 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 vitest in `worker/tests/`; shared-pipeline seams first, handler seams on request. See `docs/agents/testing.md`.
 
+## Shell environment
+
+Windows `pwsh` runs `-NoProfile` with CP936; UTF-8 native output (`gh`, Chinese docs) needs an explicit prelude, and `rg` is unavailable. See `docs/agents/windows-shell.md`.
+
 ## CI/CD
 
 GitHub Actions at `.github/workflows/` — `deploy.yml` gates then deploys (floor: settings-rules / security-headers drift checks). Dotted directories (`.github`, `.agents`) are hidden from the glob tool; list them with the shell, not glob.
