@@ -8,30 +8,41 @@
  *      $env:ARTICLE_API_ORIGIN='http://127.0.0.1:4322'; npx astro dev --port 4321
  *   3) node scripts/verify-article-ssr.mjs
  *
- * 脚本自己拉起 scripts/mock-article-api.mjs，不访问真实 Worker。
+ * 脚本自己拉起 scripts/mock-article-api.mjs，不访问真实 Worker；启动后先确认
+ * dev server 确实把 SSR 取数打到了本次 mock，否则立即失败并给出启动命令。
  * 覆盖：服务端 HTML 含正文 / 禁用 JS 可见（computed opacity）/ 阻断 motion
  * chunk 后首屏仍可见 / 404 / 502 / 控制台无报错。
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import {
   ARTICLE,
   ARTICLE_PATH,
   BODY_MARKER,
+  DEFAULT_MOCK_PORT,
   ERROR_PATH,
   MISSING_PATH,
+  MOCK_PATHS,
   browserApiFixture,
+  isMotionChunkUrl,
 } from "./article-ssr-fixture.mjs";
 
-const BASE = process.env.BASE || "http://localhost:4321";
+const BASE = (process.env.BASE || "http://localhost:4321").replace(/\/+$/, "");
 const BASE_ORIGIN = new URL(BASE).origin;
-const MOCK_PORT = Number(process.env.MOCK_PORT || 4322);
+const MOCK_PORT = Number(process.env.MOCK_PORT || DEFAULT_MOCK_PORT);
+if (!Number.isInteger(MOCK_PORT) || MOCK_PORT <= 0 || MOCK_PORT > 65535) {
+  throw new Error(`非法 MOCK_PORT：${process.env.MOCK_PORT}`);
+}
 const MOCK_ORIGIN = `http://127.0.0.1:${MOCK_PORT}`;
 const MOCK_SCRIPT = fileURLToPath(
   new URL("./mock-article-api.mjs", import.meta.url)
 );
+// 页面 watchdog 是 3s；catch 路径应当在 DOMContentLoaded 后很快落标记。预算
+// 必须明显小于 watchdog，否则「阻断 chunk」测试会被 3s 超时兜底误判为通过。
+const MOTION_CATCH_BUDGET_MS = 1500;
 
 const failures = [];
 
@@ -65,9 +76,94 @@ function startMock() {
     [MOCK_SCRIPT, "--port", String(MOCK_PORT)],
     { stdio: ["ignore", "pipe", "pipe"] }
   );
+  const stderr = [];
+  let exit = null;
   child.stdout.on("data", (chunk) => process.stdout.write(`[mock] ${chunk}`));
-  child.stderr.on("data", (chunk) => process.stderr.write(`[mock] ${chunk}`));
-  return child;
+  child.stderr.on("data", (chunk) => {
+    stderr.push(chunk.toString());
+    process.stderr.write(`[mock] ${chunk}`);
+  });
+  child.once("exit", (code, signal) => {
+    exit = { code, signal };
+  });
+  return {
+    child,
+    stderr,
+    get exit() {
+      return exit;
+    },
+  };
+}
+
+/** mock 端口被占用时子进程会立即退出；不能让健康检查一直等到超时。 */
+async function waitForMock(mock, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (mock.exit) break;
+    try {
+      const res = await fetch(`${MOCK_ORIGIN}${MOCK_PATHS.health}`);
+      if (res.ok) {
+        // 端口可能已被另一个（恰好也有 /health 的）进程占用：给子进程一个
+        // 事件循环周期报告 EADDRINUSE，不能把别人的服务当成自己的 mock。
+        await sleep(100);
+        if (mock.exit) break;
+        return;
+      }
+    } catch {
+      /* 尚未 listen */
+    }
+    await sleep(100);
+  }
+  if (mock.exit) {
+    const detail = mock.stderr.join("").trim();
+    throw new Error(
+      `mock 启动失败（端口 ${MOCK_PORT} 可能被占用）。` +
+        (detail ? `\n${detail}` : "")
+    );
+  }
+  throw new Error(`等待 mock ${MOCK_ORIGIN} 就绪超时`);
+}
+
+async function stopMock(mock) {
+  if (mock.exit) return;
+  mock.child.kill();
+  await Promise.race([once(mock.child, "exit"), sleep(1000)]).catch(() => {});
+}
+
+async function readMockArticleRequests() {
+  const res = await fetch(`${MOCK_ORIGIN}${MOCK_PATHS.stats}`);
+  if (!res.ok) throw new Error(`mock stats 返回 HTTP ${res.status}`);
+  const stats = await res.json();
+  return Number(stats.articleRequests) || 0;
+}
+
+/**
+ * 先确认 dev server 的 SSR 取数真的打到了本次 mock。否则后续断言只会看到
+ * 真实 Worker 的 502 / 超时，报错信息会误导人。
+ */
+async function assertDevServerUsesMock() {
+  if (BASE_ORIGIN === MOCK_ORIGIN) {
+    throw new Error(
+      `BASE 与 mock 指向同一地址 ${MOCK_ORIGIN}；请让 dev server 与 mock 使用不同端口。`
+    );
+  }
+  const before = await readMockArticleRequests();
+  const res = await fetch(BASE + ARTICLE_PATH);
+  const html = await res.text();
+  const after = await readMockArticleRequests();
+  if (after === before) {
+    throw new Error(
+      `dev server（${BASE}）没有把文章 SSR 取数指向本次 mock（${MOCK_ORIGIN}）。` +
+        `\n请用以下命令重启 dev server 后重试：` +
+        `\n  $env:ARTICLE_API_ORIGIN='${MOCK_ORIGIN}'; npx astro dev --port 4321`
+    );
+  }
+  if (res.status !== 200 || !html.includes(BODY_MARKER)) {
+    throw new Error(
+      `mock 已收到 SSR 取数，但文章页返回 HTTP ${res.status} 且正文标记缺失；` +
+        `请检查 mock fixture 与页面渲染。`
+    );
+  }
 }
 
 async function launchBrowser() {
@@ -81,15 +177,6 @@ async function launchBrowser() {
     throw new Error(
       `无法启动浏览器。先运行 npx playwright install chromium，或设置 PW_CHANNEL=msedge 使用系统 Edge。原始错误：${err.message}`
     );
-  }
-}
-
-function isMotionChunk(url) {
-  try {
-    const pathname = new URL(url).pathname;
-    return /\/motion[\w.-]*\.(?:m?js|ts)$/.test(pathname);
-  } catch {
-    return false;
   }
 }
 
@@ -124,14 +211,18 @@ async function installBrowserFixtures(page) {
 
 function collectErrors(page, { ignored = [] } = {}) {
   const errors = [];
+  const isIgnored = (text, url) =>
+    ignored.some((pattern) =>
+      typeof pattern === "function"
+        ? pattern({ text, url })
+        : pattern.test(text) || pattern.test(url)
+    );
   page.on("console", (message) => {
     if (message.type() !== "error") return;
     const text = message.text();
     const url = message.location()?.url || "";
     if (text.includes("favicon")) return;
-    if (ignored.some((pattern) => pattern.test(text) || pattern.test(url))) {
-      return;
-    }
+    if (isIgnored(text, url)) return;
     errors.push(`${text}${url ? ` (${url})` : ""}`);
   });
   page.on("pageerror", (error) => errors.push(`PAGEERROR: ${error.message}`));
@@ -148,21 +239,22 @@ async function openPage(browser, options = {}) {
   await installBrowserFixtures(page);
   if (options.blockMotion) {
     await page.route(
-      (url) => isMotionChunk(url.href),
+      (url) => isMotionChunkUrl(url.href),
       (route) => route.abort()
     );
   }
   return { context, page, errors };
 }
 
-/** 等页脚 / 岛屿的异步请求落定，避免把尚未触发的报错当成“无报错”。 */
+/**
+ * 等页脚 / 岛屿的异步请求落定，避免把尚未触发的报错当成“无报错”。
+ * 超时直接让用例失败：静默跳过会把「岛屿没挂载」误判成通过。
+ */
 async function waitForIslands(page, { expectArticle = false } = {}) {
-  await page
-    .waitForSelector(
-      ".footer-friend-links .no-links, .footer-friend-links .link-item",
-      { timeout: 8000 }
-    )
-    .catch(() => {});
+  await page.waitForSelector(
+    ".footer-friend-links .no-links, .footer-friend-links .link-item",
+    { timeout: 8000 }
+  );
   if (expectArticle) {
     await page.waitForSelector("#like-button-mount .like-btn", {
       timeout: 8000,
@@ -190,6 +282,9 @@ async function readRevealStyles(page) {
     return {
       title: read(".article-title"),
       summary: read(".article-summary"),
+      // 容器自身的 opacity 也要看：子元素的 computed opacity 不会继承父级，
+      // 只采样 <p> 会漏掉「正文容器仍为 opacity:0」的回归。
+      bodyContainer: read(".article-content"),
       body: read(".article-content p"),
     };
   });
@@ -225,8 +320,9 @@ async function run() {
   const mock = startMock();
   let browser;
   try {
-    await waitForOk(`${MOCK_ORIGIN}/health`);
+    await waitForMock(mock);
     await waitForOk(BASE + "/", 20000);
+    await assertDevServerUsesMock();
 
     browser = await launchBrowser();
 
@@ -267,6 +363,7 @@ async function run() {
             const selectors = [
               ".article-title",
               ".article-summary",
+              ".article-content",
               ".article-content p",
             ];
             return selectors.every((selector) => {
@@ -305,20 +402,40 @@ async function run() {
       }
     });
 
-    await test("阻断 motion chunk 后首屏仍可见", async () => {
+    await test("阻断 motion chunk 后走 catch 兜底且首屏仍可见", async () => {
       const { context, page, errors } = await openPage(browser, {
         blockMotion: true,
-        ignored: [/motion[\w.-]*\.(?:m?js|ts)/, /ERR_FAILED/],
+        // 只忽略被阻断的 motion chunk 自身的资源加载报错；不要用宽泛的
+        // /ERR_FAILED/ 把其他失败请求一并吞掉。
+        ignored: [
+          ({ text, url }) => isMotionChunkUrl(url) && /ERR_FAILED/.test(text),
+        ],
       });
       try {
+        // DOMContentLoaded 在模块脚本执行后触发，从这里计时可以确保预算小于
+        // 页面 3s watchdog：若 catch 失效，标记只会在约 3s 后出现。
         const response = await page.goto(BASE + ARTICLE_PATH, {
-          waitUntil: "load",
+          waitUntil: "domcontentloaded",
         });
         assert.equal(response?.status(), 200);
-        await page.waitForFunction(
-          () => document.documentElement.hasAttribute("data-motion-failed"),
-          undefined,
-          { timeout: 6000 }
+        const started = Date.now();
+        try {
+          await page.waitForFunction(
+            () => document.documentElement.hasAttribute("data-motion-failed"),
+            undefined,
+            { timeout: MOTION_CATCH_BUDGET_MS }
+          );
+        } catch {
+          assert.fail(
+            `阻断 motion chunk 后 ${MOTION_CATCH_BUDGET_MS}ms 内未出现 ` +
+              `data-motion-failed：动态 import 的 catch 兜底可能失效` +
+              `（3s 看门狗不在此预算内，避免误绿）`
+          );
+        }
+        const catchDelay = Date.now() - started;
+        assert.ok(
+          catchDelay < MOTION_CATCH_BUDGET_MS,
+          `data-motion-failed 在 ${catchDelay}ms 后才出现，疑似 3s 看门狗而非 catch 路径`
         );
         await waitForIslands(page, { expectArticle: true });
         await assertFirstScreenVisible(page, "阻断 motion chunk");
@@ -374,7 +491,7 @@ async function run() {
     });
   } finally {
     await browser?.close().catch(() => {});
-    mock.kill();
+    await stopMock(mock);
   }
 
   if (failures.length > 0) {

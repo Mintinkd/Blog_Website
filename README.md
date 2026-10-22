@@ -76,7 +76,7 @@
 │   ├── styles/
 │   │   ├── variables.css        # 设计令牌（颜色、字体、阴影、背景、动效等）
 │   │   ├── global.css           # 全局样式（含 .site-bg 固定背景层）
-│   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级兜底）
+│   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级/加载失败兜底）
 │   │   └── prose.css            # 文章排版样式
 │   ├── generated/
 │   │   └── settings-rules.ts    # 生成物：设置白名单规则（双端同构，禁止手工编辑，issue #27）
@@ -97,7 +97,7 @@
 │   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
-│   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用）
+│   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用；dev-only 文章取数覆盖）
 │   │   └── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
 │   └── types/
 │       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
@@ -160,7 +160,7 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
-├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题接缝）
+├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
@@ -305,10 +305,10 @@ D1 (SQLite) 共 10 张表：
 
 - **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
 - **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
-- **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 非 2xx / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
+- **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 404 以外的非 2xx / 2xx 响应体非法 / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
 - **缓存**：响应 `Cache-Control: private, no-cache`（HTML 护栏再追加 `no-transform`），含访客 Cookie 的页面不会被共享缓存复用。
-- **无 JS / 动效失败**：`<noscript>` 与 `data-motion-failed` 兜底保证标题 / 摘要 / 正文直接可见。
-- **本地回归**：dev 下可用 `ARTICLE_API_ORIGIN` 把文章页取数指向本地 mock；生产始终使用 `WORKER_ORIGIN`。运行方式见 `docs/agents/testing.md`。
+- **无 JS / 动效失败**：`<noscript>` 兜底保证禁用 JS 时标题 / 摘要 / 正文直接可见；motion chunk 动态 import 失败（或 3s 内未完成初始化）时写入 `<html data-motion-failed>`，`motion.css` 同样强制 `[data-reveal]` 可见，避免 JS 仍开启时首屏停在 `opacity:0`。
+- **本地回归**：dev 下可用 `ARTICLE_API_ORIGIN` 把文章页取数指向本地 mock；生产始终使用 `WORKER_ORIGIN`。回归脚本启动后会先确认 mock 收到 SSR 取数，防止误连真实 Worker；运行方式见 `docs/agents/testing.md`。
 
 ## 后台管理
 
@@ -392,7 +392,7 @@ D1 (SQLite) 共 10 张表：
 
 基于 transform / opacity 的轻量动效体系，性能优先、尊重系统偏好，并可在配置中心按需开关。
 
-- **基建**：`src/styles/motion.css`（入场 / 磁吸 / hover 样式 + 强度分级兜底）+ `src/utils/motion.ts`（初始化逻辑）。
+- **基建**：`src/styles/motion.css`（入场 / 磁吸 / hover 样式 + 强度分级 / 加载失败兜底）+ `src/utils/motion.ts`（初始化逻辑）。
 - **能力**：
   - **入场动画** —— 通过 `[data-reveal]` / `[data-reveal="fade-up"]` 与 `[data-reveal-stagger]` 触发，IntersectionObserver 滚动进入视口时播放，支持错峰；
   - **滚动进度条** —— `ScrollProgress.astro` 顶部细进度条；
@@ -402,7 +402,8 @@ D1 (SQLite) 共 10 张表：
 - **分级与兜底**：
   - 动效强度 `motion.intensity`：`normal`（全部）/ `reduced`（仅保留轻量入场与进度条，禁用磁吸 / 视差）/ `off`（全部禁用），写入 `<html data-motion-intensity>`；
   - 视差开关 `motion.parallax`：关闭时写 `data-parallax="off"`；
-  - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差。
+  - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差；
+  - motion chunk 动态 import 失败或 3s 内未完成初始化时，写入 `<html data-motion-failed>`，强制 `[data-reveal]` 可见（与禁用 JS 的 `<noscript>` 兜底互补）。
 - **生命周期**：`BaseLayout.astro` 引入 Astro `ClientRouter` 并在 `astro:page-load` 后调用 `initMotion()`；动态渲染的内容触发 `motion:refresh` 事件重新绑定。
 
 ## 站点配置动态化
@@ -449,7 +450,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。浏览器级回归（文章 SSR 的服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）是手动 Playwright 脚本，安装与启动命令见 `docs/agents/testing.md`。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。浏览器级回归（文章 SSR 的服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）是手动 Playwright 脚本，安装与启动命令见 `docs/agents/testing.md`。
 
 ### Worker 后端开发
 

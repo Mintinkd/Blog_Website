@@ -77,6 +77,10 @@ export default defineConfig({
     assets: "_assets",
   },
   vite: {
+    // #41：文章 SSR 回归把 dev server 与 mock 绑在相邻端口（4321 / 4322）。
+    // Vite 默认在端口被占用时自动顺延，可能直接抢占 mock 的端口；回归模式下
+    // 强制 strictPort，让冲突在启动时就失败，而不是让脚本连错服务。
+    ...(process.env.ARTICLE_API_ORIGIN ? { server: { strictPort: true } } : {}),
     ssr: {
       noExternal: ["element-plus"],
     },

@@ -1,9 +1,41 @@
 /**
  * #41 文章 SSR 浏览器回归的共享 fixture。
  *
- * mock Worker 与 Playwright 脚本共用同一份文章数据：mock 负责在服务端返回它，
- * 脚本断言这份数据确实出现在服务端 HTML / 无 JS / 阻断 motion chunk 的页面里。
+ * mock Worker 与 Playwright 脚本共用同一份文章数据与端点表：mock 负责在服务端
+ * 返回它，脚本断言这份数据确实出现在服务端 HTML / 无 JS / 阻断 motion chunk
+ * 的页面里，并确认 dev server 真的把 SSR 取数指向了本次 mock。
  */
+
+/** mock 默认端口；dev server 的 ARTICLE_API_ORIGIN 必须指向同一端口。 */
+export const DEFAULT_MOCK_PORT = 4322;
+
+/** 浏览器 / mock 共用的端点表，避免脚本与 mock 各写一份字面量。 */
+export const API_PATHS = {
+  config: "/api/v1/config",
+  friendLinks: "/api/v1/friend-links",
+  settingsPublic: "/api/v1/settings/public",
+  articles: "/api/v1/articles/",
+};
+
+/** mock 自身的运维端点（不属于 Worker API）。 */
+export const MOCK_PATHS = {
+  health: "/health",
+  stats: "/__stats",
+};
+
+/**
+ * motion chunk 匹配：dev 是 `/src/utils/motion.ts`，构建产物是
+ * `/motion.<hash>.js`。脚本用同一规则阻断请求并过滤对应的资源报错。
+ */
+export const MOTION_CHUNK_RE = /\/motion[\w.-]*\.(?:m?js|ts)$/;
+
+export function isMotionChunkUrl(url) {
+  try {
+    return MOTION_CHUNK_RE.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
 
 export const SITE_TITLE = "SSR 回归测试站";
 
@@ -53,10 +85,10 @@ export const BODY_MARKER = "SERVER_BODY_MARKER_41";
 
 /** 浏览器端 API fixture（Playwright 拦截同源代理请求，避免打到真实 Worker）。 */
 export function browserApiFixture(pathname) {
-  if (pathname === "/api/v1/config") {
+  if (pathname === API_PATHS.config) {
     return { code: 0, message: "ok", data: { site_title: SITE_TITLE } };
   }
-  if (pathname === "/api/v1/friend-links") {
+  if (pathname === API_PATHS.friendLinks) {
     return { code: 0, message: "ok", data: [] };
   }
   if (pathname.endsWith("/like-status")) {

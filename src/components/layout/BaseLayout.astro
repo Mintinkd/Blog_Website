@@ -356,9 +356,12 @@ const initialCss = buildCss(initialSettings);
         const root = document.documentElement;
         // motion chunk 失败或挂起时，<noscript> 不生效（JS 仍开着），
         // [data-reveal] 会永远停在 opacity:0。兜底标记让 CSS 直接显示首屏。
-        const motionFallback = window.setTimeout(() => {
-          root.setAttribute('data-motion-failed', '');
-        }, 3000);
+        const MOTION_FALLBACK_TIMEOUT_MS = 3000;
+        const markMotionFailed = () => root.setAttribute('data-motion-failed', '');
+        const motionFallback = window.setTimeout(
+          markMotionFailed,
+          MOTION_FALLBACK_TIMEOUT_MS
+        );
         try {
           const { initMotion } = await import('../../utils/motion');
           window.clearTimeout(motionFallback);
@@ -369,7 +372,7 @@ const initialCss = buildCss(initialSettings);
           document.addEventListener('astro:page-load', startMotion);
         } catch {
           window.clearTimeout(motionFallback);
-          root.setAttribute('data-motion-failed', '');
+          markMotionFailed();
         }
       })();
 
