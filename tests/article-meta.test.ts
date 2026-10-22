@@ -176,7 +176,7 @@ describe("文章 SEO 元信息", () => {
 describe("文章页 head 元信息", () => {
   it("成功取到文章时 og:type=article，并带 canonical / 发布时间", () => {
     const meta = buildArticlePageMeta(
-      { status: "ok", article: baseArticle },
+      { status: "ok", article: baseArticle, setCookies: [] },
       { siteUrl }
     );
 

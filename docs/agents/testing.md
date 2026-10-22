@@ -4,7 +4,7 @@
 
 ## 前端单元测试
 
-根目录的前端测试用 vitest：`npm test`（配置见 `vitest.config.ts`，测试放 `tests/`）。默认 jsdom 覆盖抓取管线（HTML + final URL / 字节 → 标题、Markdown、selector 提取与字符集解码）；文章详情页的服务端接缝与 SEO 元信息测试用 `@vitest-environment node`，stub `fetch` 或直接调用纯函数，不依赖真实站点。CI 在前端 `npm run check` 之后、构建之前执行。
+根目录的前端测试用 vitest：`npm test`（配置见 `vitest.config.ts`，测试放 `tests/`）。默认 jsdom 覆盖抓取管线（HTML + final URL / 字节 → 标题、Markdown、selector 提取与字符集解码）；文章详情页的服务端接缝与 SEO 元信息测试用 `@vitest-environment node`，stub `fetch` 或直接调用纯函数，覆盖三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与私有缓存响应头，不依赖真实站点。CI 在前端 `npm run check` 之后、构建之前执行。
 
 ## 浏览器回归（Playwright）
 

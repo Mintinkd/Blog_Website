@@ -85,7 +85,7 @@
 │   │   ├── api.ts               # API请求工具
 │   │   ├── articleDate.ts       # 文章发布日期格式化（服务端首屏与客户端 locale 切换共用）
 │   │   ├── articleMeta.ts       # 文章页 SEO 元信息构造（title/description/canonical/OG，纯函数）
-│   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（ok / not-found / error → 200 / 404 / 502）
+│   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（三态映射、访客 Cookie 转发、Set-Cookie 回传、私有缓存）
 │   │   ├── markdown.ts          # Markdown渲染（DOMPurify 消毒，消费共享正文白名单）
 │   │   ├── markdownPolicy.ts    # 文章正文标签/属性/URL scheme 白名单（DOMPurify 与 sanitize-html 共用）
 │   │   ├── markdownServer.ts    # 服务端 Markdown 渲染（marked + sanitize-html，Workers 可用）
@@ -435,7 +435,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
 
 ### Worker 后端开发
 

@@ -1,7 +1,11 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import { buildArticlePageMeta } from '../../utils/articleMeta';
-import { httpStatusForArticleResult, loadArticleForPage } from '../../utils/articleServer';
+import {
+  applyArticleResponseHeaders,
+  httpStatusForArticleResult,
+  loadArticleForPage,
+} from '../../utils/articleServer';
 import { renderMarkdownServer } from '../../utils/markdownServer';
 import { loadSiteTitle } from '../../utils/siteTitleServer';
 import {
@@ -18,14 +22,16 @@ export const prerender = false;
 // 客户端不再发起文章详情请求，也不做正文拼接；脚本只负责岛屿挂载与阅读增强。
 const { slug } = Astro.params;
 // 文章与站点标题并行取数：配置读取失败时 meta 构造回退默认站名，不阻断文章页。
+// 访客请求交给取数接缝：Cookie 用于阅读量去重，响应头沿用上游 Set-Cookie。
 const [result, siteTitle] = await Promise.all([
   slug
-    ? loadArticleForPage(slug)
+    ? loadArticleForPage(slug, { request: Astro.request })
     : Promise.resolve({ status: 'not-found' } as const),
   loadSiteTitle(),
 ]);
 
 Astro.response.status = httpStatusForArticleResult(result);
+applyArticleResponseHeaders(Astro.response.headers, result);
 
 // 每篇文章自己的 head 元信息：canonical / og:image 都以 Astro.site 绝对化。
 const seo = buildArticlePageMeta(result, {
