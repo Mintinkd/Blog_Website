@@ -8,18 +8,51 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` / `scripts/verify-article-ssr.mjs` 走手动 Playwright 回归，Playwright 不在 `package.json` 依赖里。首次运行：
 
 ```bash
 npm i -D playwright
 npx playwright install chromium
+```
+
+Windows 也可直接用系统 Edge，跳过下载（脚本读 `PW_CHANNEL`）：
+
+```powershell
+$env:PW_CHANNEL='msedge'
+```
+
+### 全站导航
+
+```bash
 npx astro dev --port 4321
 node scripts/verify-all-pages-nav.mjs
 ```
 
 端口用 `npx astro dev --port 4321`（`npm run dev -- --port` 的参数透传在本机不可靠）；脚本默认连 `http://localhost:4321`，可用 `BASE` 覆盖。
 
-文章详情是 SSR：取数发生在 Astro 服务端，`page.route()` 只能拦浏览器请求，拦不到 `loadArticleForPage` 的 fetch。离线验证 200 路径需要让页面在 dev 下读取可覆盖的 Worker origin（如 `ARTICLE_API_ORIGIN`）并启动本地 mock；具体接缝见 #41。禁用 JS 的可见性断言要检查 computed `opacity`，不能只用 Playwright 的 `toBeVisible()`——`opacity:0` 仍算 visible。
+### 文章详情 SSR（#41）
+
+文章取数发生在 Astro 服务端，`page.route()` 只拦浏览器请求，拦不到 `loadArticleForPage` 的 fetch。因此用 dev-only 的 `ARTICLE_API_ORIGIN` 覆盖 + 本地 mock：
+
+```powershell
+# 终端 1：启动开发服务器，文章页取数指向 mock
+$env:ARTICLE_API_ORIGIN='http://127.0.0.1:4322'
+npx astro dev --port 4321
+
+# 终端 2：脚本自己拉起 mock（端口 4322，MOCK_PORT 可覆盖）
+$env:PW_CHANNEL='msedge'   # 仅用系统 Edge 时
+node scripts/verify-article-ssr.mjs
+```
+
+脚本不访问真实 Worker：`scripts/mock-article-api.mjs` 提供 200（`ssr-regression`）/ 404（`missing-fixture`）/ 500→页面 502（`boom-fixture`）与站点标题；浏览器侧的同源 API 请求由 Playwright `page.route()` fulfill。`BASE` 可覆盖站点地址。断言范围：
+
+- 服务端 HTML 含正文 / GFM 表格 / 围栏代码 / 每篇文章 meta，并带 `Cache-Control: private, no-cache` 与阅读量 `Set-Cookie`；
+- 禁用 JS 时标题 / 摘要 / 正文的 computed `opacity` 为 `1`（不能只用 `toBeVisible()`——Playwright 把 `opacity:0` 也算 visible）；
+- 阻断 motion chunk 后 `data-motion-failed` 兜底生效，首屏仍可见；
+- 未知 slug 返回 404，上游失败返回 502 且渲染重试入口；
+- 控制台无页面脚本报错（404 / 502 导航文档自身触发的资源错误按预期过滤）。
+
+`ARTICLE_API_ORIGIN` 只在 dev 且显式设置时生效；生产构建忽略它，继续走 `WORKER_ORIGIN`（`src/utils/workerOrigin.ts`）。
 
 ## 约定
 

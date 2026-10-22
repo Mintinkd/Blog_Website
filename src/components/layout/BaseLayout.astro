@@ -353,14 +353,24 @@ const initialCss = buildCss(initialSettings);
       // initMotion 无清理回调（返回 void）——原代码把调用结果塞进 (()=>void)|null 槽位
       // 属于宽松规则下的死代码（运行时 teardown 恒为 undefined），类型门禁启用后清掉（#26）
       (async () => {
+        const root = document.documentElement;
+        // motion chunk 失败或挂起时，<noscript> 不生效（JS 仍开着），
+        // [data-reveal] 会永远停在 opacity:0。兜底标记让 CSS 直接显示首屏。
+        const motionFallback = window.setTimeout(() => {
+          root.setAttribute('data-motion-failed', '');
+        }, 3000);
         try {
           const { initMotion } = await import('../../utils/motion');
+          window.clearTimeout(motionFallback);
           const startMotion = () => {
             initMotion();
           };
           startMotion();
           document.addEventListener('astro:page-load', startMotion);
-        } catch {}
+        } catch {
+          window.clearTimeout(motionFallback);
+          root.setAttribute('data-motion-failed', '');
+        }
       })();
 
       // 回到顶部：ClientRouter 导航后按钮是新 DOM 元素。scroll 监听只在 window 挂一次，

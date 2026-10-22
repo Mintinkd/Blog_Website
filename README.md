@@ -110,6 +110,9 @@
 │   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
 │   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
 │   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
+│   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
+│   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
+│   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.toml            # Worker配置（旧版，已弃用）
@@ -167,7 +170,7 @@
     ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
     ├── SITE_SETTINGS.md         # 可视化配置中心说明
-    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源 / 0003 抓取代理与浏览器端提取）
+    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源 / 0003 抓取代理与浏览器端提取 / 0004 文章正文请求时 SSR）
     ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing）
     ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
     └── security/
@@ -179,18 +182,18 @@
 
 D1 (SQLite) 共 10 张表：
 
-| 表名            | 说明                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `users`         | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限） |
-| `categories`    | 文章分类（含 created_by 所有权）                                                             |
-| `tags`          | 标签（含 created_by 所有权）                                                                 |
-| `articles`      | 文章（含Markdown原文和HTML渲染结果，author_id作者，category_id默认1）                        |
-| `article_tags`  | 文章-标签多对多关联                                                                          |
-| `comments`      | 评论（含审核状态）                                                                           |
-| `article_likes` | 点赞记录（IP去重）                                                                           |
-| `media_assets`  | 媒体文件元数据（含 uploaded_by 所有权）                                                      |
-| `friend_links`  | 友情链接                                                                                     |
-| `site_config`   | 站点配置（KV结构，含JWT密钥）                                                                |
+| 表名            | 说明                                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `users`         | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                           |
+| `categories`    | 文章分类（含 created_by 所有权）                                                                                       |
+| `tags`          | 标签（含 created_by 所有权）                                                                                           |
+| `articles`      | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；author_id 作者，category_id 默认1） |
+| `article_tags`  | 文章-标签多对多关联                                                                                                    |
+| `comments`      | 评论（含审核状态）                                                                                                     |
+| `article_likes` | 点赞记录（IP去重）                                                                                                     |
+| `media_assets`  | 媒体文件元数据（含 uploaded_by 所有权）                                                                                |
+| `friend_links`  | 友情链接                                                                                                               |
+| `site_config`   | 站点配置（KV结构，含JWT密钥）                                                                                          |
 
 另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。
 
@@ -295,6 +298,17 @@ D1 (SQLite) 共 10 张表：
 | `/about`             | 关于页面                                         | 静态     |
 | `/search`            | 搜索页                                           | 静态     |
 | `/admin`             | 后台管理                                         | 静态     |
+
+### 文章详情页 SSR
+
+文章详情由 Astro 在请求时服务端渲染（issue #36 / [ADR 0004](docs/adr/0004-article-ssr-request-time-rendering.md)）：
+
+- **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
+- **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
+- **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 非 2xx / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
+- **缓存**：响应 `Cache-Control: private, no-cache`（HTML 护栏再追加 `no-transform`），含访客 Cookie 的页面不会被共享缓存复用。
+- **无 JS / 动效失败**：`<noscript>` 与 `data-motion-failed` 兜底保证标题 / 摘要 / 正文直接可见。
+- **本地回归**：dev 下可用 `ARTICLE_API_ORIGIN` 把文章页取数指向本地 mock；生产始终使用 `WORKER_ORIGIN`。运行方式见 `docs/agents/testing.md`。
 
 ## 后台管理
 
@@ -435,7 +449,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。浏览器级回归（文章 SSR 的服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）是手动 Playwright 脚本，安装与启动命令见 `docs/agents/testing.md`。
 
 ### Worker 后端开发
 

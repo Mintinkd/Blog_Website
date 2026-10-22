@@ -8,16 +8,32 @@
 /* ---------- 1. Reveal（滚动入场） ---------- */
 
 @keyframes reveal-up {
-  from { opacity: 0; transform: translate3d(0, var(--motion-translate-md), 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--motion-translate-md), 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 @keyframes reveal-fade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes reveal-scale {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* 初始态隐藏，进入视口（.is-revealed）才播放 */
@@ -26,9 +42,18 @@
   will-change: opacity, transform;
 }
 
-[data-reveal="fade-up"].is-revealed  { animation: reveal-up   var(--motion-duration-base)  var(--motion-ease-decelerate) both; }
-[data-reveal="fade-in"].is-revealed  { animation: reveal-fade var(--motion-duration-base)  var(--motion-ease-standard)    both; }
-[data-reveal="scale-in"].is-revealed { animation: reveal-scale var(--motion-duration-slow) var(--motion-ease-emphasized) both; }
+[data-reveal="fade-up"].is-revealed {
+  animation: reveal-up var(--motion-duration-base) var(--motion-ease-decelerate)
+    both;
+}
+[data-reveal="fade-in"].is-revealed {
+  animation: reveal-fade var(--motion-duration-base) var(--motion-ease-standard)
+    both;
+}
+[data-reveal="scale-in"].is-revealed {
+  animation: reveal-scale var(--motion-duration-slow)
+    var(--motion-ease-emphasized) both;
+}
 
 /* 多个同级元素错位入场：父元素加 [data-reveal-stagger]，JS 给子元素注入 --i 序号 */
 [data-reveal-stagger] > [data-reveal] {
@@ -38,8 +63,9 @@
 /* ---------- 2. Hover 微动 ---------- */
 
 [data-hover="lift"] {
-  transition: transform var(--motion-duration-fast) var(--motion-ease-standard),
-              box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
 }
 [data-hover="lift"]:hover {
   transform: translate3d(0, calc(-1 * var(--motion-translate-sm)), 0);
@@ -47,8 +73,9 @@
 }
 
 [data-hover="glow"] {
-  transition: box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
-              border-color var(--motion-duration-fast) var(--motion-ease-standard);
+  transition:
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 [data-hover="glow"]:hover {
   box-shadow: var(--motion-glow-accent);
@@ -71,7 +98,9 @@
   width: 0%;
   background: linear-gradient(90deg, var(--color-accent), #a78bfa);
   z-index: 200;
-  transition: width 80ms linear, opacity var(--motion-duration-fast);
+  transition:
+    width 80ms linear,
+    opacity var(--motion-duration-fast);
   opacity: 0;
   pointer-events: none;
 }
@@ -126,4 +155,15 @@
 }
 [data-motion-intensity="off"] .scroll-progress {
   display: none !important;
+}
+
+/* ---------- 6. motion chunk 加载失败兜底 ---------- */
+/* BaseLayout 在动态 import 失败/超时后写 data-motion-failed：
+   JS 仍开着，<noscript> 不生效，reveal 元素必须直接可见。 */
+
+[data-motion-failed] [data-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
+  animation: none !important;
+  will-change: auto !important;
 }

@@ -1,4 +1,4 @@
-import { WORKER_ORIGIN } from "./workerOrigin";
+import { resolveArticleApiOrigin } from "./workerOrigin";
 
 /**
  * 文章页 SSR 的站点标题。
@@ -10,7 +10,7 @@ import { WORKER_ORIGIN } from "./workerOrigin";
 const FETCH_TIMEOUT_MS = 800;
 
 export async function loadSiteTitle(
-  origin = WORKER_ORIGIN
+  origin = resolveArticleApiOrigin()
 ): Promise<string | undefined> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

@@ -1,4 +1,4 @@
-import { WORKER_ORIGIN } from "./workerOrigin";
+import { resolveArticleApiOrigin } from "./workerOrigin";
 
 export interface ArticleCategory {
   id: number;
@@ -35,7 +35,7 @@ export type ArticleLoadResult =
   | { status: "error"; setCookies?: string[] };
 
 export interface LoadArticleOptions {
-  /** 覆盖 Worker origin（测试用；生产走 WORKER_ORIGIN）。 */
+  /** 覆盖 Worker origin（测试用；缺省走 dev 覆盖或 WORKER_ORIGIN）。 */
   origin?: string;
   /** 访客请求：转发 Cookie 与 cf-connecting-ip；Cookie 供 API 侧阅读量去重。 */
   request?: Request;
@@ -60,7 +60,7 @@ export async function loadArticleForPage(
   slug: string,
   options: LoadArticleOptions = {}
 ): Promise<ArticleLoadResult> {
-  const origin = options.origin ?? WORKER_ORIGIN;
+  const origin = options.origin ?? resolveArticleApiOrigin();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const requestInit: RequestInit = { signal: controller.signal };
