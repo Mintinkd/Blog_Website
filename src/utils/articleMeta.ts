@@ -9,8 +9,8 @@ import { renderMarkdownPlainText } from "./markdownServer";
  * 文章自己的分享卡片；不生成 JSON-LD。
  */
 
-/** SSR 站名默认值：与 BaseLayout / RSS 的默认站名一致，配置化站名由客户端补齐。 */
-export const DEFAULT_SITE_TITLE = "Blog";
+/** SSR 兜底站名：与 BaseLayout / RSS 的默认站名一致；配置化站名由页面先读 `/api/v1/config`。 */
+const DEFAULT_SITE_TITLE = "Blog";
 
 /** description 回退到正文时的最大字符数（按 Unicode 码点计）。 */
 const DESCRIPTION_FALLBACK_LENGTH = 160;
@@ -42,8 +42,11 @@ export function buildArticleMeta(
   options: ArticleMetaOptions
 ): ArticleMeta {
   return {
-    title: `${article.title.trim()} | ${siteTitleOf(options)}`,
-    description: article.summary.trim() || excerptFromMarkdown(article.content),
+    title: titled(article.title, options),
+    description:
+      article.summary.trim() ||
+      excerptFromMarkdown(article.content) ||
+      article.title.trim(),
     canonicalUrl: articleCanonicalUrl(article.slug, options.siteUrl),
     ogImage: absoluteHttpUrl(article.cover_image, options.siteUrl),
     publishedTime: article.published_at?.trim() || undefined,
@@ -62,20 +65,16 @@ export function buildArticlePageMeta(
     return { ...buildArticleMeta(result.article, options), ogType: "article" };
   }
 
-  const siteTitle = siteTitleOf(options);
-  if (result.status === "not-found") {
-    return {
-      title: `文章未找到 | ${siteTitle}`,
-      description: "文章不存在或尚未发布，请检查链接是否正确。",
-      ogType: "website",
-    };
-  }
+  const [title, description] =
+    result.status === "not-found"
+      ? ["文章未找到", "文章不存在或尚未发布，请检查链接是否正确。"]
+      : ["文章加载失败", "服务暂时不可用，请稍后刷新重试。"];
 
-  return {
-    title: `文章加载失败 | ${siteTitle}`,
-    description: "服务暂时不可用，请稍后刷新重试。",
-    ogType: "website",
-  };
+  return { title: titled(title, options), description, ogType: "website" };
+}
+
+function titled(text: string, options: ArticleMetaOptions): string {
+  return `${text.trim()} | ${siteTitleOf(options)}`;
 }
 
 function siteTitleOf(options: ArticleMetaOptions): string {

@@ -93,6 +93,7 @@
 │   │   ├── theme.ts             # 主题切换
 │   │   ├── categoryColors.ts    # 分类专属色映射（徽标/渐变横幅；hexToRgba/shade 等）
 │   │   ├── siteConfig.ts        # 站点基础配置读取与应用
+│   │   ├── siteTitleServer.ts   # 文章页 SSR 站点标题读取（公共 config，失败回退默认站名）
 │   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
@@ -155,8 +156,8 @@
 ├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
-├── vitest.config.ts              # 根级 vitest（jsdom）：抓取管线测试
-├── tests/                        # 前端单元测试（抓取管线 HTML/字节 fixture + 文章 SSR 取数接缝）
+├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
+├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题接缝）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD 导航）
@@ -394,13 +395,13 @@ D1 (SQLite) 共 10 张表：
 
 前台页面在加载时会自动从 `/api/v1/config` 读取站点配置并动态应用：
 
-| 配置项             | 前台应用位置                           |
-| ------------------ | -------------------------------------- |
-| `site_title`       | 导航栏Logo、页面标题、页脚版权         |
-| `site_subtitle`    | 首页Hero区域副标题                     |
-| `site_description` | 首页Hero描述、meta description、OG描述 |
-| `site_keywords`    | meta keywords                          |
-| `about_content`    | `/about` 页面内容                      |
+| 配置项             | 前台应用位置                                              |
+| ------------------ | --------------------------------------------------------- |
+| `site_title`       | 导航栏Logo、页面标题（首页客户端 / 文章页 SSR）、页脚版权 |
+| `site_subtitle`    | 首页Hero区域副标题                                        |
+| `site_description` | 首页Hero描述、meta description、OG描述                    |
+| `site_keywords`    | meta keywords                                             |
+| `about_content`    | `/about` 页面内容                                         |
 
 - 页面级 description 优先级高于站点级（不会被覆盖）
 - 首页 Hero 区域的默认文案在无配置时显示，有配置后自动替换
@@ -434,7 +435,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。
 
 ### Worker 后端开发
 

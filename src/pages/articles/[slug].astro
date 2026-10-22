@@ -3,6 +3,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 import { buildArticlePageMeta } from '../../utils/articleMeta';
 import { httpStatusForArticleResult, loadArticleForPage } from '../../utils/articleServer';
 import { renderMarkdownServer } from '../../utils/markdownServer';
+import { loadSiteTitle } from '../../utils/siteTitleServer';
 import {
   categoryBadgeVars,
   categoryGradVars,
@@ -16,15 +17,20 @@ export const prerender = false;
 // 请求时直连 Worker API 取文章，正文在服务端渲染后随首屏返回。
 // 客户端不再发起文章详情请求，也不做正文拼接；脚本只负责岛屿挂载与阅读增强。
 const { slug } = Astro.params;
-const result = slug
-  ? await loadArticleForPage(slug)
-  : ({ status: 'not-found' } as const);
+// 文章与站点标题并行取数：配置读取失败时 meta 构造回退默认站名，不阻断文章页。
+const [result, siteTitle] = await Promise.all([
+  slug
+    ? loadArticleForPage(slug)
+    : Promise.resolve({ status: 'not-found' } as const),
+  loadSiteTitle(),
+]);
 
 Astro.response.status = httpStatusForArticleResult(result);
 
 // 每篇文章自己的 head 元信息：canonical / og:image 都以 Astro.site 绝对化。
 const seo = buildArticlePageMeta(result, {
   siteUrl: Astro.site ?? new URL(Astro.url.origin),
+  siteTitle,
 });
 
 const article = result.status === 'ok' ? result.article : null;

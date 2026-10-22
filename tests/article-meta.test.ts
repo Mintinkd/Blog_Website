@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildArticleMeta,
   buildArticlePageMeta,
-  DEFAULT_SITE_TITLE,
 } from "../src/utils/articleMeta";
 import type { ArticleDetail } from "../src/utils/articleServer";
 
@@ -40,12 +39,35 @@ describe("文章 SEO 元信息", () => {
       { siteUrl }
     );
 
-    expect(meta.title).toBe(`服务端渲染实践 | ${DEFAULT_SITE_TITLE}`);
+    expect(meta.title).toBe("服务端渲染实践 | Blog");
     expect(meta.description).toBe("文章摘要");
     expect(meta.canonicalUrl).toBe(
       "https://blog.example.test/articles/%E6%9C%8D%E5%8A%A1%E7%AB%AF%20%E6%B8%B2%E6%9F%93"
     );
     expect(meta.publishedTime).toBe("2026-10-22T00:00:00.000Z");
+  });
+
+  it("站点标题可由 SSR 配置覆盖", () => {
+    const meta = buildArticleMeta(baseArticle, {
+      siteUrl,
+      siteTitle: " My Blog ",
+    });
+
+    expect(meta.title).toBe("服务端渲染实践 | My Blog");
+  });
+
+  it("不同文章得到不同的 title 与 canonical", () => {
+    const first = buildArticleMeta(
+      { ...baseArticle, title: "第一篇文章", slug: "第一篇" },
+      { siteUrl }
+    );
+    const second = buildArticleMeta(
+      { ...baseArticle, title: "第二篇文章", slug: "第二篇" },
+      { siteUrl }
+    );
+
+    expect(first.title).not.toBe(second.title);
+    expect(first.canonicalUrl).not.toBe(second.canonicalUrl);
   });
 
   it("相对封面绝对化，og:image 使用站点域名", () => {
@@ -130,6 +152,15 @@ describe("文章 SEO 元信息", () => {
     );
 
     expect(Array.from(meta.description)).toHaveLength(160);
+  });
+
+  it("summary 与正文都为空时 description 回退到标题", () => {
+    const meta = buildArticleMeta(
+      { ...baseArticle, summary: "   ", content: "   " },
+      { siteUrl }
+    );
+
+    expect(meta.description).toBe("服务端渲染实践");
   });
 
   it("published_at 缺失时不输出发布时间", () => {
