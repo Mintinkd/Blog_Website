@@ -268,8 +268,8 @@ D1 (SQLite) 共 10 张表：
 | GET    | `/config/all`       | 全部配置                                                                                                                   |
 | PUT    | `/config`           | 更新配置                                                                                                                   |
 | GET    | `/friend-links/all` | 全部友链                                                                                                                   |
-| POST   | `/friend-links`     | 创建友链                                                                                                                   |
-| PUT    | `/friend-links/:id` | 更新友链                                                                                                                   |
+| POST   | `/friend-links`     | 创建友链（URL 仅 http/https）                                                                                              |
+| PUT    | `/friend-links/:id` | 更新友链（URL 仅 http/https）                                                                                              |
 | DELETE | `/friend-links/:id` | 删除友链                                                                                                                   |
 | GET    | `/admin/export`     | 导出数据                                                                                                                   |
 | POST   | `/admin/import`     | 导入数据                                                                                                                   |

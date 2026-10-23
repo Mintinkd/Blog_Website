@@ -2,10 +2,17 @@
   <div class="friend-links" :class="variant === 'footer' && 'footer-variant'">
     <h3 class="links-title">友情链接</h3>
     <ul v-if="links.length > 0" class="links-list">
-      <li v-for="link in links" :key="link.id" class="link-item">
-        <a :href="link.url" target="_blank" rel="noopener noreferrer" class="link-url">
+      <li v-for="link in safeLinks" :key="link.id" class="link-item">
+        <a
+          v-if="link.safe_url"
+          :href="link.safe_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="link-url"
+        >
           {{ link.name }}
         </a>
+        <span v-else class="link-url">{{ link.name }}</span>
       </li>
     </ul>
     <p v-else class="no-links">暂无友情链接</p>
@@ -13,21 +20,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from "vue";
+import { safeFriendLinkUrl } from "../../utils/friend-link-url";
 
 const props = defineProps<{ variant?: string }>();
 
 const links = ref<any[]>([]);
 
+/** C1 / issue #43：渲染前兜底，协议非 http/https 不产出可点击 href（存量脏数据同样拦截） */
+const safeLinks = computed(() =>
+  links.value.map((link) => ({
+    ...link,
+    safe_url: safeFriendLinkUrl(link.url),
+  }))
+);
+
 onMounted(async () => {
   try {
-    const response = await fetch('/api/v1/friend-links');
+    const response = await fetch("/api/v1/friend-links");
     const data = await response.json();
     if (data.code === 0 && data.data) {
       links.value = data.data;
     }
   } catch (e) {
-    console.error('Load friend links failed:', e);
+    console.error("Load friend links failed:", e);
   }
 });
 </script>

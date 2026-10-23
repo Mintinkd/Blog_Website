@@ -1,28 +1,91 @@
-import { corsMiddleware, withCors } from './middleware/cors';
-import { withSecurityHeaders } from './middleware/security_headers';
-import { rateLimitMiddleware } from './middleware/rate_limit';
-import { authMiddleware } from './middleware/auth';
-import type { AuthResult } from './middleware/auth';
-import { forbidden } from './utils/response';
-import { handleLogin, handleRefresh, handleChangePassword, handleListUsers, handleCreateUser, handleUpdateUser, handleDeleteUser } from './handlers/auth_handler';
-import { handleListArticles, handleGetArticle, handleCreateArticle, handleUpdateArticle, handleDeleteArticle } from './handlers/article';
-import { handleListCategories, handleCreateCategory, handleUpdateCategory, handleDeleteCategory } from './handlers/category';
-import { handleListTags, handleCreateTag, handleDeleteTag } from './handlers/tag';
-import { handleListComments, handleSubmitComment, handleListAllComments, handleApproveComment, handleRejectComment, handleDeleteComment } from './handlers/comment';
-import { handleSearch } from './handlers/search';
-import { handleToggleLike, handleLikeStatus } from './handlers/like';
-import { handleUploadMedia, handleListMedia, handleDeleteMedia, handleServeMedia } from './handlers/media';
-import { handleGetPublicConfig, handleGetAllConfig, handleUpdateConfig } from './handlers/config';
-import { handleGetPublicSettings, handleGetSettings, handleUpdateSettings, handleResetSettings, handleExportSettings, handleImportSettings } from './handlers/settings';
-import { handleImgProxy } from './handlers/img_proxy';
-import { handleTextProxy } from './handlers/text_proxy';
-import { handleScrape } from './handlers/scrape';
-import { handleListFriendLinks, handleListAllFriendLinks, handleCreateFriendLink, handleUpdateFriendLink, handleDeleteFriendLink } from './handlers/friend_link';
-import { handleExport, handleImport } from './handlers/admin';
-import { handleAcquireLock, handleReleaseLock, handleGetLockStatus, handleForceReleaseLock } from './handlers/edit_lock';
-import { Env } from './index';
+import { corsMiddleware, withCors } from "./middleware/cors";
+import { withSecurityHeaders } from "./middleware/security_headers";
+import { rateLimitMiddleware } from "./middleware/rate_limit";
+import { authMiddleware } from "./middleware/auth";
+import type { AuthResult } from "./middleware/auth";
+import { forbidden } from "./utils/response";
+import {
+  handleLogin,
+  handleRefresh,
+  handleChangePassword,
+  handleListUsers,
+  handleCreateUser,
+  handleUpdateUser,
+  handleDeleteUser,
+} from "./handlers/auth_handler";
+import {
+  handleListArticles,
+  handleGetArticle,
+  handleCreateArticle,
+  handleUpdateArticle,
+  handleDeleteArticle,
+} from "./handlers/article";
+import {
+  handleListCategories,
+  handleCreateCategory,
+  handleUpdateCategory,
+  handleDeleteCategory,
+} from "./handlers/category";
+import {
+  handleListTags,
+  handleCreateTag,
+  handleDeleteTag,
+} from "./handlers/tag";
+import {
+  handleListComments,
+  handleSubmitComment,
+  handleListAllComments,
+  handleApproveComment,
+  handleRejectComment,
+  handleDeleteComment,
+} from "./handlers/comment";
+import { handleSearch } from "./handlers/search";
+import { handleToggleLike, handleLikeStatus } from "./handlers/like";
+import {
+  handleUploadMedia,
+  handleListMedia,
+  handleDeleteMedia,
+  handleServeMedia,
+} from "./handlers/media";
+import {
+  handleGetPublicConfig,
+  handleGetAllConfig,
+  handleUpdateConfig,
+} from "./handlers/config";
+import {
+  handleGetPublicSettings,
+  handleGetSettings,
+  handleUpdateSettings,
+  handleResetSettings,
+  handleExportSettings,
+  handleImportSettings,
+} from "./handlers/settings";
+import { handleImgProxy } from "./handlers/img_proxy";
+import { handleTextProxy } from "./handlers/text_proxy";
+import { handleScrape } from "./handlers/scrape";
+import {
+  handleListFriendLinks,
+  handleListAllFriendLinks,
+  handleCreateFriendLink,
+  handleUpdateFriendLink,
+  handleDeleteFriendLink,
+} from "./handlers/friend_link";
+import { handleExport, handleImport } from "./handlers/admin";
+import {
+  handleAcquireLock,
+  handleReleaseLock,
+  handleGetLockStatus,
+  handleForceReleaseLock,
+} from "./handlers/edit_lock";
+import { Env } from "./index";
 
-type Handler = (request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult) => Promise<Response>;
+type Handler = (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  params: Record<string, string>,
+  authResult?: AuthResult
+) => Promise<Response>;
 
 interface Route {
   method: string;
@@ -36,18 +99,29 @@ interface Route {
 const routes: Route[] = [];
 
 // P1-5 / issue #8：仍在使用初始口令的账号，改密前拒绝管理端写操作（白名单内除外）
-const WRITE_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
-const MUST_CHANGE_PASSWORD_EXEMPT_PATHS = new Set(['/auth/refresh', '/auth/change-password']);
+const WRITE_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+const MUST_CHANGE_PASSWORD_EXEMPT_PATHS = new Set([
+  "/auth/refresh",
+  "/auth/change-password",
+]);
 
-function addRoute(method: string, path: string, handler: Handler, requireAuth = false, requireAdmin = false): void {
+function addRoute(
+  method: string,
+  path: string,
+  handler: Handler,
+  requireAuth = false,
+  requireAdmin = false
+): void {
   const paramNames: string[] = [];
-  const patternStr = path.replace(/:([^/]+)/g, (_, name) => {
-    paramNames.push(name);
-    return '([^/]+)';
-  }).replace(/\*/g, () => {
-    paramNames.push('0');
-    return '(.+)';
-  });
+  const patternStr = path
+    .replace(/:([^/]+)/g, (_, name) => {
+      paramNames.push(name);
+      return "([^/]+)";
+    })
+    .replace(/\*/g, () => {
+      paramNames.push("0");
+      return "(.+)";
+    });
   routes.push({
     method,
     pattern: new RegExp(`^${patternStr}$`),
@@ -58,7 +132,15 @@ function addRoute(method: string, path: string, handler: Handler, requireAuth = 
   });
 }
 
-function matchRoute(method: string, pathname: string): { handler: Handler; params: Record<string, string>; requireAuth: boolean; requireAdmin: boolean } | null {
+function matchRoute(
+  method: string,
+  pathname: string
+): {
+  handler: Handler;
+  params: Record<string, string>;
+  requireAuth: boolean;
+  requireAdmin: boolean;
+} | null {
   for (const route of routes) {
     if (route.method !== method) continue;
     const match = pathname.match(route.pattern);
@@ -67,102 +149,386 @@ function matchRoute(method: string, pathname: string): { handler: Handler; param
       route.paramNames.forEach((name, i) => {
         params[name] = decodeURIComponent(match[i + 1]);
       });
-      return { handler: route.handler, params, requireAuth: route.requireAuth, requireAdmin: route.requireAdmin };
+      return {
+        handler: route.handler,
+        params,
+        requireAuth: route.requireAuth,
+        requireAdmin: route.requireAdmin,
+      };
     }
   }
   return null;
 }
 
-addRoute('GET', '/health', async (_req, env) => {
+addRoute("GET", "/health", async (_req, env) => {
   try {
-    const dbTest = await env.DB.prepare('SELECT COUNT(*) as count FROM site_config').first();
-    return Response.json({ status: 'ok', db: dbTest ? 'connected' : 'error', kv: 'connected' });
+    const dbTest = await env.DB.prepare(
+      "SELECT COUNT(*) as count FROM site_config"
+    ).first();
+    return Response.json({
+      status: "ok",
+      db: dbTest ? "connected" : "error",
+      kv: "connected",
+    });
   } catch (e) {
-    return Response.json({ status: 'error', message: String(e) });
+    return Response.json({ status: "error", message: String(e) });
   }
 });
 
-addRoute('POST', '/auth/login', async (req, env) => handleLogin(req, env));
-addRoute('POST', '/auth/refresh', async (req, env, ctx, params) => handleRefresh(req, env), true);
-addRoute('POST', '/auth/change-password', async (req, env, _ctx, _params, auth) => handleChangePassword(req, env, auth), true);
-addRoute('GET', '/users', async (req, env) => handleListUsers(req, env), true, true);
-addRoute('POST', '/users', async (req, env) => handleCreateUser(req, env), true, true);
-addRoute('PUT', '/users/:id', async (req, env, _ctx, params) => handleUpdateUser(req, env, params), true, true);
-addRoute('DELETE', '/users/:id', async (req, env, _ctx, params) => handleDeleteUser(req, env, params), true, true);
+addRoute("POST", "/auth/login", async (req, env) => handleLogin(req, env));
+addRoute(
+  "POST",
+  "/auth/refresh",
+  async (req, env, ctx, params) => handleRefresh(req, env),
+  true
+);
+addRoute(
+  "POST",
+  "/auth/change-password",
+  async (req, env, _ctx, _params, auth) => handleChangePassword(req, env, auth),
+  true
+);
+addRoute(
+  "GET",
+  "/users",
+  async (req, env) => handleListUsers(req, env),
+  true,
+  true
+);
+addRoute(
+  "POST",
+  "/users",
+  async (req, env) => handleCreateUser(req, env),
+  true,
+  true
+);
+addRoute(
+  "PUT",
+  "/users/:id",
+  async (req, env, _ctx, params) => handleUpdateUser(req, env, params),
+  true,
+  true
+);
+addRoute(
+  "DELETE",
+  "/users/:id",
+  async (req, env, _ctx, params) => handleDeleteUser(req, env, params),
+  true,
+  true
+);
 
-addRoute('GET', '/articles', async (req, env, _ctx, params, auth) => handleListArticles(req, env, params, auth));
-addRoute('GET', '/articles/:slug', async (req, env, _ctx, params, auth) => handleGetArticle(req, env, params, auth));
-addRoute('POST', '/articles', async (req, env, _ctx, params, auth) => handleCreateArticle(req, env, params, auth), true);
-addRoute('PUT', '/articles/:id', async (req, env, _ctx, params, auth) => handleUpdateArticle(req, env, params, auth), true);
-addRoute('DELETE', '/articles/:id', async (req, env, _ctx, params, auth) => handleDeleteArticle(req, env, params, auth), true);
+addRoute("GET", "/articles", async (req, env, _ctx, params, auth) =>
+  handleListArticles(req, env, params, auth)
+);
+addRoute("GET", "/articles/:slug", async (req, env, _ctx, params, auth) =>
+  handleGetArticle(req, env, params, auth)
+);
+addRoute(
+  "POST",
+  "/articles",
+  async (req, env, _ctx, params, auth) =>
+    handleCreateArticle(req, env, params, auth),
+  true
+);
+addRoute(
+  "PUT",
+  "/articles/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleUpdateArticle(req, env, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/articles/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleDeleteArticle(req, env, params, auth),
+  true
+);
 
-addRoute('GET', '/categories', async (req, env) => handleListCategories(req, env));
-addRoute('POST', '/categories', async (req, env, _ctx, params, auth) => handleCreateCategory(req, env, params, auth), true);
-addRoute('PUT', '/categories/:id', async (req, env, _ctx, params, auth) => handleUpdateCategory(req, env, params, auth), true);
-addRoute('DELETE', '/categories/:id', async (req, env, _ctx, params) => handleDeleteCategory(req, env, params), true, true);
+addRoute("GET", "/categories", async (req, env) =>
+  handleListCategories(req, env)
+);
+addRoute(
+  "POST",
+  "/categories",
+  async (req, env, _ctx, params, auth) =>
+    handleCreateCategory(req, env, params, auth),
+  true
+);
+addRoute(
+  "PUT",
+  "/categories/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleUpdateCategory(req, env, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/categories/:id",
+  async (req, env, _ctx, params) => handleDeleteCategory(req, env, params),
+  true,
+  true
+);
 
-addRoute('GET', '/tags', async (req, env) => handleListTags(req, env));
-addRoute('POST', '/tags', async (req, env, _ctx, params, auth) => handleCreateTag(req, env, _ctx, params, auth), true);
-addRoute('DELETE', '/tags/:id', async (req, env, _ctx, params) => handleDeleteTag(req, env, params), true, true);
+addRoute("GET", "/tags", async (req, env) => handleListTags(req, env));
+addRoute(
+  "POST",
+  "/tags",
+  async (req, env, _ctx, params, auth) =>
+    handleCreateTag(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/tags/:id",
+  async (req, env, _ctx, params) => handleDeleteTag(req, env, params),
+  true,
+  true
+);
 
-addRoute('GET', '/articles/:article_id/comments', async (req, env, _ctx, params) => handleListComments(req, env, params));
-addRoute('POST', '/articles/:article_id/comments', async (req, env, ctx, params) => handleSubmitComment(req, env, ctx, params));
-addRoute('GET', '/comments', async (req, env, _ctx, params, auth) => handleListAllComments(req, env, _ctx, params, auth), true);
-addRoute('PUT', '/comments/:id/approve', async (req, env, _ctx, params, auth) => handleApproveComment(req, env, params, auth), true);
-addRoute('PUT', '/comments/:id/reject', async (req, env, _ctx, params, auth) => handleRejectComment(req, env, params, auth), true);
-addRoute('DELETE', '/comments/:id', async (req, env, _ctx, params, auth) => handleDeleteComment(req, env, params, auth), true);
+addRoute(
+  "GET",
+  "/articles/:article_id/comments",
+  async (req, env, _ctx, params) => handleListComments(req, env, params)
+);
+addRoute(
+  "POST",
+  "/articles/:article_id/comments",
+  async (req, env, ctx, params) => handleSubmitComment(req, env, ctx, params)
+);
+addRoute(
+  "GET",
+  "/comments",
+  async (req, env, _ctx, params, auth) =>
+    handleListAllComments(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "PUT",
+  "/comments/:id/approve",
+  async (req, env, _ctx, params, auth) =>
+    handleApproveComment(req, env, params, auth),
+  true
+);
+addRoute(
+  "PUT",
+  "/comments/:id/reject",
+  async (req, env, _ctx, params, auth) =>
+    handleRejectComment(req, env, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/comments/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleDeleteComment(req, env, params, auth),
+  true
+);
 
-addRoute('GET', '/search', async (req, env) => handleSearch(req, env));
+addRoute("GET", "/search", async (req, env) => handleSearch(req, env));
 
-addRoute('POST', '/articles/:article_id/like', async (req, env, ctx, params) => handleToggleLike(req, env, ctx, params));
-addRoute('GET', '/articles/:article_id/like-status', async (req, env, _ctx, params) => handleLikeStatus(req, env, params));
+addRoute("POST", "/articles/:article_id/like", async (req, env, ctx, params) =>
+  handleToggleLike(req, env, ctx, params)
+);
+addRoute(
+  "GET",
+  "/articles/:article_id/like-status",
+  async (req, env, _ctx, params) => handleLikeStatus(req, env, params)
+);
 
-addRoute('POST', '/media/upload', async (req, env, _ctx, params, auth) => handleUploadMedia(req, env, _ctx, params, auth), true);
-addRoute('GET', '/media', async (req, env, _ctx, params, auth) => handleListMedia(req, env, _ctx, params, auth), true);
-addRoute('DELETE', '/media/:id', async (req, env, _ctx, params, auth) => handleDeleteMedia(req, env, params, auth), true);
-addRoute('GET', '/media/serve/*', async (req, env, _ctx, params) => handleServeMedia(req, env, params));
+addRoute(
+  "POST",
+  "/media/upload",
+  async (req, env, _ctx, params, auth) =>
+    handleUploadMedia(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "GET",
+  "/media",
+  async (req, env, _ctx, params, auth) =>
+    handleListMedia(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/media/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleDeleteMedia(req, env, params, auth),
+  true
+);
+addRoute("GET", "/media/serve/*", async (req, env, _ctx, params) =>
+  handleServeMedia(req, env, params)
+);
 
 // 外链图片智能代理（前端 img 直连失败时自动降级到本站代理，带安全校验与 KV TTL 缓存）
-addRoute('GET', '/img-proxy', async (req, env, ctx) => handleImgProxy(req, env, ctx));
+addRoute("GET", "/img-proxy", async (req, env, ctx) =>
+  handleImgProxy(req, env, ctx)
+);
 
 // 外链文字/接口内容代理（前端 fetch 直连失败/CORS 受限时自动降级，text/json/xml 白名单 + CORS 头）
-addRoute('GET', '/text-proxy', async (req, env, ctx) => handleTextProxy(req, env, ctx));
+addRoute("GET", "/text-proxy", async (req, env, ctx) =>
+  handleTextProxy(req, env, ctx)
+);
 
 // 网页抓取代理（admin-only；SSRF/robots/2MB/10s/每管理员限流；#33 / ADR 0003）
-addRoute('GET', '/admin/scrape', async (req, env, ctx, _params, auth) => handleScrape(req, env, ctx, auth), true, true);
+addRoute(
+  "GET",
+  "/admin/scrape",
+  async (req, env, ctx, _params, auth) => handleScrape(req, env, ctx, auth),
+  true,
+  true
+);
 
-addRoute('GET', '/config', async (req, env) => handleGetPublicConfig(req, env));
-addRoute('GET', '/config/all', async (req, env) => handleGetAllConfig(req, env), true, true);
-addRoute('PUT', '/config', async (req, env) => handleUpdateConfig(req, env), true, true);
+addRoute("GET", "/config", async (req, env) => handleGetPublicConfig(req, env));
+addRoute(
+  "GET",
+  "/config/all",
+  async (req, env) => handleGetAllConfig(req, env),
+  true,
+  true
+);
+addRoute(
+  "PUT",
+  "/config",
+  async (req, env) => handleUpdateConfig(req, env),
+  true,
+  true
+);
 
 // 全站可视化配置中心
 // 渗透报告 004 修复：/settings 完整视图收为管理员鉴权；前台只走 /settings/public 白名单投影
-addRoute('GET', '/settings/public', async (req, env) => handleGetPublicSettings(req, env));
-addRoute('GET', '/settings', async (req, env) => handleGetSettings(req, env), true, true);
-addRoute('GET', '/settings/all', async (req, env) => handleGetSettings(req, env), true, true);
-addRoute('PUT', '/settings', async (req, env) => handleUpdateSettings(req, env), true, true);
-addRoute('POST', '/settings/reset', async (req, env) => handleResetSettings(req, env), true, true);
-addRoute('GET', '/settings/export', async (req, env) => handleExportSettings(req, env), true, true);
-addRoute('POST', '/settings/import', async (req, env) => handleImportSettings(req, env), true, true);
+addRoute("GET", "/settings/public", async (req, env) =>
+  handleGetPublicSettings(req, env)
+);
+addRoute(
+  "GET",
+  "/settings",
+  async (req, env) => handleGetSettings(req, env),
+  true,
+  true
+);
+addRoute(
+  "GET",
+  "/settings/all",
+  async (req, env) => handleGetSettings(req, env),
+  true,
+  true
+);
+addRoute(
+  "PUT",
+  "/settings",
+  async (req, env) => handleUpdateSettings(req, env),
+  true,
+  true
+);
+addRoute(
+  "POST",
+  "/settings/reset",
+  async (req, env) => handleResetSettings(req, env),
+  true,
+  true
+);
+addRoute(
+  "GET",
+  "/settings/export",
+  async (req, env) => handleExportSettings(req, env),
+  true,
+  true
+);
+addRoute(
+  "POST",
+  "/settings/import",
+  async (req, env) => handleImportSettings(req, env),
+  true,
+  true
+);
 
-addRoute('GET', '/friend-links', async (req, env) => handleListFriendLinks(req, env));
-addRoute('GET', '/friend-links/all', async (req, env) => handleListAllFriendLinks(req, env), true);
-addRoute('POST', '/friend-links', async (req, env) => handleCreateFriendLink(req, env), true);
-addRoute('PUT', '/friend-links/:id', async (req, env, _ctx, params) => handleUpdateFriendLink(req, env, params), true);
-addRoute('DELETE', '/friend-links/:id', async (req, env, _ctx, params) => handleDeleteFriendLink(req, env, params), true);
+addRoute("GET", "/friend-links", async (req, env) =>
+  handleListFriendLinks(req, env)
+);
+addRoute(
+  "GET",
+  "/friend-links/all",
+  async (req, env) => handleListAllFriendLinks(req, env),
+  true
+);
+// C1 / issue #43：友链写操作收归 admin（editor 可写曾导致全站页脚存储型 XSS）
+addRoute(
+  "POST",
+  "/friend-links",
+  async (req, env) => handleCreateFriendLink(req, env),
+  true,
+  true
+);
+addRoute(
+  "PUT",
+  "/friend-links/:id",
+  async (req, env, _ctx, params) => handleUpdateFriendLink(req, env, params),
+  true,
+  true
+);
+addRoute(
+  "DELETE",
+  "/friend-links/:id",
+  async (req, env, _ctx, params) => handleDeleteFriendLink(req, env, params),
+  true,
+  true
+);
 
-addRoute('GET', '/admin/export', async (req, env) => handleExport(req, env), true, true);
-addRoute('POST', '/admin/import', async (req, env) => handleImport(req, env), true, true);
+addRoute(
+  "GET",
+  "/admin/export",
+  async (req, env) => handleExport(req, env),
+  true,
+  true
+);
+addRoute(
+  "POST",
+  "/admin/import",
+  async (req, env) => handleImport(req, env),
+  true,
+  true
+);
 
-addRoute('POST', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleAcquireLock(req, env, _ctx, params, auth), true);
-addRoute('DELETE', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleReleaseLock(req, env, _ctx, params, auth), true);
-addRoute('GET', '/articles/:id/edit-lock', async (req, env, _ctx, params, auth) => handleGetLockStatus(req, env, _ctx, params, auth), true);
-addRoute('POST', '/articles/:id/edit-lock/force', async (req, env, _ctx, params, auth) => handleForceReleaseLock(req, env, _ctx, params, auth), true, true);
+addRoute(
+  "POST",
+  "/articles/:id/edit-lock",
+  async (req, env, _ctx, params, auth) =>
+    handleAcquireLock(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "DELETE",
+  "/articles/:id/edit-lock",
+  async (req, env, _ctx, params, auth) =>
+    handleReleaseLock(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "GET",
+  "/articles/:id/edit-lock",
+  async (req, env, _ctx, params, auth) =>
+    handleGetLockStatus(req, env, _ctx, params, auth),
+  true
+);
+addRoute(
+  "POST",
+  "/articles/:id/edit-lock/force",
+  async (req, env, _ctx, params, auth) =>
+    handleForceReleaseLock(req, env, _ctx, params, auth),
+  true,
+  true
+);
 
-export async function router(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export async function router(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
   const url = new URL(request.url);
-  const apiPrefix = env.API_PREFIX || '/api/v1';
-  const pathname = url.pathname.slice(apiPrefix.length) || '/';
+  const apiPrefix = env.API_PREFIX || "/api/v1";
+  const pathname = url.pathname.slice(apiPrefix.length) || "/";
   const method = request.method;
 
   try {
@@ -170,41 +536,74 @@ export async function router(request: Request, env: Env, ctx: ExecutionContext):
     if (corsResponse) return withSecurityHeaders(corsResponse);
 
     const rateLimitResponse = await rateLimitMiddleware(request, env, ctx);
-    if (rateLimitResponse) return withSecurityHeaders(withCors(rateLimitResponse, request));
+    if (rateLimitResponse)
+      return withSecurityHeaders(withCors(rateLimitResponse, request));
 
     const matched = matchRoute(method, pathname);
     if (!matched) {
-      return withSecurityHeaders(withCors(
-        Response.json({ code: 404, message: `API not found: ${method} ${pathname}`, data: null }, { status: 404 }),
-        request
-      ));
+      return withSecurityHeaders(
+        withCors(
+          Response.json(
+            {
+              code: 404,
+              message: `API not found: ${method} ${pathname}`,
+              data: null,
+            },
+            { status: 404 }
+          ),
+          request
+        )
+      );
     }
 
     let authResult: AuthResult | undefined;
     if (matched.requireAuth) {
       const result = await authMiddleware(request, env);
-      if (result instanceof Response) return withSecurityHeaders(withCors(result, request));
-      if (matched.requireAdmin && result.user.role !== 'admin') {
-        return withSecurityHeaders(withCors(forbidden('权限不足，仅管理员可执行此操作'), request));
+      if (result instanceof Response)
+        return withSecurityHeaders(withCors(result, request));
+      if (matched.requireAdmin && result.user.role !== "admin") {
+        return withSecurityHeaders(
+          withCors(forbidden("权限不足，仅管理员可执行此操作"), request)
+        );
       }
-      if (result.user.mustChangePassword && WRITE_METHODS.has(method) && !MUST_CHANGE_PASSWORD_EXEMPT_PATHS.has(pathname)) {
-        return withSecurityHeaders(withCors(forbidden('账号仍在使用初始口令，请先修改口令后再执行管理操作'), request));
+      if (
+        result.user.mustChangePassword &&
+        WRITE_METHODS.has(method) &&
+        !MUST_CHANGE_PASSWORD_EXEMPT_PATHS.has(pathname)
+      ) {
+        return withSecurityHeaders(
+          withCors(
+            forbidden("账号仍在使用初始口令，请先修改口令后再执行管理操作"),
+            request
+          )
+        );
       }
       authResult = result.user;
-    } else if (request.headers.get('Authorization')) {
+    } else if (request.headers.get("Authorization")) {
       // 公开路由可选鉴权：携带合法 token 时解析出来，供草稿预览等场景使用；无 token/无效 token 不影响公开访问
       const result = await authMiddleware(request, env);
       if (!(result instanceof Response)) authResult = result.user;
     }
 
-    const response = await matched.handler(request, env, ctx, matched.params, authResult);
+    const response = await matched.handler(
+      request,
+      env,
+      ctx,
+      matched.params,
+      authResult
+    );
     return withSecurityHeaders(withCors(response, request));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('Router error:', errMsg);
-    return withSecurityHeaders(withCors(
-      Response.json({ code: 500, message: errMsg, data: null }, { status: 500 }),
-      request
-    ));
+    console.error("Router error:", errMsg);
+    return withSecurityHeaders(
+      withCors(
+        Response.json(
+          { code: 500, message: errMsg, data: null },
+          { status: 500 }
+        ),
+        request
+      )
+    );
   }
 }
