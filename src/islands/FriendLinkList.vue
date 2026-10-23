@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { safeFriendLinkUrl } from "../../utils/friend-link-url";
+import { safeFriendLinkUrl } from "../utils/friend-link-url";
 
 const props = defineProps<{ variant?: string }>();
 
