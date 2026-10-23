@@ -896,12 +896,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="fl in friendLinks" :key="fl.id">
+              <tr v-for="fl in safeFriendLinks" :key="fl.id">
                 <td>{{ fl.name }}</td>
                 <td>
-                  <a :href="fl.url" target="_blank" style="font-size: 0.8rem">{{
-                    fl.url
-                  }}</a>
+                  <a
+                    v-if="fl.safe_url"
+                    :href="fl.safe_url"
+                    target="_blank"
+                    style="font-size: 0.8rem"
+                    >{{ fl.url }}</a
+                  >
+                  <span v-else style="font-size: 0.8rem">{{ fl.url }}</span>
                 </td>
                 <td>{{ fl.description || "-" }}</td>
                 <td>{{ fl.sort_order }}</td>
@@ -1502,6 +1507,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { renderMarkdown } from "../utils/markdown";
 import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
+import { safeFriendLinkUrl } from "../utils/friend-link-url";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
 // （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
@@ -1643,6 +1649,13 @@ const mediaList = ref<any[]>([]);
 const mediaLoading = ref(false);
 
 const friendLinks = ref<any[]>([]);
+/** C1 / issue #43：后台友链列表渲染兜底，非法协议（含存量脏数据）降级为非可点击文本 */
+const safeFriendLinks = computed(() =>
+  friendLinks.value.map((fl) => ({
+    ...fl,
+    safe_url: safeFriendLinkUrl(fl.url),
+  }))
+);
 const showFriendLinkForm = ref(false);
 const friendLinkForm = ref({
   name: "",

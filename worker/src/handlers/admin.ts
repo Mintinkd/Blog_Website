@@ -2,6 +2,7 @@ import { Env } from "../index";
 import { successResponse, error, ErrorCodes } from "../utils/response";
 import { sanitizeHtml } from "../utils/sanitizer";
 import { isPlainObject } from "../utils/object";
+import { isValidUrl } from "../utils/validator";
 
 /**
  * 管理端数据导出/导入（P1-7 / issue #12 安全改造）
@@ -15,6 +16,8 @@ import { isPlainObject } from "../utils/object";
  *   本机密钥与管理员凭据，被跳过的键在响应 data.skipped_secret_rows 中列出；
  * - 文章 content/content_html 与评论 content 入库前过 sanitizeHtml（与评论
  *   常规写入路径同一净化器），防止恶意备份把 XSS 载荷导入库中；
+ * - friend_links.url 导入时须过 isValidUrl 的 http/https scheme 白名单
+ *   （与友链常规写入路径同一校验器），防止 bulk import 旁路该防线；
  * - 删除/插入按 FK 安全顺序执行（先子后父删、先父后子插），兼容存量库中
  *   articles.category_id 为 ON DELETE RESTRICT 的旧 schema（新 schema 为 SET NULL）。
  */
@@ -244,6 +247,20 @@ export async function handleImport(
           return error(
             ErrorCodes.VALIDATION_FAILED,
             `导入被拒绝：表 ${table} 第 ${i + 1} 行列 ${badValueKey} 的值类型非法（仅支持字符串/数字/布尔/null）`
+          );
+        }
+        // C1 / issue #43：friend_links.url 与常规写入路径同一 scheme 白名单，
+        // 防止 bulk import 旁路防线一（阶段一全量校验，被拒即零副作用）
+        if (
+          table === "friend_links" &&
+          row.url !== undefined &&
+          !isValidUrl(String(row.url))
+        ) {
+          return error(
+            ErrorCodes.VALIDATION_FAILED,
+            `导入被拒绝：表 ${table} 第 ${i + 1} 行 url 非 http/https（${String(
+              row.url
+            ).slice(0, 64)}）`
           );
         }
         rows.push(row);

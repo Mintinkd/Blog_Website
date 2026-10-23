@@ -4,6 +4,7 @@ import {
   handleCreateFriendLink,
   handleUpdateFriendLink,
 } from "../src/handlers/friend_link";
+import { handleImport } from "../src/handlers/admin";
 import { router } from "../src/router";
 import { generateToken } from "../src/middleware/auth";
 import type { Env } from "../src/index";
@@ -11,15 +12,73 @@ import type { Env } from "../src/index";
 /**
  * issue #43（T1 / 审查报告 C1）：友链 URL scheme 白名单 + 写权限收敛 + 渲染兜底。
  * 三道防线各自独立成立，缺一不可：
- *   1) isValidUrl 仅放行 http/https（存量脏数据里的 javascript:/data: 等一律拒绝）；
+ *   1) isValidUrl 仅放行 http/https（常规写入 + bulk import 同一校验器；
+ *      存量脏数据里的 javascript:/data: 等一律拒绝）；
  *   2) 友链创建/更新/删除接口收归 admin（editor 403，且不产生任何写 SQL）；
  *   3) 前端渲染兜底由 tests/friend-link-url.test.ts 覆盖（根包 vitest）。
  *
  * 接缝（工单 Key interfaces 点名，视为已确认）：
  *   - 共享 URL 校验函数 isValidUrl（validator 工具，多入口共用的校验流水线）；
- *   - router() 全链路（authMiddleware → requireAdmin 判定 → handler），D1/KV 以桩替代。
+ *   - router() 全链路（authMiddleware → requireAdmin 判定 → handler），D1/KV 以桩替代；
+ *   - handleImport 的两阶段导入（阶段一全量校验零副作用）。
  * 期望值均为手写字面量，不从被测实现反推。
  */
+
+const JWT_SECRET = "t1-friend-link-test-secret";
+
+/**
+ * 记录全部 prepare/bind 序列的假 D1（prepare 顺序即真实执行顺序）。
+ * 传入 role 时应答鉴权查询（jwt_secret 配置行 + 用户角色行），供 router 级测试；
+ * 不传时不应答（handler / import 级测试不触及鉴权）。
+ */
+function recordingDb(role?: "admin" | "editor"): {
+  db: unknown;
+  statements: Array<{ sql: string; binds: unknown[] }>;
+} {
+  const statements: Array<{ sql: string; binds: unknown[] }> = [];
+  const prepare = (sql: string) => {
+    const stmt = { sql, binds: [] as unknown[] };
+    statements.push(stmt);
+    const api = {
+      bind: (...binds: unknown[]) => {
+        stmt.binds = binds;
+        return api;
+      },
+      first: () => {
+        if (sql.includes("key = 'jwt_secret'"))
+          return Promise.resolve({ value: JWT_SECRET });
+        if (sql.includes("FROM users"))
+          return Promise.resolve(
+            role ? { role, must_change_password: 0 } : null
+          );
+        // 存量行查询返回一行，使 update 流程越过 notFound 进入 URL 校验
+        if (sql.includes("FROM friend_links"))
+          return Promise.resolve({
+            id: 1,
+            name: "老朋友",
+            url: "https://old.example.com",
+          });
+        return Promise.resolve(null);
+      },
+      all: () => Promise.resolve({ results: [] }),
+      run: () =>
+        Promise.resolve({
+          success: true,
+          meta: { last_row_id: 1, changes: 1 },
+        }),
+    };
+    return api;
+  };
+  return { db: { prepare }, statements };
+}
+
+function makeEnv(db: unknown): Env {
+  return { DB: db } as unknown as Env;
+}
+
+function hasWrite(statements: Array<{ sql: string }>): boolean {
+  return statements.some((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s.sql));
+}
 
 describe("isValidUrl scheme 白名单（C1 防线一）", () => {
   it("放行 http/https 绝对 URL（含端口、路径、查询、片段、大写 scheme）", () => {
@@ -49,43 +108,6 @@ describe("isValidUrl scheme 白名单（C1 防线一）", () => {
   });
 });
 
-/** 记录全部 prepare/bind 序列的假 D1（prepare 顺序即真实执行顺序） */
-function recordingDb(): {
-  db: unknown;
-  statements: Array<{ sql: string; binds: unknown[] }>;
-} {
-  const statements: Array<{ sql: string; binds: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    const stmt = { sql, binds: [] as unknown[] };
-    statements.push(stmt);
-    const api = {
-      bind: (...binds: unknown[]) => {
-        stmt.binds = binds;
-        return api;
-      },
-      // 存量行查询返回一行，使 update 流程越过 notFound 进入 URL 校验
-      first: () =>
-        Promise.resolve(
-          sql.includes("FROM friend_links")
-            ? { id: 1, name: "老朋友", url: "https://old.example.com" }
-            : null
-        ),
-      all: () => Promise.resolve({ results: [] }),
-      run: () =>
-        Promise.resolve({
-          success: true,
-          meta: { last_row_id: 1, changes: 1 },
-        }),
-    };
-    return api;
-  };
-  return { db: { prepare }, statements };
-}
-
-function makeEnv(db: unknown): Env {
-  return { DB: db } as unknown as Env;
-}
-
 /** 以给定 body 发起创建/更新，返回响应与全部 SQL 语句（含绑定值） */
 async function runHandler(
   kind: "create" | "update",
@@ -105,10 +127,6 @@ async function runHandler(
       ? await handleCreateFriendLink(request, makeEnv(db))
       : await handleUpdateFriendLink(request, makeEnv(db), { id: "1" });
   return { res, statements };
-}
-
-function hasWrite(statements: Array<{ sql: string }>): boolean {
-  return statements.some((s) => /\b(INSERT|UPDATE|DELETE)\b/i.test(s.sql));
 }
 
 describe("友链写接口 URL 校验（C1 防线一，handler 接缝）", () => {
@@ -144,53 +162,76 @@ describe("友链写接口 URL 校验（C1 防线一，handler 接缝）", () => 
   });
 });
 
-const JWT_SECRET = "t1-friend-link-test-secret";
-
-/** 按角色应答的假 D1：jwt_secret 配置行 + 用户角色行 + 友链存量行 */
-function roleDb(role: "admin" | "editor"): {
-  db: unknown;
+/** 以给定 export_data 发起 bulk import，返回响应与全部 SQL 语句 */
+async function runImport(exportData: Record<string, unknown[]>): Promise<{
+  res: Response;
   statements: Array<{ sql: string; binds: unknown[] }>;
-} {
-  const statements: Array<{ sql: string; binds: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    const stmt = { sql, binds: [] as unknown[] };
-    statements.push(stmt);
-    const api = {
-      bind: (...binds: unknown[]) => {
-        stmt.binds = binds;
-        return api;
-      },
-      first: () => {
-        if (sql.includes("key = 'jwt_secret'"))
-          return Promise.resolve({ value: JWT_SECRET });
-        if (sql.includes("FROM users"))
-          return Promise.resolve({ role, must_change_password: 0 });
-        if (sql.includes("FROM friend_links")) {
-          return Promise.resolve({
-            id: 1,
-            name: "老朋友",
-            url: "https://old.example.com",
-          });
-        }
-        return Promise.resolve(null);
-      },
-      all: () => Promise.resolve({ results: [] }),
-      run: () =>
-        Promise.resolve({
-          success: true,
-          meta: { last_row_id: 1, changes: 1 },
-        }),
-    };
-    return api;
-  };
-  return { db: { prepare }, statements };
+}> {
+  const { db, statements } = recordingDb();
+  const request = new Request("https://example.com/api/v1/admin/import", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ export_data: exportData }),
+  });
+  const res = await handleImport(request, makeEnv(db));
+  return { res, statements };
 }
+
+describe("bulk import 的友链 URL 校验（C1 防线一，import 接缝）", () => {
+  it("friend_links 行含 javascript: URL：400 且不执行任何 SQL（阶段一零副作用）", async () => {
+    const { res, statements } = await runImport({
+      friend_links: [
+        {
+          id: 1,
+          name: "坏人",
+          url: "javascript:alert(document.cookie)",
+          sort_order: 0,
+          is_active: 1,
+        },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(statements.length).toBe(0);
+  });
+
+  it("friend_links 行含 data: URL 同样被拒", async () => {
+    const { res } = await runImport({
+      friend_links: [
+        {
+          id: 2,
+          name: "坏人",
+          url: "data:text/html,<script>alert(1)</script>",
+        },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("friend_links 行均为合法 https URL：导入放行并落库", async () => {
+    const { res, statements } = await runImport({
+      friend_links: [
+        {
+          id: 1,
+          name: "好朋友",
+          url: "https://friend.example.com/blog",
+          sort_order: 0,
+          is_active: 1,
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(hasWrite(statements)).toBe(true);
+  });
+});
 
 function makeRouterEnv(role: "admin" | "editor"): {
   env: Env;
   statements: Array<{ sql: string; binds: unknown[] }>;
 } {
-  const { db, statements } = roleDb(role);
+  const { db, statements } = recordingDb(role);
   const env = {
     DB: db,
     RATE_LIMIT: {

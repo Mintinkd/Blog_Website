@@ -272,7 +272,7 @@ D1 (SQLite) 共 10 张表：
 | PUT    | `/friend-links/:id` | 更新友链（URL 仅 http/https）                                                                                              |
 | DELETE | `/friend-links/:id` | 删除友链                                                                                                                   |
 | GET    | `/admin/export`     | 导出数据                                                                                                                   |
-| POST   | `/admin/import`     | 导入数据                                                                                                                   |
+| POST   | `/admin/import`     | 导入数据（友链 URL 同受 http/https 校验）                                                                                  |
 | GET    | `/admin/scrape`     | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`） |
 | GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                    |
 | GET    | `/settings/all`     | 拉取全部可视化配置                                                                                                         |
@@ -326,7 +326,7 @@ D1 (SQLite) 共 10 张表：
 - **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
 - **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；自动映射标题/摘要/封面/已有标签并追加来源脚注；预览支持 Markdown/渲染切换；「生成草稿并编辑」打开现有文章编辑器并预填标题/slug/summary/封面/正文/分类 1/标签/draft，保存前不创建任何数据
 - **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
-- **友情链接** — 增删改（仅admin）
+- **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）

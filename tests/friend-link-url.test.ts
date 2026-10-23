@@ -37,4 +37,10 @@ describe("safeFriendLinkUrl 渲染兜底（C1 防线三）", () => {
     expect(safeFriendLinkUrl(null)).toBe("");
     expect(safeFriendLinkUrl(undefined)).toBe("");
   });
+
+  it("协议相对 URL / 相对路径 / 无 scheme 与写入侧同集合拒绝", () => {
+    expect(safeFriendLinkUrl("//evil.com")).toBe("");
+    expect(safeFriendLinkUrl("/friend/page")).toBe("");
+    expect(safeFriendLinkUrl("evil.com")).toBe("");
+  });
 });
