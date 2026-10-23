@@ -80,7 +80,7 @@ Worker (worker/src/handlers/settings.ts)
 ## 部署注意
 
 - **Worker（新接口）**：按现有约定随 `worker/` 源码 git push 自动部署（Cloudflare 读 `wrangler.jsonc` 自行 build）。
-- **前端（dist）**：构建期生成（先 `npm run build`），再 `npx wrangler pages deploy dist --project-name blog-website-page`；或推 `main` 由 CI 构建部署（`dist` 不入库）。
+- **前端（dist）**：构建期生成（先 `npm run build`），再 `npx wrangler pages deploy dist --project-name blog-website`；或推 `main` 由 CI 构建部署（`dist` 不入库）。
 - 两者都更新后，配置中心才完整可用。
 
 ## 扩展新配置项

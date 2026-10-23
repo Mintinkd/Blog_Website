@@ -109,7 +109,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           nodeVersion: "22"
-          command: pages deploy dist --project-name=blog-website-page
+          command: pages deploy dist --project-name=blog-website
 
       - name: Deploy Worker
         run: npx wrangler deploy
@@ -127,7 +127,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           nodeVersion: "22"
-          command: pages deploy dist --project-name=blog-website-page
+          command: pages deploy dist --project-name=blog-website
 
       - name: Re-deploy Worker (overwrite Git integration)
         run: npx wrangler deploy

@@ -499,7 +499,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 1. **D1 数据库** — 名为 `blog-db`
 2. **KV 命名空间** — `MEDIA`（媒体存储）+ `EDIT_LOCK`（编辑锁，TTL 30分钟）
-3. **Pages 项目** — 名为 `blog-website-page`
+3. **Pages 项目** — 名为 `blog-website`（默认子域 `blog-website-page.pages.dev`，自定义域 `blog.zenfishlog.dpdns.org`；2026-10-23 由 `blog-website-page` 改名而来，旧子域保留）
 4. **Worker** — 名为 `blog-api`
 
 > **注意**：Worker 名称必须为 `blog-api`，不能与 Pages 项目同名，否则 Git 集成自动部署时会覆盖 API Worker。
@@ -511,7 +511,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
 1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
-2. 部署 `dist` 到 Cloudflare Pages（`blog-website-page`）
+2. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 4. 等待 120 秒待 Git 集成自动部署落定，再对 Pages 与 Worker 各执行一次覆盖部署——即使 Cloudflare 侧 Git 自动部署未关闭，最终生效的也始终是本次构建产物
 
@@ -526,11 +526,11 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 
 ### 部署架构
 
-| 项目                | 类型   | URL                              | 说明                            |
-| ------------------- | ------ | -------------------------------- | ------------------------------- |
-| `blog-website-page` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）    |
-| `blog-api`          | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）             |
-| `blog_website`      | Worker | —                                | Git集成自动创建（冗余，不冲突） |
+| 项目           | 类型   | URL                              | 说明                                                    |
+| -------------- | ------ | -------------------------------- | ------------------------------------------------------- |
+| `blog-website` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）                            |
+| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）                                     |
+| `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐） |
 
 浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
 
@@ -539,7 +539,7 @@ JWT 密钥在首次登录时自动生成，无需手动配置。
 ```bash
 # 前端
 npm run build
-npx wrangler pages deploy dist --project-name=blog-website-page
+npx wrangler pages deploy dist --project-name=blog-website
 
 # 后端
 cd worker
