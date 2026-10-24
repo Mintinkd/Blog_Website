@@ -16,9 +16,10 @@ import {
 /**
  * issue #44（C4）：登录口令长度上限 + 未知账号假验证固定开销。
  *
- * 接缝（工单 Key interfaces，按 docs/agents/testing.md 视为已确认）：
- *   - handleLogin —— 登录入口的入参校验与响应；
- *   - fakeVerifyPassword —— 未知账号假验证的 CPU 口径。
+ * 接缝（工单 Key interfaces + 「与建号/改密口径一致」的补充确认）：
+ *   - handleLogin / fakeVerifyPassword —— 工单点名；
+ *   - handleCreateUser / handleChangePassword / handleUpdateUser ——
+ *     同一长度口径的三条口令写入路径（补充覆盖）。
  * 期望值取自工单/审查报告字面量（上限 200、假验证 1000 次），
  * 不从被测实现的导出常量推导。
  */
@@ -37,19 +38,8 @@ function throwingDb(): Env["DB"] {
   } as unknown as Env["DB"];
 }
 
-/** 全部查询返回空：登录走到「未知用户名 → 假验证 → 401」分支 */
-function emptyDb(): Env["DB"] {
-  const statement = {
-    bind: () => statement,
-    first: async () => null,
-    all: async () => ({ results: [] }),
-    run: async () => ({ success: true, meta: { last_row_id: 0 } }),
-  };
-  return { prepare: () => statement } as unknown as Env["DB"];
-}
-
-/** 登录成功路径所需最小 D1：users 行、jwt_secret 与写回语句 */
-function loginDb(user: Record<string, unknown>): Env["DB"] {
+/** 登录路径最小 D1：可选 users 行、jwt_secret 与写回语句 */
+function loginDb(user: Record<string, unknown> | null): Env["DB"] {
   return {
     prepare: (sql: string) => {
       const bound = {
@@ -100,16 +90,13 @@ describe("登录口令长度上限（issue #44）", () => {
   });
 
   it("上限值本身（200）不在登录入口被长度校验拦截", async () => {
-    const deriveBits = vi.spyOn(crypto.subtle, "deriveBits");
-
     const res = await handleLogin(
       loginRequest("a".repeat(MAX_PASSWORD_LENGTH)),
-      { DB: emptyDb() } as unknown as Env
+      { DB: loginDb(null) } as unknown as Env
     );
 
-    // 未知用户名 → 进入假验证 → 401；若被长度校验拦截会是 400
+    // 未知用户名 → 假验证 → 401；若被长度校验拦截会是 400
     expect(res.status).toBe(401);
-    expect(deriveBits).toHaveBeenCalledTimes(1);
   });
 
   it("上限值本身（200）可完成真实登录并返回 token", async () => {

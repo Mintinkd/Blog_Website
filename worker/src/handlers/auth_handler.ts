@@ -29,6 +29,18 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 10 * 60 * 1000;
 const MIN_PASSWORD_LENGTH = 8;
 
+/** #44：口令长度上限的早退判定与统一错误（登录 / 建号 / 改密 / 重置共用） */
+function passwordTooLong(password: string): boolean {
+  return password.length > MAX_PASSWORD_LENGTH;
+}
+
+function passwordTooLongError(): Response {
+  return error(
+    ErrorCodes.VALIDATION_FAILED,
+    `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
+  );
+}
+
 async function getJwtSecret(env: Env): Promise<string> {
   const row = await env.DB.prepare(
     "SELECT value FROM site_config WHERE key = 'jwt_secret'"
@@ -175,12 +187,7 @@ export async function handleLogin(
   const providedPassword = String(password);
 
   // #44：超长口令在查库与 KDF 前拒绝，避免匿名请求放大 CPU 开销
-  if (providedPassword.length > MAX_PASSWORD_LENGTH) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
-    );
-  }
+  if (passwordTooLong(providedPassword)) return passwordTooLongError();
 
   // 1. Try users table
   const user = await loadUserAuthRow(env, String(username));
@@ -188,7 +195,7 @@ export async function handleLogin(
   // #17 verify-first：锁定剩余时间只用于「凭据正确」分支的反馈，失败路径不据此区分账号是否存在
   const remainMs = user ? lockedRemainingMs(user.locked_until) : 0;
 
-  // 先验证口令；未知用户名在下方 legacy 分支执行同代价假验证
+  // 先验证口令；未知用户名在下方（非遗留管理员名）分支执行固定低量假验证（#44）
   let userVerified: PasswordVerifyResult | null = null;
   if (user) {
     const verified = await verifyPassword(providedPassword, user.password_hash);
@@ -338,7 +345,8 @@ export async function handleLogin(
       }
     }
   } else if (!user) {
-    // 未知用户名（且非遗留管理员名）：执行与真实校验同代价的假验证，抹平失败路径耗时差（#17 AC4）
+    // 未知用户名（且非遗留管理员名）：固定低量假验证（#44），为匿名请求的 CPU 成本设上限；
+    // 不再以「与真实校验等代价」为目标，账号存在性的剩余时序差见 utils/password.ts 的取舍说明
     await fakeVerifyPassword(providedPassword);
   }
 
@@ -398,14 +406,8 @@ export async function handleChangePassword(
   const newPassword = String(new_password);
 
   // #44：与登录同口径，超长口令在查库与 KDF 前拒绝
-  if (
-    oldPassword.length > MAX_PASSWORD_LENGTH ||
-    newPassword.length > MAX_PASSWORD_LENGTH
-  ) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
-    );
+  if (passwordTooLong(oldPassword) || passwordTooLong(newPassword)) {
+    return passwordTooLongError();
   }
 
   const user = await env.DB.prepare(
@@ -475,12 +477,7 @@ export async function handleCreateUser(
   }
 
   // #44：与登录同口径，超长口令在查库与哈希前拒绝
-  if (String(password).length > MAX_PASSWORD_LENGTH) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
-    );
-  }
+  if (passwordTooLong(String(password))) return passwordTooLongError();
 
   const existing = await env.DB.prepare(
     "SELECT id FROM users WHERE username = ?"
@@ -521,11 +518,8 @@ export async function handleUpdateUser(
   const body = (await request.json()) as Record<string, unknown>;
 
   // #44：与登录同口径，超长口令在查库与哈希前拒绝
-  if (body.password && String(body.password).length > MAX_PASSWORD_LENGTH) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
-    );
+  if (body.password && passwordTooLong(String(body.password))) {
+    return passwordTooLongError();
   }
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ?")
