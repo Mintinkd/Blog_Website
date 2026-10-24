@@ -12,6 +12,7 @@ import {
   hashPassword,
   verifyPassword,
   fakeVerifyPassword,
+  MAX_PASSWORD_LENGTH,
 } from "../utils/password";
 import type { PasswordVerifyResult } from "../utils/password";
 import { isMissingColumnError } from "../utils/d1_compat";
@@ -172,6 +173,14 @@ export async function handleLogin(
   }
 
   const providedPassword = String(password);
+
+  // #44：超长口令在查库与 KDF 前拒绝，避免匿名请求放大 CPU 开销
+  if (providedPassword.length > MAX_PASSWORD_LENGTH) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
+    );
+  }
 
   // 1. Try users table
   const user = await loadUserAuthRow(env, String(username));
@@ -388,6 +397,17 @@ export async function handleChangePassword(
   const oldPassword = String(old_password);
   const newPassword = String(new_password);
 
+  // #44：与登录同口径，超长口令在查库与 KDF 前拒绝
+  if (
+    oldPassword.length > MAX_PASSWORD_LENGTH ||
+    newPassword.length > MAX_PASSWORD_LENGTH
+  ) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
+    );
+  }
+
   const user = await env.DB.prepare(
     "SELECT id, password_hash FROM users WHERE username = ?"
   )
@@ -454,6 +474,14 @@ export async function handleCreateUser(
     );
   }
 
+  // #44：与登录同口径，超长口令在查库与哈希前拒绝
+  if (String(password).length > MAX_PASSWORD_LENGTH) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
+    );
+  }
+
   const existing = await env.DB.prepare(
     "SELECT id FROM users WHERE username = ?"
   )
@@ -491,6 +519,14 @@ export async function handleUpdateUser(
 ): Promise<Response> {
   const { id } = params;
   const body = (await request.json()) as Record<string, unknown>;
+
+  // #44：与登录同口径，超长口令在查库与哈希前拒绝
+  if (body.password && String(body.password).length > MAX_PASSWORD_LENGTH) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
+    );
+  }
 
   const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ?")
     .bind(Number(id))

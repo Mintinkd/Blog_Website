@@ -207,7 +207,7 @@ D1 (SQLite) 共 10 张表：
 | 方法 | 路径                                | 说明                                                                                                                                                |
 | ---- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET  | `/health`                           | 健康检查                                                                                                                                            |
-| POST | `/auth/login`                       | 登录（返回JWT token和用户信息）                                                                                                                     |
+| POST | `/auth/login`                       | 登录（返回JWT token和用户信息；口令长度上限 200，超限直接 400 且不进入 KDF）                                                                        |
 | GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
 | GET  | `/articles/:slug`                   | 文章详情（流程内自增阅读量：Cookie 去重、24 小时 TTL）                                                                                              |
 | GET  | `/categories`                       | 分类列表                                                                                                                                            |
@@ -228,23 +228,23 @@ D1 (SQLite) 共 10 张表：
 
 #### 通用接口
 
-| 方法   | 路径                    | 说明                                                                                             |
-| ------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| POST   | `/auth/refresh`         | 刷新Token（须改密状态下仍可调用，用于令牌续期）                                                  |
-| POST   | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
-| POST   | `/articles`             | 创建文章（自动设置author_id）                                                                    |
-| PUT    | `/articles/:id`         | 更新文章（editor仅自己的）                                                                       |
-| DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                       |
-| POST   | `/categories`           | 创建分类（自动设置created_by）                                                                   |
-| PUT    | `/categories/:id`       | 更新分类（editor仅自己的）                                                                       |
-| POST   | `/tags`                 | 创建标签（自动设置created_by）                                                                   |
-| GET    | `/comments`             | 评论列表（editor仅自己文章的）                                                                   |
-| PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                   |
-| PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                   |
-| DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                   |
-| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by）                                                                  |
-| GET    | `/media`                | 媒体列表（editor仅自己的）                                                                       |
-| DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                   |
+| 方法   | 路径                    | 说明                                                                                                                       |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/refresh`         | 刷新Token（须改密状态下仍可调用，用于令牌续期）                                                                            |
+| POST   | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验，两端口令长度上限均为 200；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
+| POST   | `/articles`             | 创建文章（自动设置author_id）                                                                                              |
+| PUT    | `/articles/:id`         | 更新文章（editor仅自己的）                                                                                                 |
+| DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                                                 |
+| POST   | `/categories`           | 创建分类（自动设置created_by）                                                                                             |
+| PUT    | `/categories/:id`       | 更新分类（editor仅自己的）                                                                                                 |
+| POST   | `/tags`                 | 创建标签（自动设置created_by）                                                                                             |
+| GET    | `/comments`             | 评论列表（editor仅自己文章的）                                                                                             |
+| PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                                             |
+| PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                                             |
+| DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                                             |
+| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by）                                                                                            |
+| GET    | `/media`                | 媒体列表（editor仅自己的）                                                                                                 |
+| DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                             |
 
 #### 编辑锁接口
 
@@ -262,8 +262,8 @@ D1 (SQLite) 共 10 张表：
 | DELETE | `/categories/:id`   | 删除分类                                                                                                                   |
 | DELETE | `/tags/:id`         | 删除标签                                                                                                                   |
 | GET    | `/users`            | 用户列表                                                                                                                   |
-| POST   | `/users`            | 创建用户                                                                                                                   |
-| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令时同一步清除登录失败计数与锁定）                                                     |
+| POST   | `/users`            | 创建用户（口令长度上限 200）                                                                                               |
+| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定）                                       |
 | DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                                                                              |
 | GET    | `/config/all`       | 全部配置                                                                                                                   |
 | PUT    | `/config`           | 更新配置                                                                                                                   |
