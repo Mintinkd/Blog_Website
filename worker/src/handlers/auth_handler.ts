@@ -12,6 +12,7 @@ import {
   hashPassword,
   verifyPassword,
   fakeVerifyPassword,
+  assertPasswordStrength,
   MAX_PASSWORD_LENGTH,
 } from "../utils/password";
 import type { PasswordVerifyResult } from "../utils/password";
@@ -22,12 +23,9 @@ import {
 } from "../utils/seed";
 
 // P1-5 / issue #8：初始/默认口令检测与登录失败锁定
-// （种子口令/初始哈希的单一来源见 utils/seed.ts。注意：WEAK_DEFAULT_PASSWORDS 首项
-//   "password" 与种子口令同值——改种子口令时本名单须同步复核，否则弱口令拦截失准）
-const WEAK_DEFAULT_PASSWORDS = ["password", "changeme"];
+// （种子口令/初始哈希的单一来源见 utils/seed.ts）
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 10 * 60 * 1000;
-const MIN_PASSWORD_LENGTH = 8;
 
 /** #44：口令长度上限的早退判定与统一错误（登录 / 建号 / 改密 / 重置共用） */
 function passwordTooLong(password: string): boolean {
@@ -39,6 +37,25 @@ function passwordTooLongError(): Response {
     ErrorCodes.VALIDATION_FAILED,
     `Password must be at most ${MAX_PASSWORD_LENGTH} characters`
   );
+}
+
+/**
+ * #45：口令强度不合规的统一 400。
+ * 只返回策略摘要，不区分具体失败规则，避免暴露判定细节。
+ */
+function passwordStrengthError(): Response {
+  return error(
+    ErrorCodes.VALIDATION_FAILED,
+    "口令强度不足：至少 12 位，且不得使用弱口令、站点名或用户名变体"
+  );
+}
+
+/** #45：站点标题参与口令强度判定（站点名变体拒绝）；未配置时为空串 */
+async function getSiteTitleForPasswordPolicy(env: Env): Promise<string> {
+  const row = await env.DB.prepare(
+    "SELECT value FROM site_config WHERE key = 'site_title'"
+  ).first<{ value: string }>();
+  return row?.value ?? "";
 }
 
 async function getJwtSecret(env: Env): Promise<string> {
@@ -384,7 +401,7 @@ export async function handleRefresh(
   return successResponse({ token: newToken }, "Token refreshed");
 }
 
-/** P1-5 / issue #8：自助改密（验证旧口令 + 新口令强度校验），成功后清除「须改密」标记 */
+/** P1-5 / issue #8：自助改密（验证旧口令 + #45 共享强度校验），成功后清除「须改密」标记 */
 export async function handleChangePassword(
   request: Request,
   env: Env,
@@ -422,13 +439,17 @@ export async function handleChangePassword(
 
   if (newPassword === oldPassword)
     return error(ErrorCodes.VALIDATION_FAILED, "新口令不能与旧口令相同");
-  if (newPassword.length < MIN_PASSWORD_LENGTH)
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      `新口令长度不得少于 ${MIN_PASSWORD_LENGTH} 位`
-    );
-  if (WEAK_DEFAULT_PASSWORDS.includes(newPassword))
-    return error(ErrorCodes.VALIDATION_FAILED, "新口令不得使用默认口令");
+
+  // #45：共享口令强度校验（自助改密）
+  const siteTitle = await getSiteTitleForPasswordPolicy(env);
+  if (
+    !assertPasswordStrength(newPassword, {
+      username: authResult.username,
+      siteTitle,
+    })
+  ) {
+    return passwordStrengthError();
+  }
 
   const newHash = await hashPassword(newPassword);
   const nowIso = new Date().toISOString();
@@ -476,8 +497,23 @@ export async function handleCreateUser(
     );
   }
 
+  const usernameForPolicy = String(username);
+  const providedPassword = String(password);
+  const displayName = display_name ? String(display_name) : usernameForPolicy;
+
   // #44：与登录同口径，超长口令在查库与哈希前拒绝
-  if (passwordTooLong(String(password))) return passwordTooLongError();
+  if (passwordTooLong(providedPassword)) return passwordTooLongError();
+
+  // #45：共享口令强度校验（创建用户 / 管理员重置 / 自助改密）
+  const siteTitle = await getSiteTitleForPasswordPolicy(env);
+  if (
+    !assertPasswordStrength(providedPassword, {
+      username: usernameForPolicy,
+      siteTitle,
+    })
+  ) {
+    return passwordStrengthError();
+  }
 
   const existing = await env.DB.prepare(
     "SELECT id FROM users WHERE username = ?"
@@ -488,14 +524,13 @@ export async function handleCreateUser(
     return error(ErrorCodes.VALIDATION_FAILED, "Username already exists");
   }
 
-  const passwordHash = await hashPassword(String(password));
-  const displayName = display_name ? String(display_name) : String(username);
+  const passwordHash = await hashPassword(providedPassword);
   const userRole = role === "editor" ? "editor" : "admin";
 
   const result = await env.DB.prepare(
-    "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)"
+    "INSERT INTO users (username, password_hash, display_name, role, must_change_password) VALUES (?, ?, ?, ?, ?)"
   )
-    .bind(String(username), passwordHash, displayName, userRole)
+    .bind(String(username), passwordHash, displayName, userRole, 1)
     .run();
 
   return successResponse(
@@ -557,11 +592,37 @@ export async function handleUpdateUser(
   const passwordReset = Boolean(body.password);
 
   if (passwordReset) {
-    const passwordHash = await hashPassword(String(body.password));
+    const providedPassword = String(body.password);
+
+    // #44：与登录同口径，超长口令在查库与哈希前拒绝
+    if (passwordTooLong(providedPassword)) return passwordTooLongError();
+
+    // #45：共享口令强度校验
+    const siteTitle = await getSiteTitleForPasswordPolicy(env);
+    const user = await env.DB.prepare("SELECT username FROM users WHERE id = ?")
+      .bind(Number(id))
+      .first<{ username: string }>();
+    if (!user) return error(ErrorCodes.NOT_FOUND, "User not found");
+
+    if (
+      !assertPasswordStrength(providedPassword, {
+        username: user.username,
+        siteTitle,
+      })
+    ) {
+      return passwordStrengthError();
+    }
+
+    const passwordHash = await hashPassword(providedPassword);
     sets.push("password_hash = ?");
     values.push(passwordHash);
-    // 管理员重置口令（#18）：与自助改密对齐，同一步清零失败计数、清空锁定截止时间，重置后账号可立即登录
-    sets.push("failed_login_attempts = 0", "locked_until = NULL");
+    // 管理员重置口令（#18）：与自助改密对齐，同一步清零失败计数、清空锁定截止时间
+    // #45：同时置 must_change_password = 1
+    sets.push(
+      "failed_login_attempts = 0",
+      "locked_until = NULL",
+      "must_change_password = 1"
+    );
   }
 
   if (sets.length === 0) {

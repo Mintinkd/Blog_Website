@@ -4,6 +4,8 @@
  * - 旧格式（无盐单轮 SHA-256 hex）仅保留「校验兼容」，登录成功后由调用方透明升级
  */
 
+import { DEFAULT_SEED_PASSWORD } from "./seed";
+
 const PBKDF2_SCHEME = "pbkdf2";
 const PBKDF2_HASH = "sha256";
 const PBKDF2_ITERATIONS = 100_000;
@@ -12,6 +14,107 @@ const DERIVED_KEY_BITS = 256;
 
 /** 口令长度上限（#44）：登录 / 建号 / 改密共用，超限在进入 KDF 前拒绝 */
 export const MAX_PASSWORD_LENGTH = 200;
+
+/** 口令强度下限（#45）：建号 / 管理员重置 / 自助改密共用同一策略 */
+export const MIN_PASSWORD_LENGTH = 12;
+
+export interface PasswordStrengthContext {
+  /** 目标账号用户名：口令不得是其大小写 / 空格 / leet 变体 */
+  username?: string;
+  /** 站点标题：口令不得是其大小写 / 空格 / leet 变体 */
+  siteTitle?: string;
+}
+
+const LEET_SUBSTITUTIONS: Record<string, string> = {
+  "0": "o",
+  "1": "i",
+  "3": "e",
+  "4": "a",
+  "5": "s",
+  "7": "t",
+  "@": "a",
+  $: "s",
+  "!": "i",
+};
+
+/** 归一化：NFKC → 小写 → 常见 leet 折叠 → 去掉分隔符，用于弱口令与身份变体比较 */
+function canonicalize(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[013457@$!]/g, (char) => LEET_SUBSTITUTIONS[char] ?? char)
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/**
+ * 弱口令名单（#45）。统一经 canonicalize 折叠后比较，
+ * 因此大小写、常见 leet 替换（0→o、@→a 等）与分隔符差异都命中。
+ * 种子口令从单一来源引入，避免改种子值后漏拦。
+ */
+const WEAK_PASSWORDS = new Set(
+  [
+    DEFAULT_SEED_PASSWORD,
+    "changeme",
+    "changeme1234",
+    "password1",
+    "password123",
+    "password1234",
+    "qwerty",
+    "qwertyuiop",
+    "letmein",
+    "welcome",
+    "admin",
+    "administrator",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "123456789012",
+    "111111111111",
+    "iloveyou",
+    "monkey",
+    "dragon",
+  ].map(canonicalize)
+);
+
+function identityVariants(value: string | undefined): string[] {
+  if (!value) return [];
+  const canonical = canonicalize(value);
+  // 过短的用户名/站名（如 "a"）会产生大面积误伤，不参与变体判定
+  if (canonical.length < 3) return [];
+  return [canonical, [...canonical].reverse().join("")];
+}
+
+function isWeakPassword(password: string): boolean {
+  return (
+    WEAK_PASSWORDS.has(password.trim().toLowerCase()) ||
+    WEAK_PASSWORDS.has(canonicalize(password))
+  );
+}
+
+/**
+ * 共享口令强度断言（#45）：创建用户 / 管理员重置 / 自助改密三条路径必须调用同一实现。
+ *
+ * 返回是否满足策略，由 handler 统一转 400；不抛异常，避免三处各写一份 try/catch。
+ * 规则：长度 ≥ 12、非弱口令名单、不含站点标题或用户名的正向/反向变体。
+ * 长度上限由 #44 的 MAX_PASSWORD_LENGTH 在进入本函数前单独早退（错误口径不同）。
+ */
+export function assertPasswordStrength(
+  password: string,
+  context: PasswordStrengthContext = {}
+): boolean {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    return false;
+  }
+  if (isWeakPassword(password)) return false;
+
+  const canonicalPassword = canonicalize(password);
+  for (const value of [context.username, context.siteTitle]) {
+    for (const variant of identityVariants(value)) {
+      if (variant && canonicalPassword.includes(variant)) return false;
+    }
+  }
+  return true;
+}
 
 const encoder = new TextEncoder();
 
