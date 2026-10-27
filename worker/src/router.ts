@@ -147,7 +147,12 @@ function matchRoute(
     if (match) {
       const params: Record<string, string> = {};
       route.paramNames.forEach((name, i) => {
-        params[name] = decodeURIComponent(match[i + 1]);
+        try {
+          params[name] = decodeURIComponent(match[i + 1]);
+        } catch {
+          // Malformed % sequence → treat as raw string (fail-safe, not fail-open)
+          params[name] = match[i + 1] || "";
+        }
       });
       return {
         handler: route.handler,
@@ -171,7 +176,8 @@ addRoute("GET", "/health", async (_req, env) => {
       kv: "connected",
     });
   } catch (e) {
-    return Response.json({ status: "error", message: String(e) });
+    console.error("Health check failed:", e);
+    return Response.json({ status: "error" });
   }
 });
 
@@ -599,7 +605,7 @@ export async function router(
     return withSecurityHeaders(
       withCors(
         Response.json(
-          { code: 500, message: errMsg, data: null },
+          { code: 500, message: "Internal server error", data: null },
           { status: 500 }
         ),
         request
