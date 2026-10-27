@@ -683,9 +683,20 @@ export async function handleUpdateUser(
 export async function handleDeleteUser(
   request: Request,
   env: Env,
-  params: Record<string, string>
+  params: Record<string, string>,
+  authResult?: AuthResult
 ): Promise<Response> {
   const { id } = params;
+
+  // #51：禁止删除当前登录用户（角色降级有 self 检查，删除路径此前缺失）
+  if (authResult) {
+    const self = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
+      .bind(authResult.username)
+      .first<{ id: number }>();
+    if (self && self.id === Number(id)) {
+      return error(ErrorCodes.VALIDATION_FAILED, "无法删除当前登录账户");
+    }
+  }
 
   const user = await env.DB.prepare("SELECT role FROM users WHERE id = ?")
     .bind(Number(id))

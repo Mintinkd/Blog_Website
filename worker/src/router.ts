@@ -218,7 +218,8 @@ addRoute(
 addRoute(
   "DELETE",
   "/users/:id",
-  async (req, env, _ctx, params) => handleDeleteUser(req, env, params),
+  async (req, env, _ctx, params, auth) =>
+    handleDeleteUser(req, env, params, auth),
   true,
   true
 );

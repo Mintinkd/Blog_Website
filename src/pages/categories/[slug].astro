@@ -9,7 +9,7 @@ const { slug } = Astro.params;
 <BaseLayout title={`分类: ${slug}`} description="">
   <section class="category-page">
     <div class="page-header">
-      <h1 class="page-title" data-i18n="page.category" data-i18n-params='{"name":""}'>分类: {slug}</h1>
+      <h1 class="page-title" data-i18n="page.category" data-i18n-params={JSON.stringify({ name: slug })}>分类: {slug}</h1>
       <a href="/articles" class="page-back" data-i18n="page.all_articles">← 所有文章</a>
     </div>
     <div id="article-list" data-category-slug={slug} data-page="1" data-page-size="10">
