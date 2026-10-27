@@ -9,7 +9,7 @@
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
 - **Element Plus** — 后台管理UI组件库
-- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览仍走既有的 `marked.parse` + 默认 DOMPurify；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖与 prose.css 的 hljs 样式暂为渲染侧残留）
+- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览仍走既有的 `marked.parse` + 默认 DOMPurify；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
 
 ### 后端
 
