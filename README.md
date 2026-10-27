@@ -116,7 +116,6 @@
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.toml            # Worker配置（旧版，已弃用）
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
 │   ├── schema.sql               # 数据库Schema
 │   ├── package.json             # 后端依赖与脚本（typecheck / test）
@@ -550,6 +549,21 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 | `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐） |
 
 浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
+
+### 部署通道禁令（H2）
+
+仓库内存在两份 wrangler 配置，对应两条互不相同的部署通道，**禁止混用**：
+
+| 配置文件                | 作用对象                             | 执行目录                                        | 说明                                                                 |
+| ----------------------- | ------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------- |
+| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                       | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT 绑定齐全；唯一生效的 Worker 配置 |
+| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（仅 Cloudflare Dashboard 侧 Build 消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy                         |
+
+**禁令：**
+
+- **Worker 部署必须在 `worker/` 目录下执行**（`cd worker && npx wrangler deploy`）。根目录禁止执行 `npx wrangler deploy`——根配置是前端 Build 目标，缺少 `DB` / `EDIT_LOCK` / `RATE_LIMIT` 绑定，部署出的 Worker 启动即报错。
+- 历史死配置 `worker/wrangler.toml`（仅 MEDIA 绑定，缺 DB / EDIT_LOCK / RATE_LIMIT）已于 2026-10-27 删除。任何脚本 / workflow / package.json 均不得引用该文件名。
+- 根 `wrangler.jsonc` 的 `name = blog_website` 为已裁定值（见 issue #49 裁定记录），不得改为 `blog-api`，否则前端 Worker 会顶替 API Worker 并形成 `/api/v1/*` 代理回环。
 
 ### 手动部署
 
