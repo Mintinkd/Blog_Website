@@ -64,14 +64,18 @@ body {
 /* 竖屏 / 窄屏：主体光斑略微上移，避免被裁到边缘外导致「重点缺失」 */
 @media (orientation: portrait) {
   .site-bg {
-    background-position: center 18%, center;
+    background-position:
+      center 18%,
+      center;
   }
 }
 
 /* 超宽屏：保持中心裁切，避免横向拉伸变形 */
 @media (min-aspect-ratio: 21/9) {
   .site-bg {
-    background-position: center center, center;
+    background-position:
+      center center,
+      center;
   }
 }
 
@@ -183,6 +187,21 @@ select {
   color: #ffffff;
 }
 
+/* ============================================================
+ * 全局焦点样式：移除鼠标点击时的浏览器默认焦点轮廓（黑边），
+ * 同时保留键盘导航的可见焦点指示（:focus-visible，采用主题强调色）。
+ * 解决：文章页链接/导航栏图标被点击后出现黑边的问题。
+ * ============================================================ */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -231,7 +250,9 @@ hitokoto-widget {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   cursor: grab;
   touch-action: none;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .hk-btn:hover {
@@ -311,7 +332,9 @@ hitokoto-widget.card-below .hk-card {
   border-radius: 50%;
   color: var(--color-text-secondary);
   background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .hk-refresh:hover {
