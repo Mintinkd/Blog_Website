@@ -17,6 +17,8 @@ import {
 import {
   getDefaultSettings,
   validateSettings,
+  deepMerge,
+  validateCopyBody,
   type SiteSettings,
 } from "../src/handlers/settings";
 
@@ -212,5 +214,149 @@ describe("settings.rules 规则管线（issue #27）", () => {
     const nonString = getDefaultSettings();
     (nonString.copy.zh as any).key = 42;
     expect(validateSettings(nonString)).toEqual(["copy.zh.key"]);
+  });
+});
+
+/* ── H11：i18n 文案覆盖往返契约 ──
+ * 深合并键集合 bug、validateSettings 错配、序列化丢字段，三类缺陷
+ * 都被「write → read → 断言相等」这一条往返契约兜住。
+ * 接缝：deepMerge + validateCopyBody（提交体校验）。
+ */
+describe("i18n 文案覆盖往返契约（H11）", () => {
+  const CAP =
+    SETTINGS_RULES["copy.zh"].kind === "copy"
+      ? SETTINGS_RULES["copy.zh"].cap
+      : 2000;
+
+  /** 模拟 PUT → GET 的完整往返：deepMerge 写入侧 + loadStored 读取侧各跑一次 */
+  function roundTrip(body: any): SiteSettings {
+    const written = deepMerge(getDefaultSettings(), body);
+    // loadStored 侧：从 DB 读出 JSON 后再 deepMerge 一次默认值
+    const stored = JSON.parse(JSON.stringify(written));
+    return deepMerge(getDefaultSettings(), stored);
+  }
+
+  it("提交合法文案键后，读取返回与提交完全一致的值", () => {
+    const body = {
+      copy: {
+        zh: { "nav.home": "首页-test", "hero.title": "测试标题" },
+        en: { "nav.home": "Home-test" },
+      },
+    };
+    const result = roundTrip(body);
+    expect(result.copy.zh["nav.home"]).toBe("首页-test");
+    expect(result.copy.zh["hero.title"]).toBe("测试标题");
+    expect(result.copy.en["nav.home"]).toBe("Home-test");
+  });
+
+  it("往返契约：每个分区各挑一个代表字段，write → read → 断言相等", () => {
+    const body = {
+      copy: {
+        zh: {
+          "site.title": "我的博客",
+          "nav.home": "首页-overridden",
+          "hero.title": "探索 · 记录 · 分享-test",
+          "page.category": "分类: {name}-test",
+        },
+        en: {
+          "site.title": "My Blog",
+          "nav.home": "Home-overridden",
+        },
+      },
+    };
+    const result = roundTrip(body);
+    expect(result.copy.zh["site.title"]).toBe("我的博客");
+    expect(result.copy.zh["nav.home"]).toBe("首页-overridden");
+    expect(result.copy.zh["hero.title"]).toBe("探索 · 记录 · 分享-test");
+    expect(result.copy.zh["page.category"]).toBe("分类: {name}-test");
+    expect(result.copy.en["site.title"]).toBe("My Blog");
+    expect(result.copy.en["nav.home"]).toBe("Home-overridden");
+  });
+
+  it("未提交的键保持默认文案，不被清空、不变成 undefined", () => {
+    const body = {
+      copy: {
+        zh: { "nav.home": "首页-overridden" },
+      },
+    };
+    const result = roundTrip(body);
+    // 提交的键被覆盖
+    expect(result.copy.zh["nav.home"]).toBe("首页-overridden");
+    // 未提交的键保持默认
+    expect(result.copy.zh["hero.title"]).toBe("探索 · 记录 · 分享");
+    expect(result.copy.en["nav.home"]).toBe("Home");
+    expect(result.copy.en["hero.title"]).toBe("Explore · Record · Share");
+    // 无 undefined
+    for (const v of Object.values(result.copy.zh)) {
+      expect(typeof v).toBe("string");
+    }
+    for (const v of Object.values(result.copy.en)) {
+      expect(typeof v).toBe("string");
+    }
+  });
+
+  it("非法文案：非字符串值被 400 拒绝", () => {
+    const bad = validateCopyBody({ copy: { zh: { "nav.home": 12345 } } }, CAP);
+    expect(bad).toEqual(["copy.zh.nav.home"]);
+  });
+
+  it("非法文案：超长值被 400 拒绝", () => {
+    const bad = validateCopyBody(
+      { copy: { zh: { "nav.home": "a".repeat(CAP + 1) } } },
+      CAP
+    );
+    expect(bad).toEqual(["copy.zh.nav.home"]);
+  });
+
+  it("非法文案：键名不合法被 400 拒绝", () => {
+    const bad = validateCopyBody(
+      { copy: { zh: { "Bad-Key": "x", "123abc": "x", "has space": "x" } } },
+      CAP
+    );
+    expect(bad).toEqual([
+      "copy.zh.Bad-Key",
+      "copy.zh.123abc",
+      "copy.zh.has space",
+    ]);
+  });
+
+  it("合法键名边界：month.01 这类数字起头分段可通过", () => {
+    const bad = validateCopyBody(
+      {
+        copy: {
+          zh: { "month.01": "1月", "admin.scrape_selector_invalid": "x" },
+        },
+      },
+      CAP
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it("未提交 copy 分区时 validateCopyBody 返回空", () => {
+    expect(validateCopyBody({}, CAP)).toEqual([]);
+    expect(validateCopyBody({ theme: {} }, CAP)).toEqual([]);
+  });
+
+  it("copy 分区非对象时整体拒绝", () => {
+    expect(validateCopyBody({ copy: "not an object" }, CAP)).toEqual(["copy"]);
+    expect(validateCopyBody({ copy: { zh: null } }, CAP)).toEqual(["copy.zh"]);
+  });
+
+  it("默认值深合并基线：全量默认文案均可往返", () => {
+    const def = getDefaultSettings();
+    const result = roundTrip({ copy: { zh: {}, en: {} } });
+    // 所有默认文案完整保留
+    for (const [key, value] of Object.entries(def.copy.zh)) {
+      expect(result.copy.zh[key]).toBe(value);
+    }
+    for (const [key, value] of Object.entries(def.copy.en)) {
+      expect(result.copy.en[key]).toBe(value);
+    }
+  });
+
+  it("默认值键集合非空（H11 根因修复）", () => {
+    const def = getDefaultSettings();
+    expect(Object.keys(def.copy.zh).length).toBeGreaterThan(0);
+    expect(Object.keys(def.copy.en).length).toBeGreaterThan(0);
   });
 });
