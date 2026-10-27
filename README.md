@@ -131,7 +131,7 @@
 │       ├── middleware/
 │       │   ├── auth.ts          # JWT认证
 │       │   ├── cors.ts          # 跨域
-│       │   ├── rate_limit.ts    # 限流
+│       │   ├── rate_limit.ts    # 限流（KV 固定窗口；计数键按 method + 路由模板分桶，资源 id 不影响配额，issue #48）
 │       │   └── security_headers.ts  # API 安全响应头（CSP default-src 'none'，渗透报告 002）
 │       ├── handlers/            # API处理器
 │       │   ├── article.ts
@@ -213,9 +213,9 @@ D1 (SQLite) 共 10 张表：
 | GET  | `/categories`                       | 分类列表                                                                                                                                            |
 | GET  | `/tags`                             | 标签列表                                                                                                                                            |
 | GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
-| POST | `/articles/:article_id/comments`    | 提交评论                                                                                                                                            |
-| GET  | `/search`                           | 全文搜索                                                                                                                                            |
-| POST | `/articles/:article_id/like`        | 点赞/取消                                                                                                                                           |
+| POST | `/articles/:article_id/comments`    | 提交评论（每 IP 每分钟 3 次，跨文章共享配额，issue #48）                                                                                            |
+| GET  | `/search`                           | 全文搜索（每 IP 每分钟 10 次）                                                                                                                      |
+| POST | `/articles/:article_id/like`        | 点赞/取消（每 IP 每分钟 10 次，跨文章共享配额，issue #48）                                                                                          |
 | GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
 | GET  | `/media/serve/*`                    | 媒体文件访问                                                                                                                                        |
 | GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
@@ -242,7 +242,7 @@ D1 (SQLite) 共 10 张表：
 | PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                                                                                         |
 | PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                                                                                         |
 | DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                                                                                         |
-| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by）                                                                                                                                        |
+| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by；每 IP 每分钟 10 次）                                                                                                                    |
 | GET    | `/media`                | 媒体列表（editor仅自己的）                                                                                                                                             |
 | DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                                                                         |
 
@@ -280,6 +280,15 @@ D1 (SQLite) 共 10 张表：
 | POST   | `/settings/reset`   | 恢复默认可视化配置                                                                                                         |
 | GET    | `/settings/export`  | 导出配置 JSON                                                                                                              |
 | POST   | `/settings/import`  | 导入配置 JSON                                                                                                              |
+
+### API 限流
+
+写操作（POST/PUT/DELETE）与 `GET /search` 经 KV 固定窗口限流（issue #48）：
+
+- 计数键按 `method + 路由模板` 分桶，资源 id 段归一为 `:id`——同一接口下不同文章/分类等共享配额，遍历资源 id 无法放大配额
+- 规则精确匹配（不做子串猜测）：评论 3 次/分、点赞 10 次/分、媒体上传 10 次/分、`/auth/*` 与 `/admin/import` 120 次/分、搜索 10 次/分
+- 未单列方法落到明确的方法级配额：POST/PUT 60 次/分、DELETE 10 次/分
+- 普通 GET 读接口（列表/配置/友链/媒体读取等）完全跳过限流，不产生 KV 写入
 
 ## 前台页面
 
@@ -480,7 +489,15 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，初始口令为 schema.sql 中的种子值）；首次登录响应会返回 `must_change_password: true` 并强制要求改密，未完成改密前除 `POST /auth/refresh`（令牌续期）与 `POST /auth/change-password`（改密）外的写操作均会被拒绝。
 
-JWT 密钥在首次登录时自动生成，无需手动配置。
+**JWT 密钥**：
+
+- 首次读取时自动生成（48字节随机数据，经 base64url 编码），无需手动配置
+- 永不出现在任何 API 响应或公开设置中
+- 如需手动轮换（例如密钥泄露或重建环境），可通过以下命令更新：
+  ```sql
+  UPDATE site_config SET value = '<新的64字符密钥>', updated_at = datetime('now') WHERE key = 'jwt_secret';
+  ```
+  新密钥会立即生效，所有现有 token 在过期前仍可使用。
 
 ## 部署
 

@@ -168,6 +168,7 @@ INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('posts_per_pag
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('about_content', '', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_username', 'admin', 0);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_password_hash', '', 0);
+-- jwt_secret: auto-generated on first read if empty (self-healing), see worker/src/middleware/auth.ts
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('jwt_secret', '', 0);
 
 -- Migration: Create users table if not exists (for existing deployments)

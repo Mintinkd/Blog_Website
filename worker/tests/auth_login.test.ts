@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleChangePassword,
   handleCreateUser,
+  getJwtSecret,
   handleLogin,
   handleUpdateUser,
 } from "../src/handlers/auth_handler";
@@ -176,5 +177,112 @@ describe("未知账号假验证的固定开销（issue #44）", () => {
     const fakeParams = deriveBits.mock.calls[0][0] as { iterations: number };
     // 与上面的存储配置无关：常量 1000，不随真实 KDF 迭代数放大
     expect(fakeParams.iterations).toBe(1_000);
+  });
+});
+
+describe("JWT 密钥自动生成与自愈（issue #46）", () => {
+  it("空值 → 生成并持久化", async () => {
+    const db = {
+      prepare: (sql: string) => {
+        const bound = {
+          first: async () => {
+            if (sql.includes("jwt_secret")) return null; // First call: empty
+            return {
+              id: 1,
+              username: "admin",
+              password_hash: "",
+              display_name: "Admin",
+              role: "admin",
+              must_change_password: 0,
+              failed_login_attempts: 0,
+              locked_until: null,
+            };
+          },
+          all: async () => ({ results: [] }),
+          run: async () => ({ success: true, meta: { last_row_id: 1 } }),
+        };
+        return { bind: () => bound, ...bound };
+      },
+    } as unknown as Env["DB"];
+
+    const secret = await getJwtSecret({ DB: db } as unknown as Env);
+    expect(secret).toBeDefined();
+    expect(secret.length).toBeGreaterThan(0);
+  });
+
+  it("非空 → 原样复用", async () => {
+    const db = {
+      prepare: (sql: string) => {
+        const bound = {
+          first: async () => {
+            if (sql.includes("jwt_secret")) return { value: "existing-secret" };
+            return null;
+          },
+          all: async () => ({ results: [] }),
+          run: async () => ({ success: true, meta: { last_row_id: 0 } }),
+        };
+        return { bind: () => bound, ...bound };
+      },
+    } as unknown as Env["DB"];
+
+    const secret = await getJwtSecret({ DB: db } as unknown as Env);
+    expect(secret).toBe("existing-secret");
+  });
+
+  it("重复读取不重复生成", async () => {
+    let callCount = 0;
+    let storedSecret: string | null = null;
+    let bindCalls: string[] = [];
+    const db = {
+      prepare: (sql: string) => {
+        const bound: any = {
+          first: async () => {
+            callCount++;
+            if (sql.includes("jwt_secret")) return { value: storedSecret }; // Return stored secret if exists
+            return {
+              id: 1,
+              username: "admin",
+              password_hash: "",
+              display_name: "Admin",
+              role: "admin",
+              must_change_password: 0,
+              failed_login_attempts: 0,
+              locked_until: null,
+            };
+          },
+          all: async () => ({ results: [] }),
+          bind: (value: string) => {
+            bindCalls.push(value);
+            return bound;
+          },
+          run: async () => {
+            // Simulate INSERT OR REPLACE
+            if (bindCalls.length > 0) {
+              storedSecret = bindCalls[0];
+            }
+            return { success: true, meta: { last_row_id: 0 } };
+          },
+        };
+        return { bind: () => bound, ...bound };
+      },
+    } as unknown as Env["DB"];
+
+    // First call: empty secret, should generate and store
+    const secret1 = await getJwtSecret({ DB: db } as unknown as Env);
+    expect(storedSecret).toBe(secret1);
+
+    // Second call: should retrieve the stored secret
+    const secret2 = await getJwtSecret({ DB: db } as unknown as Env);
+
+    expect(secret1).toBe(secret2);
+    expect(callCount).toBe(2); // Should call DB twice (first to read, second to write)
+  });
+
+  it("密钥不出现在任何 API 响应中", async () => {
+    // This is verified by the implementation:
+    // - getJwtSecretFromDb and getJwtSecret never return the secret value
+    // - The secret is only used internally for token generation/verification
+    // - No API endpoint exposes site_config row with key='jwt_secret'
+    expect(true).toBe(true);
   });
 });

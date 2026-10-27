@@ -6,7 +6,11 @@ import {
   unauthorized,
   rateLimited,
 } from "../utils/response";
-import { verifyToken, generateToken } from "../middleware/auth";
+import {
+  verifyToken,
+  generateToken,
+  base64UrlEncode,
+} from "../middleware/auth";
 import type { AuthResult } from "../middleware/auth";
 import {
   hashPassword,
@@ -58,12 +62,33 @@ async function getSiteTitleForPasswordPolicy(env: Env): Promise<string> {
   return row?.value ?? "";
 }
 
-async function getJwtSecret(env: Env): Promise<string> {
+/** Generate a strong random JWT secret (64-character base64url string) */
+function generateJwtSecret(): string {
+  const array = new Uint8Array(48); // 48 bytes = 384 bits (strong enough for HS256)
+  crypto.getRandomValues(array);
+  return base64UrlEncode(
+    Array.from(array, (byte) => String.fromCharCode(byte)).join("")
+  );
+}
+
+export async function getJwtSecret(env: Env): Promise<string> {
   const row = await env.DB.prepare(
     "SELECT value FROM site_config WHERE key = 'jwt_secret'"
   ).first<{ value: string }>();
   if (!row || !row.value) {
-    throw new Error("JWT secret not configured in site_config");
+    // Auto-generate a strong random JWT secret (self-healing)
+    const secret = generateJwtSecret();
+    // Persist it to the database
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO site_config (key, value, is_public, updated_at) VALUES ('jwt_secret', ?, 0, datetime('now'))"
+    )
+      .bind(secret)
+      .run();
+    console.error(
+      "JWT secret not configured in site_config; auto-generated and persisted:",
+      secret
+    );
+    return secret;
   }
   return row.value;
 }
