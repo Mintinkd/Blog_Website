@@ -130,6 +130,9 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
+    /* 封面是方形元素，必须裁到卡片圆角内，否则封面渐变的直角会盖住圆角边框，
+       在左上角露出一块深色直角（渐变 135deg 的起点最暗，最明显） */
+    overflow: hidden;
     transition: all var(--transition-normal);
   }
 

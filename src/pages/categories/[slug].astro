@@ -131,6 +131,8 @@ const { slug } = Astro.params;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
+    /* 封面是方形元素，必须裁到卡片圆角内，否则封面直角会盖住圆角边框，左上角露出深色直角 */
+    overflow: hidden;
     transition: all var(--transition-normal);
   }
   .list-card:hover {
