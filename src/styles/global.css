@@ -46,8 +46,11 @@ body {
  * ============================================================ */
 .site-bg {
   position: fixed;
-  /* 上下各留 10% 余量，供视差（data-parallax-fixed）位移使用，避免位移时露出边缘 */
-  inset: -10% 0;
+  /* 上下各留 10% 余量，供视差（data-parallax-fixed）位移使用，避免位移时露出边缘；
+     左右再各留一段（视口 5%，至少 48px）给 blur 扩散。否则固定层横向没有余量，
+     blur(6px) 会在视口两侧淡出成透明，露出 html 底色，形成一条竖向亮/暗边
+     （浅色主题为白边、深色主题为黑边），即「文章页 UI 有黑边」的来源 */
+  inset: -10% min(-5%, -48px);
   z-index: -1;
   background-image: var(--bg-overlay), var(--bg-image);
   background-size: cover, cover;
