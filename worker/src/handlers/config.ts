@@ -56,8 +56,11 @@ export async function handleUpdateConfig(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, string>;
+  const body = (await request.json()) as Record<string, unknown>;
 
+  // 先整体校验、再统一写入：旧实现边校验边 UPDATE，任一后续键非法时
+  // 前面的键已经落库，前端却只会看到一条失败提示（部分成功）。
+  const updates: Array<{ key: string; value: string }> = [];
   for (const [key, value] of Object.entries(body)) {
     if (!CONFIG_KEY_WHITELIST.has(key)) {
       return error(
@@ -71,16 +74,18 @@ export async function handleUpdateConfig(
         `配置键 ${key} 的值必须是字符串`
       );
     }
-    if (
-      NO_EMPTY_KEYS.has(key) &&
-      (value === "" || value === null || value === undefined)
-    ) {
+    if (NO_EMPTY_KEYS.has(key) && value === "") {
       return error(ErrorCodes.VALIDATION_FAILED, `配置键 ${key} 不得为空`);
     }
+    updates.push({ key, value });
+  }
+
+  const updatedAt = new Date().toISOString();
+  for (const { key, value } of updates) {
     await env.DB.prepare(
       "UPDATE site_config SET value = ?, updated_at = ? WHERE key = ?"
     )
-      .bind(value, new Date().toISOString(), key)
+      .bind(value, updatedAt, key)
       .run();
   }
 

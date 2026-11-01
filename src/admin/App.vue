@@ -1508,6 +1508,7 @@ import DOMPurify from "dompurify";
 import { renderMarkdown } from "../utils/markdown";
 import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
 import { safeFriendLinkUrl } from "../utils/friend-link-url";
+import { toConfigPayload } from "../utils/config-payload";
 
 // marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
 // （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
@@ -2296,7 +2297,7 @@ async function deleteTag(id: number) {
 
 async function saveConfig() {
   configMsg.value = "";
-  const data = await api("PUT", "/config", configForm.value);
+  const data = await api("PUT", "/config", toConfigPayload(configForm.value));
   if (data.code === 0) configMsg.value = t("admin.save_success");
   else configMsg.value = data.message || t("admin.save_failed");
 }

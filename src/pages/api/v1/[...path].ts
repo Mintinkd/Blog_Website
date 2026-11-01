@@ -1,4 +1,8 @@
 import { WORKER_ORIGIN } from "../../../utils/workerOrigin";
+import {
+  PROXY_CORS_HEADERS,
+  buildProxyResponseHeaders,
+} from "../../../utils/api-proxy";
 
 export const prerender = false;
 
@@ -6,12 +10,7 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Max-Age": "86400",
-      },
+      headers: PROXY_CORS_HEADERS,
     });
   }
 
@@ -40,15 +39,9 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
       body,
     });
 
-    const responseHeaders = new Headers(workerResponse.headers);
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
-    responseHeaders.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    responseHeaders.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
+    const responseHeaders = buildProxyResponseHeaders(
+      workerResponse.headers,
+      import.meta.env.DEV
     );
 
     return new Response(workerResponse.body, {

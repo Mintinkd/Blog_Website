@@ -151,6 +151,21 @@ describe("配置写入键白名单（T9-2）", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("任一键非法时整批拒绝，不产生部分写入", async () => {
+    const { db, statements } = makeDb(() => null);
+    const res = await handleUpdateConfig(
+      new Request("https://example.com/api/v1/config", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ site_title: "不该被写入", posts_per_page: 10 }),
+      }),
+      { DB: db } as any
+    );
+    expect(res.status).toBe(400);
+    // 旧实现边校验边 UPDATE：site_title 会在 posts_per_page 报错前落库。
+    expect(statements).toHaveLength(0);
+  });
 });
 
 describe("LIKE 转义与 FTS 失败日志（T9-3）", () => {

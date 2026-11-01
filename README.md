@@ -265,7 +265,7 @@ D1 (SQLite) 共 10 张表：
 | PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                       |
 | DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                                                                              |
 | GET    | `/config/all`       | 全部配置                                                                                                                   |
-| PUT    | `/config`           | 更新配置                                                                                                                   |
+| PUT    | `/config`           | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                           |
 | GET    | `/friend-links/all` | 全部友链                                                                                                                   |
 | POST   | `/friend-links`     | 创建友链（URL 仅 http/https）                                                                                              |
 | PUT    | `/friend-links/:id` | 更新友链（URL 仅 http/https）                                                                                              |
