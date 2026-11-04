@@ -37,7 +37,7 @@ export type ArticleLoadResult =
 export interface LoadArticleOptions {
   /** 覆盖 Worker origin（测试用；缺省走 dev 覆盖或 WORKER_ORIGIN）。 */
   origin?: string;
-  /** 访客请求：转发 Cookie 与 cf-connecting-ip；Cookie 供 API 侧阅读量去重。 */
+  /** 访客请求：转发 Cookie 与白名单上下文头；Cookie 供 API 侧阅读量去重。 */
   request?: Request;
 }
 
@@ -52,9 +52,9 @@ const FETCH_TIMEOUT_MS = 8_000;
  * - `not-found`：404，或上游意外返回草稿（未发布对匿名访客一律 404）；
  * - `error`：网络失败 / 非 2xx / 非法响应体，页面映射为 502 + 重试入口。
  *
- * 转发访客 Cookie（API 按 `view_<id>` 做 24 小时阅读量去重）与 cf-connecting-ip
- * （与同源 API 代理一致映射为 `X-Real-IP`）；上游下发的 Set-Cookie 原样返回，
- * 由页面回传浏览器。
+ * 转发访客 Cookie（API 按 `view_<id>` 做 24 小时阅读量去重）与白名单上下文头
+ * （cf-connecting-ip → `X-Real-IP`、CF-IPCountry → `X-Visitor-Country`，其余见
+ * `VISITOR_CONTEXT_HEADERS`）；上游下发的 Set-Cookie 原样返回，由页面回传浏览器。
  */
 export async function loadArticleForPage(
   slug: string,
@@ -110,21 +110,45 @@ function withSetCookies(
   return setCookies.length > 0 ? { ...result, setCookies } : result;
 }
 
+/** SSR → Worker 的访客上下文白名单（Cookie / 映射头 / Sec-CH-UA* 通配单独处理）。 */
+const VISITOR_CONTEXT_HEADERS = [
+  "user-agent",
+  "accept",
+  "referer",
+  "accept-language",
+  "sec-fetch-mode",
+  "sec-fetch-dest",
+  "sec-purpose",
+  "purpose",
+] as const;
+
 /**
  * 访客请求头 → 上游请求头。
- * Cookie 原样转发供阅读量去重；IP 沿用同源 API 代理的 `X-Real-IP` 约定。
+ * Cookie 原样转发供阅读量去重；IP / 国家只认 Cloudflare 来源头，映射为内部约定；
+ * 其余白名单头按实际存在转发，缺失不合成默认值（构建期 / 测试没有访客请求）。
  */
 function forwardVisitorHeaders(request?: Request): Headers | null {
   if (!request) return null;
 
-  const cookie = request.headers.get("cookie");
-  const clientIp = request.headers.get("cf-connecting-ip")?.trim();
-  if (!cookie && !clientIp) return null;
-
   const headers = new Headers();
+  const cookie = request.headers.get("cookie");
   if (cookie) headers.set("Cookie", cookie);
+  const clientIp = request.headers.get("cf-connecting-ip")?.trim();
   if (clientIp) headers.set("X-Real-IP", clientIp);
-  return headers;
+  const country = request.headers.get("cf-ipcountry")?.trim();
+  if (country) headers.set("X-Visitor-Country", country);
+
+  for (const name of VISITOR_CONTEXT_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  for (const [name, value] of request.headers) {
+    if (name.toLowerCase().startsWith("sec-ch-ua") && value) {
+      headers.set(name, value);
+    }
+  }
+
+  return headers.keys().next().done ? null : headers;
 }
 
 /** 文章页私有缓存语义：响应含访客 Cookie，不能被共享缓存复用。 */

@@ -319,6 +319,7 @@ D1 (SQLite) 共 13 张表：
 文章详情由 Astro 在请求时服务端渲染（issue #36 / [ADR 0004](docs/adr/0004-article-ssr-request-time-rendering.md)）：
 
 - **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
+- **访客上下文**：同时转发白名单 `User-Agent` / `Accept` / `Referer` / `Accept-Language` / `Sec-Fetch-Mode` / `Sec-Fetch-Dest` / `Sec-Purpose` / `Purpose` / `Sec-CH-UA*`；`CF-IPCountry` 映射为 `X-Visitor-Country`。缺失的头不合成默认 UA / Accept，Worker 侧由 `readVisitorContext` 还原为访客上下文，供机器人过滤与维度使用。
 - **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
 - **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 404 以外的非 2xx / 2xx 响应体非法 / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
 - **缓存**：响应 `Cache-Control: private, no-cache`（HTML 护栏再追加 `no-transform`），含访客 Cookie 的页面不会被共享缓存复用。

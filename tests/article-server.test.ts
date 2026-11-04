@@ -100,6 +100,90 @@ describe("文章页服务端取数", () => {
     expect(forwarded.get("x-real-ip")).toBe("203.0.113.9");
   });
 
+  it("逐项转发白名单访客头，缺失不伪造，只信 Cloudflare 来源头", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ code: 0, message: "ok", data: publishedArticle })
+    );
+
+    await loadArticleForPage("context", {
+      origin: "https://api.example.test",
+      request: new Request("https://blog.example.test/articles/context", {
+        headers: {
+          cookie: "view_7=1",
+          "cf-connecting-ip": "203.0.113.9",
+          "cf-ipcountry": "CN",
+          "user-agent": "Mozilla/5.0 Test",
+          accept: "text/html,application/xhtml+xml",
+          referer: "https://news.example.test/post",
+          "accept-language": "zh-CN,zh;q=0.9",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+          "sec-purpose": "prefetch",
+          purpose: "prefetch",
+          "sec-ch-ua": '"Chromium";v="130"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": '"Windows"',
+          // 客户端可伪造的同名头：只认 Cloudflare 提供的来源头。
+          "x-real-ip": "198.51.100.7",
+          "x-visitor-country": "ZZ",
+          // 白名单外的头不转发。
+          "accept-encoding": "gzip",
+          "x-forwarded-for": "198.51.100.8",
+        },
+      }),
+    });
+
+    const forwarded = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(forwarded.get("cookie")).toBe("view_7=1");
+    expect(forwarded.get("x-real-ip")).toBe("203.0.113.9");
+    expect(forwarded.get("x-visitor-country")).toBe("CN");
+    expect(forwarded.get("user-agent")).toBe("Mozilla/5.0 Test");
+    expect(forwarded.get("accept")).toBe("text/html,application/xhtml+xml");
+    expect(forwarded.get("referer")).toBe("https://news.example.test/post");
+    expect(forwarded.get("accept-language")).toBe("zh-CN,zh;q=0.9");
+    expect(forwarded.get("sec-fetch-mode")).toBe("navigate");
+    expect(forwarded.get("sec-fetch-dest")).toBe("document");
+    expect(forwarded.get("sec-purpose")).toBe("prefetch");
+    expect(forwarded.get("purpose")).toBe("prefetch");
+    expect(forwarded.get("sec-ch-ua")).toBe('"Chromium";v="130"');
+    expect(forwarded.get("sec-ch-ua-mobile")).toBe("?0");
+    expect(forwarded.get("sec-ch-ua-platform")).toBe('"Windows"');
+    expect(Array.from(forwarded.keys()).sort()).toEqual(
+      [
+        "accept",
+        "accept-language",
+        "cookie",
+        "purpose",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-purpose",
+        "user-agent",
+        "x-real-ip",
+        "x-visitor-country",
+      ].sort()
+    );
+  });
+
+  it("只转发实际存在的白名单头，不合成默认 UA / Accept", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ code: 0, message: "ok", data: publishedArticle })
+    );
+
+    await loadArticleForPage("only-ua", {
+      origin: "https://api.example.test",
+      request: new Request("https://blog.example.test/articles/only-ua", {
+        headers: { "user-agent": "vitest" },
+      }),
+    });
+
+    const forwarded = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(Array.from(forwarded.keys())).toEqual(["user-agent"]);
+  });
+
   it("没有 cf-connecting-ip 时不转发 X-Real-IP（不采信客户端 X-Forwarded-For）", async () => {
     const fetchMock = stubFetch(
       jsonResponse({ code: 0, message: "ok", data: publishedArticle })
@@ -117,7 +201,7 @@ describe("文章页服务端取数", () => {
     expect(forwarded.get("cookie")).toBeNull();
   });
 
-  it("访客请求没有 Cookie / IP 时不向上游附加请求头", async () => {
+  it("只带白名单外的头时不向上游附加请求头", async () => {
     const fetchMock = stubFetch(
       jsonResponse({ code: 0, message: "ok", data: publishedArticle })
     );
@@ -125,7 +209,7 @@ describe("文章页服务端取数", () => {
     await loadArticleForPage("anonymous", {
       origin: "https://api.example.test",
       request: new Request("https://blog.example.test/articles/anonymous", {
-        headers: { "user-agent": "vitest" },
+        headers: { "accept-encoding": "gzip" },
       }),
     });
 

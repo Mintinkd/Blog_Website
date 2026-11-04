@@ -338,6 +338,7 @@ worker（vitest，`worker/tests/`）：
 SSR（`tests/` 与 `docs/agents/testing.md` 既有回归）：
 
 - `loadArticleForPage` 转发白名单头；无访客请求时不伪造；
+- Worker 侧 `readVisitorContext` 还原 UA / Accept / 国家 / IP / 客户端提示，缺失归 null；
 - 文章 SSR 仍下发 `view_<id>` Cookie（现有门禁保持，逐字断言更新 `HttpOnly`）；
 - 后台「统计」标签可打开、空态正确、无控制台报错；
 - `/privacy` 页脚可达，中英文案切换正常。
