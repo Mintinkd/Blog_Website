@@ -56,9 +56,7 @@ async function runImport(tables: Record<string, unknown[]>): Promise<{
   return { res, statements };
 }
 
-async function bodyOf(
-  res: Response
-): Promise<{
+async function bodyOf(res: Response): Promise<{
   code: number;
   message: string;
   data: Record<string, unknown> | null;
@@ -209,12 +207,24 @@ describe("handleImport 表/列白名单拒绝（issue #23 / #12 基线）", () =
 });
 
 describe("handleImport site_config 密钥行跳过（issue #23 / #12 基线）", () => {
-  it("DELETE 只清非密钥行（NOT IN 名单为三个密钥键）；INSERT 漏过密钥行；响应报 skipped_secret_rows", async () => {
+  it("DELETE 只清非密钥/心跳行（NOT IN 名单为五个键）；INSERT 漏过这些行；响应报 skipped_secret_rows", async () => {
     const { res, statements } = await runImport({
       site_config: [
         {
           key: "jwt_secret",
           value: "super-secret",
+          is_public: 0,
+          updated_at: "2024-01-01",
+        },
+        {
+          key: "analytics_hmac_secret",
+          value: "analytics-secret",
+          is_public: 0,
+          updated_at: "2024-01-01",
+        },
+        {
+          key: "analytics_last_job_at",
+          value: "2024-01-01 00:00:00",
           is_public: 0,
           updated_at: "2024-01-01",
         },
@@ -229,7 +239,13 @@ describe("handleImport site_config 密钥行跳过（issue #23 / #12 基线）",
 
     await expect(bodyOf(res)).resolves.toMatchObject({
       code: 0,
-      data: { skipped_secret_rows: ["jwt_secret"] },
+      data: {
+        skipped_secret_rows: [
+          "jwt_secret",
+          "analytics_hmac_secret",
+          "analytics_last_job_at",
+        ],
+      },
     });
 
     const deletes = statements.filter((s) =>
@@ -239,8 +255,10 @@ describe("handleImport site_config 密钥行跳过（issue #23 / #12 基线）",
     expect(deletes[0].sql).toContain("WHERE key NOT IN");
     expect(deletes[0].binds).toEqual([
       "jwt_secret",
+      "analytics_hmac_secret",
       "admin_password_hash",
       "admin_username",
+      "analytics_last_job_at",
     ]);
 
     const inserts = statements.filter((s) =>

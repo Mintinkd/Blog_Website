@@ -6,25 +6,27 @@
     {
       "binding": "DB",
       "database_name": "blog-db",
-      "database_id": "5c759ce7-82e0-4205-8d01-fea18db55cd7"
-    }
+      "database_id": "5c759ce7-82e0-4205-8d01-fea18db55cd7",
+    },
   ],
   "kv_namespaces": [
     {
       "binding": "MEDIA",
-      "id": "c4f354b6c61e43e798a679fb6733edd8"
+      "id": "c4f354b6c61e43e798a679fb6733edd8",
     },
     {
-
       "binding": "EDIT_LOCK",
-      "id": "8a63eee2d516410d8e6e5ec7d420a0b1"
+      "id": "8a63eee2d516410d8e6e5ec7d420a0b1",
     },
     {
       "binding": "RATE_LIMIT",
-      "id": "e18fbfafedf048a380e6fe4e2a6f96d6"
-    }
+      "id": "e18fbfafedf048a380e6fe4e2a6f96d6",
+    },
   ],
   "vars": {
-    "API_PREFIX": "/api/v1"
-  }
+    "API_PREFIX": "/api/v1",
+  },
+  "triggers": {
+    "crons": ["0 16 * * *"],
+  },
 }

@@ -212,3 +212,47 @@ ALTER TABLE users ADD COLUMN locked_until TEXT;
 -- 存量部署：仍在使用种子口令（SHA-256("password")，TS 单一来源同 worker/src/utils/seed.ts）
 -- 的账号标记为须改密；字面量为已接受的 TS 拷贝，改种子口令时与本文件的种子 INSERT、seed.ts 三处同改。
 UPDATE users SET must_change_password = 1 WHERE password_hash = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
+
+-- ── 阅读统计 Tier 0（issue #53 / docs/READER_ANALYTICS.md §5） ──
+-- 本段全部 IF NOT EXISTS，可重复执行；存量库的增量片段见 README「初始化数据库」。
+-- 不建 analytics_consent（Tier 1，本批不做）。
+
+-- 每日文章聚合：趋势与后台主查询来源
+CREATE TABLE IF NOT EXISTS analytics_article_daily (
+  article_id   INTEGER NOT NULL,
+  day          TEXT    NOT NULL,              -- YYYY-MM-DD，站点时区 Asia/Shanghai
+  pv           INTEGER NOT NULL DEFAULT 0,
+  uv           INTEGER NOT NULL DEFAULT 0,
+  requests     INTEGER NOT NULL DEFAULT 0,    -- 含直连 API 的过滤后 200，用于代理覆盖率
+  engaged      INTEGER NOT NULL DEFAULT 0,
+  bot_filtered INTEGER NOT NULL DEFAULT 0,
+  updated_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (article_id, day)
+);
+
+-- 24h 去重令牌：不含 IP 明文
+CREATE TABLE IF NOT EXISTS analytics_view_token (
+  token      TEXT PRIMARY KEY,               -- HMAC hex
+  day        TEXT NOT NULL,                  -- YYYY-MM-DD，站点时区
+  expires_at TEXT NOT NULL                   -- UTC，YYYY-MM-DD HH:MM:SS（同 datetime('now')）
+);
+
+CREATE INDEX IF NOT EXISTS idx_view_token_expires
+  ON analytics_view_token(expires_at);
+
+-- 维度桶：只写单篇行；全站视图由查询时 GROUP BY 聚合
+CREATE TABLE IF NOT EXISTS analytics_dim_daily (
+  day        TEXT    NOT NULL,
+  dim        TEXT    NOT NULL,               -- device|browser|os|country|language|screen|referrer|dwell|scroll
+  bucket     TEXT    NOT NULL,
+  article_id INTEGER NOT NULL,               -- 所属文章；不写全站行
+  count      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, dim, bucket, article_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dim_daily_lookup
+  ON analytics_dim_daily(day, dim);
+
+-- 统计 HMAC 密钥首次使用时懒生成（独立于 jwt_secret）；清理任务心跳。
+INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('analytics_hmac_secret', '', 0);
+INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('analytics_last_job_at', '', 0);

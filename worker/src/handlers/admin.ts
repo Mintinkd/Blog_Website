@@ -11,9 +11,10 @@ import { isValidUrl } from "../utils/validator";
  *   一律 400），通过后才执行任何 DELETE/INSERT —— 被拒的请求不产生副作用；
  * - INSERT 的列名只从下方 IMPORTABLE_TABLES 描述符的 columns 白名单中取（与行键
  *   比对后过滤），不再把请求体中的任意键名拼接进 SQL（原 M1 SQL 注入点）；
- * - site_config 的密钥行（jwt_secret / admin_password_hash / admin_username）
- *   导入时默认跳过，且 DELETE 只清理非密钥行 —— 跨环境导入「备份」不会覆盖
- *   本机密钥与管理员凭据，被跳过的键在响应 data.skipped_secret_rows 中列出；
+ * - site_config 的密钥行（jwt_secret / analytics_hmac_secret / admin_password_hash /
+ *   admin_username）与统计任务心跳（analytics_last_job_at）导入时默认跳过，且
+ *   DELETE 只清理非名单行 —— 跨环境导入「备份」不会覆盖本机密钥、管理员凭据或
+ *   心跳，被跳过的键在响应 data.skipped_secret_rows 中列出；
  * - 文章 content/content_html 与评论 content 入库前过 sanitizeHtml（与评论
  *   常规写入路径同一净化器），防止恶意备份把 XSS 载荷导入库中；
  * - friend_links.url 导入时须过 isValidUrl 的 http/https scheme 白名单
@@ -29,7 +30,7 @@ import { isValidUrl } from "../utils/validator";
  * 新增表/列的唯一编辑点就是这张表 —— schema.sql 新增列需同步维护：
  *   - columns：可导入列白名单（与 worker/schema.sql 保持一致）；
  *   - sanitizeColumns：入库前需要服务端净化（sanitizeHtml）的文本列；
- *   - skipKeys：site_config 密钥行按行 key 跳过名单（跨环境导入时保留本机值），
+ *   - skipKeys：site_config 密钥/心跳行按行 key 跳过名单（跨环境导入时保留本机值），
  *     启用该名单的表在 DELETE 阶段同样只清非名单行；个别行在 INSERT 阶段漏过；
  *   - deleteRank / insertRank：FK 安全序（先子后父删 / 先父后子插，1 = 最先），
  *     DELETE_ORDER / INSERT_ORDER 由数值派生，须与 schema FK 依赖吻合。
@@ -141,7 +142,13 @@ const IMPORTABLE_TABLES: Record<string, ImportableTable> = {
   },
   site_config: {
     columns: ["key", "value", "is_public", "updated_at"],
-    skipKeys: ["jwt_secret", "admin_password_hash", "admin_username"],
+    skipKeys: [
+      "jwt_secret",
+      "analytics_hmac_secret",
+      "admin_password_hash",
+      "admin_username",
+      "analytics_last_job_at",
+    ],
     deleteRank: 9,
     insertRank: 9,
   },

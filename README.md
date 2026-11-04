@@ -116,7 +116,7 @@
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定，实际生效）
+│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定 + 每日 cron，实际生效）
 │   ├── schema.sql               # 数据库Schema
 │   ├── package.json             # 后端依赖与脚本（typecheck / test）
 │   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
@@ -125,7 +125,7 @@
 │   └── src/
 │       ├── generated/
 │       │   └── settings-rules.ts # 生成物：设置白名单规则（与根包同构，禁止手工编辑，issue #27）
-│       ├── index.ts             # Worker入口
+│       ├── index.ts             # Worker入口（fetch + scheduled 每日清理）
 │       ├── router.ts            # 路由注册与分发
 │       ├── middleware/
 │       │   ├── auth.ts          # JWT认证
@@ -151,7 +151,8 @@
 │       │   └── admin.ts
 │       ├── services/
 │       │   ├── article_service.ts
-│       │   └── edit_lock_service.ts
+│       │   ├── edit_lock_service.ts
+│       │   └── analytics_service.ts  # 阅读统计：dayKey / 每日清理 / HMAC 密钥懒生成（issue #53）
 │       ├── models/              # 数据模型
 │       └── utils/               # 工具函数
 ├── astro.config.mjs
@@ -180,22 +181,25 @@
 
 ## 数据库设计
 
-D1 (SQLite) 共 10 张表：
+D1 (SQLite) 共 13 张表：
 
-| 表名            | 说明                                                                                                                   |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `users`         | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                           |
-| `categories`    | 文章分类（含 created_by 所有权）                                                                                       |
-| `tags`          | 标签（含 created_by 所有权）                                                                                           |
-| `articles`      | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；author_id 作者，category_id 默认1） |
-| `article_tags`  | 文章-标签多对多关联                                                                                                    |
-| `comments`      | 评论（含审核状态）                                                                                                     |
-| `article_likes` | 点赞记录（IP去重）                                                                                                     |
-| `media_assets`  | 媒体文件元数据（含 uploaded_by 所有权）                                                                                |
-| `friend_links`  | 友情链接                                                                                                               |
-| `site_config`   | 站点配置（KV结构，含JWT密钥）                                                                                          |
+| 表名                      | 说明                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `users`                   | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                           |
+| `categories`              | 文章分类（含 created_by 所有权）                                                                                       |
+| `tags`                    | 标签（含 created_by 所有权）                                                                                           |
+| `articles`                | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；author_id 作者，category_id 默认1） |
+| `article_tags`            | 文章-标签多对多关联                                                                                                    |
+| `comments`                | 评论（含审核状态）                                                                                                     |
+| `article_likes`           | 点赞记录（IP去重）                                                                                                     |
+| `media_assets`            | 媒体文件元数据（含 uploaded_by 所有权）                                                                                |
+| `friend_links`            | 友情链接                                                                                                               |
+| `site_config`             | 站点配置（KV结构，含JWT密钥、统计HMAC密钥与清理任务心跳）                                                              |
+| `analytics_article_daily` | 阅读统计日聚合（PV/UV/requests/engaged/bot_filtered，按文章+站点时区日）                                               |
+| `analytics_view_token`    | 24h 去重令牌（HMAC hex，不含 IP 明文；每日 cron 清理）                                                                 |
+| `analytics_dim_daily`     | 阅读统计维度桶（只写单篇行，全站查询时 GROUP BY；保留 400 天）                                                         |
 
-另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。
+另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。Tier 1 的 `analytics_consent` 本批不建。
 
 ## API 接口
 
@@ -483,6 +487,45 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 > **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
 
 > **已有部署升级**：schema.sql 文件尾部的迁移语句仅供增量执行一次；对已有库请单独执行新增的迁移语句，勿重复执行全文（会因 `duplicate column` 报错）。
+
+**阅读统计（Tier 0）增量 DDL**：已有库升级时只执行以下语句（均 `IF NOT EXISTS`，重复执行安全）；不要重跑 `schema.sql` 全文。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
+
+```sql
+CREATE TABLE IF NOT EXISTS analytics_article_daily (
+  article_id   INTEGER NOT NULL,
+  day          TEXT    NOT NULL,
+  pv           INTEGER NOT NULL DEFAULT 0,
+  uv           INTEGER NOT NULL DEFAULT 0,
+  requests     INTEGER NOT NULL DEFAULT 0,
+  engaged      INTEGER NOT NULL DEFAULT 0,
+  bot_filtered INTEGER NOT NULL DEFAULT 0,
+  updated_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (article_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS analytics_view_token (
+  token      TEXT PRIMARY KEY,
+  day        TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_view_token_expires
+  ON analytics_view_token(expires_at);
+
+CREATE TABLE IF NOT EXISTS analytics_dim_daily (
+  day        TEXT    NOT NULL,
+  dim        TEXT    NOT NULL,
+  bucket     TEXT    NOT NULL,
+  article_id INTEGER NOT NULL,
+  count      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, dim, bucket, article_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dim_daily_lookup
+  ON analytics_dim_daily(day, dim);
+```
+
+> 每日 cron（`0 16 * * *`，即 Asia/Shanghai 00:00）由 Worker `scheduled` 入口执行：删除过期令牌、删除 400 天保留窗口外的日聚合与维度桶，并写入 `site_config.analytics_last_job_at` 心跳。
 
 ### 首次设置
 
