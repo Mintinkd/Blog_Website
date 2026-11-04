@@ -27,7 +27,9 @@ import { isValidUrl } from "../utils/validator";
  * 每张可导入表一份描述符（issue #23：原五个并行按表结构 TABLE_COLUMNS /
  * SKIP_CONFIG_KEYS / SANITIZE_COLUMNS / DELETE_ORDER / INSERT_ORDER 收敛于此）。
  *
- * 新增表/列的唯一编辑点就是这张表 —— schema.sql 新增列需同步维护：
+ * 新增表/列的唯一编辑点就是这张表 —— schema.sql 新增列需同步维护。
+ * 阅读统计三表（analytics_*）为派生数据，刻意不列入：不参与备份导出/导入，
+ * 避免把 24h 令牌与可重算聚合跨环境搬运。
  *   - columns：可导入列白名单（与 worker/schema.sql 保持一致）；
  *   - sanitizeColumns：入库前需要服务端净化（sanitizeHtml）的文本列；
  *   - skipKeys：site_config 密钥/心跳行按行 key 跳过名单（跨环境导入时保留本机值），
@@ -168,6 +170,7 @@ export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
+  // 只导出 IMPORTABLE_TABLES：阅读统计三表为派生数据，刻意不参与备份。
   const tables = Object.keys(IMPORTABLE_TABLES);
   const export_data: Record<string, unknown[]> = {};
 

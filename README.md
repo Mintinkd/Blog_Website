@@ -201,6 +201,8 @@ D1 (SQLite) 共 13 张表：
 
 另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。Tier 1 的 `analytics_consent` 本批不建。
 
+阅读统计三表为派生数据，不进入 `/admin/export` 备份与 `/admin/import` 恢复（短期令牌与可重算聚合不跨环境搬运）；`site_config` 的统计密钥与心跳行在导入时保留本机值。
+
 ## API 接口
 
 所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。
@@ -274,8 +276,8 @@ D1 (SQLite) 共 13 张表：
 | POST   | `/friend-links`     | 创建友链（URL 仅 http/https）                                                                                              |
 | PUT    | `/friend-links/:id` | 更新友链（URL 仅 http/https）                                                                                              |
 | DELETE | `/friend-links/:id` | 删除友链                                                                                                                   |
-| GET    | `/admin/export`     | 导出数据                                                                                                                   |
-| POST   | `/admin/import`     | 导入数据（友链 URL 同受 http/https 校验）                                                                                  |
+| GET    | `/admin/export`     | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                             |
+| POST   | `/admin/import`     | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                             |
 | GET    | `/admin/scrape`     | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`） |
 | GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                    |
 | GET    | `/settings/all`     | 拉取全部可视化配置                                                                                                         |

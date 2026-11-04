@@ -47,6 +47,8 @@ interface FakeState {
   config: Map<string, string>;
   /** 已执行的写语句（读语句不计），用于断言密钥只在首次使用时落库 */
   writes: string[];
+  /** 让匹配的写语句抛错，用于验证清理失败时不写心跳 */
+  failOn?: string;
 }
 
 function makeState(overrides: Partial<FakeState> = {}): FakeState {
@@ -87,6 +89,9 @@ function makeEnv(state: FakeState): Env {
       },
       async run() {
         state.writes.push(sql);
+        if (state.failOn && sql.startsWith(state.failOn)) {
+          throw new Error(`Injected D1 failure: ${state.failOn}`);
+        }
         if (sql.startsWith("DELETE FROM analytics_view_token")) {
           const now = String(binds[0]);
           const op = deleteOperator(sql, "expires_at");
@@ -128,7 +133,10 @@ function makeEnv(state: FakeState): Env {
           return { success: true, meta: { changes: 1 } };
         }
         if (sql.includes("analytics_hmac_secret")) {
-          state.config.set("analytics_hmac_secret", String(binds[0]));
+          // 模拟 ON CONFLICT ... WHERE value = ''：已有非空值时不覆盖
+          if (!state.config.get("analytics_hmac_secret")) {
+            state.config.set("analytics_hmac_secret", String(binds[0]));
+          }
           return { success: true, meta: { changes: 1 } };
         }
         throw new Error(`Unexpected SQL: ${sql}`);
@@ -187,7 +195,7 @@ describe("runAnalyticsCleanup：过期令牌", () => {
     const result = await runAnalyticsCleanup(makeEnv(state), NOW);
 
     expect(state.tokens.map((row) => row.token)).toEqual(["live"]);
-    expect(result.expiredTokens).toBe(2);
+    expect(result.expiredTokensDeleted).toBe(2);
   });
 });
 
@@ -213,8 +221,8 @@ describe("runAnalyticsCleanup：400 天保留窗口", () => {
     expect(retentionCutoffDay(NOW)).toBe("2025-10-01");
     expect(state.articleDays.map((row) => row.day)).toEqual(["2025-10-01"]);
     expect(state.dimDays.map((row) => row.day)).toEqual(["2025-10-01"]);
-    expect(result.articleDays).toBe(2);
-    expect(result.dimDays).toBe(2);
+    expect(result.articleRowsDeleted).toBe(2);
+    expect(result.dimRowsDeleted).toBe(2);
   });
 });
 
@@ -227,6 +235,15 @@ describe("runAnalyticsCleanup：心跳", () => {
       "2026-11-04 04:00:00"
     );
     expect(result.heartbeatAt).toBe("2026-11-04 04:00:00");
+  });
+
+  it("删除失败时不写心跳（质量面板可发现任务停摆）", async () => {
+    const state = makeState({ failOn: "DELETE FROM analytics_article_daily" });
+
+    await expect(runAnalyticsCleanup(makeEnv(state), NOW)).rejects.toThrow(
+      "Injected D1 failure"
+    );
+    expect(state.config.has("analytics_last_job_at")).toBe(false);
   });
 });
 
@@ -306,7 +323,7 @@ describe("契约面：schema.sql 与 wrangler cron", () => {
       "utf8"
     ).replace(/,\s*([}\]])/g, "$1");
     const config = JSON.parse(raw);
-    expect(config.triggers.crons).toHaveLength(1);
-    expect(config.triggers.crons[0]).toMatch(/^\d+ \d+ \* \* \*$/);
+    // 与 README「初始化数据库」的 cron 说明逐字一致
+    expect(config.triggers.crons).toEqual(["0 16 * * *"]);
   });
 });

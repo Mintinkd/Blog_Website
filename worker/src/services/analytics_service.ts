@@ -50,9 +50,9 @@ export function sqliteUtcTimestamp(date: Date): string {
 }
 
 export interface AnalyticsCleanupResult {
-  expiredTokens: number;
-  articleDays: number;
-  dimDays: number;
+  expiredTokensDeleted: number;
+  articleRowsDeleted: number;
+  dimRowsDeleted: number;
   heartbeatAt: string;
 }
 
@@ -92,9 +92,9 @@ export async function runAnalyticsCleanup(
     .run();
 
   return {
-    expiredTokens: expiredTokens.meta.changes,
-    articleDays: articleDays.meta.changes,
-    dimDays: dimDays.meta.changes,
+    expiredTokensDeleted: expiredTokens.meta.changes,
+    articleRowsDeleted: articleDays.meta.changes,
+    dimRowsDeleted: dimDays.meta.changes,
     heartbeatAt,
   };
 }
@@ -109,7 +109,11 @@ function generateAnalyticsHmacSecret(): string {
   );
 }
 
-/** 取阅读统计 HMAC 密钥；首次使用时懒生成并持久化（独立于 jwt_secret） */
+/**
+ * 取阅读统计 HMAC 密钥；首次使用时懒生成并持久化（独立于 jwt_secret）。
+ * 并发首次使用用「仅填空值」的 upsert + 回读收敛：所有调用方拿到同一落库值，
+ * 避免两个请求各生成一份、后写覆盖前写导致 24h 内去重令牌失配。
+ */
 export async function getAnalyticsHmacSecret(env: Env): Promise<string> {
   const row = await env.DB.prepare(
     "SELECT value FROM site_config WHERE key = 'analytics_hmac_secret'"
@@ -118,9 +122,14 @@ export async function getAnalyticsHmacSecret(env: Env): Promise<string> {
 
   const secret = generateAnalyticsHmacSecret();
   await env.DB.prepare(
-    "INSERT OR REPLACE INTO site_config (key, value, is_public, updated_at) VALUES ('analytics_hmac_secret', ?, 0, datetime('now'))"
+    "INSERT INTO site_config (key, value, is_public, updated_at) VALUES ('analytics_hmac_secret', ?, 0, datetime('now')) " +
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now') WHERE site_config.value = ''"
   )
     .bind(secret)
     .run();
-  return secret;
+
+  const stored = await env.DB.prepare(
+    "SELECT value FROM site_config WHERE key = 'analytics_hmac_secret'"
+  ).first<{ value: string }>();
+  return stored?.value || secret;
 }
