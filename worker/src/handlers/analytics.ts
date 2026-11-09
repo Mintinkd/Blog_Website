@@ -26,6 +26,23 @@ const HEARTBEAT_MAX_AGE_MS = 26 * 60 * 60 * 1000;
 const TOKEN_ROWS_ALERT = 100_000;
 const ANOMALY_SIGMA = 3;
 
+/** 心跳是 UTC `YYYY-MM-DD HH:MM:SS`（`datetime('now')` 同格式），不接受残缺值 */
+const HEARTBEAT_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+/** 概览与质量共用的日聚合汇总：同一份 SQL，避免两处各写一份后漂移 */
+const DAILY_TOTALS_SQL =
+  "SELECT COALESCE(SUM(pv), 0) AS pv, COALESCE(SUM(uv), 0) AS uv, " +
+  "COALESCE(SUM(requests), 0) AS requests, " +
+  "COALESCE(SUM(bot_filtered), 0) AS bot_filtered " +
+  "FROM analytics_article_daily WHERE day >= ? AND day <= ?";
+
+interface TotalsRow {
+  pv: number;
+  uv: number;
+  requests: number;
+  bot_filtered: number;
+}
+
 /** range → 含当日在内的日历天数；站点时区日界由 dayKey() 统一切分 */
 const RANGE_DAYS = {
   today: 1,
@@ -44,7 +61,7 @@ export function isAnalyticsRange(
   );
 }
 
-/** 含当日在内的 [from, to] 日界，概览与分布共用一套时区口径 */
+/** 含当日在内的 [from, to] 日界，四个只读接口共用一套时区口径 */
 function rangeBounds(range: AnalyticsRange): { from: string; to: string } {
   const days = RANGE_DAYS[range];
   const to = dayKey();
@@ -54,7 +71,7 @@ function rangeBounds(range: AnalyticsRange): { from: string; to: string } {
   };
 }
 
-/** 两个只读接口共用的 range 校验；错误文案由白名单派生，避免两处各自维护 */
+/** 四个只读接口共用的 range 校验；错误文案由白名单派生，避免多处各自维护 */
 function parseRange(params: URLSearchParams): AnalyticsRange | Response {
   const value = params.get("range");
   if (!isAnalyticsRange(value)) {
@@ -86,8 +103,9 @@ function parsePage(params: URLSearchParams): number | Response {
   return Number(value);
 }
 
-/** 心跳是 UTC `YYYY-MM-DD HH:MM:SS`；缺失 / 非法 / 超 26h 都算告警 */
+/** 心跳缺失 / 格式非法 / 超 26h 都算告警 */
 function isFreshHeartbeat(value: string): boolean {
+  if (!HEARTBEAT_PATTERN.test(value)) return false;
   const parsed = Date.parse(`${value.replace(" ", "T")}Z`);
   if (!Number.isFinite(parsed)) return false;
   return Date.now() - parsed <= HEARTBEAT_MAX_AGE_MS;
@@ -103,13 +121,9 @@ export async function handleAnalyticsOverview(
 
   const { from, to } = rangeBounds(range);
 
-  const row = await env.DB.prepare(
-    "SELECT COALESCE(SUM(pv), 0) AS pv, COALESCE(SUM(uv), 0) AS uv, " +
-      "COALESCE(SUM(bot_filtered), 0) AS bot_filtered " +
-      "FROM analytics_article_daily WHERE day >= ? AND day <= ?"
-  )
+  const row = await env.DB.prepare(DAILY_TOTALS_SQL)
     .bind(from, to)
-    .first<{ pv: number; uv: number; bot_filtered: number }>();
+    .first<TotalsRow>();
 
   return successResponse({
     range,
@@ -209,9 +223,12 @@ export async function handleAnalyticsArticles(
   const days = daySequence(SPARKLINE_DAYS);
 
   const [totalRow, sinceRow, articles, referrers, sparks] = await Promise.all([
+    // 与 items 一样 JOIN articles：文章删除后日聚合仍保留 400 天，
+    // 悬空 article_id 不得计入 total，否则分页会多出空页
     env.DB.prepare(
-      "SELECT COUNT(DISTINCT article_id) AS total FROM analytics_article_daily " +
-        "WHERE day >= ? AND day <= ?"
+      "SELECT COUNT(DISTINCT d.article_id) AS total FROM analytics_article_daily d " +
+        "JOIN articles a ON a.id = d.article_id " +
+        "WHERE d.day >= ? AND d.day <= ?"
     )
       .bind(from, to)
       .first<{ total: number }>(),
@@ -293,13 +310,6 @@ export async function handleAnalyticsArticles(
   });
 }
 
-interface TotalsRow {
-  pv: number;
-  uv: number;
-  requests: number;
-  bot_filtered: number;
-}
-
 /**
  * 数据质量面板（§7.6）：过滤 bot 占比、代理覆盖率、清理心跳、3σ 异常波动、
  * 令牌表行数。分母为 0 的比率返回 null（前台显示「—」）。
@@ -315,14 +325,7 @@ export async function handleAnalyticsQuality(
   // 8 个日界：前 7 个为基线，最后一个是当日
   const days = daySequence(SPARKLINE_DAYS + 1);
   const [totals, heartbeat, tokenRow, daily] = await Promise.all([
-    env.DB.prepare(
-      "SELECT COALESCE(SUM(pv), 0) AS pv, COALESCE(SUM(uv), 0) AS uv, " +
-        "COALESCE(SUM(requests), 0) AS requests, " +
-        "COALESCE(SUM(bot_filtered), 0) AS bot_filtered " +
-        "FROM analytics_article_daily WHERE day >= ? AND day <= ?"
-    )
-      .bind(from, to)
-      .first<TotalsRow>(),
+    env.DB.prepare(DAILY_TOTALS_SQL).bind(from, to).first<TotalsRow>(),
     env.DB.prepare(
       "SELECT value FROM site_config WHERE key = 'analytics_last_job_at'"
     ).first<{ value: string }>(),

@@ -146,15 +146,17 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
             role ? { role, must_change_password: 0 } : null
           );
         }
-        if (sql.includes("COUNT(DISTINCT article_id)")) {
+        if (sql.includes("COUNT(DISTINCT")) {
           const [from, to] = statement.binds.map(String);
-          return Promise.resolve({
-            total: new Set(
-              state.daily
-                .filter((row) => inRange(row, from, to))
-                .map((row) => row.article_id)
-            ).size,
-          });
+          const ids = new Set(
+            state.daily
+              .filter((row) => inRange(row, from, to))
+              .map((row) => row.article_id)
+              .filter((id) =>
+                state.articles.some((article) => article.id === id)
+              )
+          );
+          return Promise.resolve({ total: ids.size });
         }
         if (sql.includes("MIN(day)")) {
           const days = state.daily.map((row) => row.day).sort();
@@ -530,5 +532,42 @@ describe("issue #57：数据质量接口", () => {
       (await call("quality", "?range=7d", heavy, "admin")).body.data
         .token_rows_alert
     ).toBe(true);
+  });
+});
+
+describe("issue #57：复审修复回归", () => {
+  it("已删除文章的悬空日聚合不计入 total，也不出现在 items", async () => {
+    const state = makeState({
+      daily: [
+        ...makeState().daily,
+        {
+          article_id: 999,
+          day: "2026-11-09",
+          pv: 500,
+          uv: 1,
+          requests: 500,
+          bot_filtered: 0,
+        },
+      ],
+    });
+    const res = await call("articles", "?range=7d", state, "admin");
+
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.items.map((item: { id: number }) => item.id)).toEqual([
+      7, 8,
+    ]);
+  });
+
+  it("心跳格式非法（缺秒 / 仅日期 / 乱串）同样告警", async () => {
+    for (const raw of ["2026-11-09 03:00", "2026-11-09", "not-a-date"]) {
+      const state = makeState({
+        config: new Map([["analytics_last_job_at", raw]]),
+      });
+      expect(
+        (await call("quality", "?range=7d", state, "admin")).body.data
+          .heartbeat_alert,
+        raw
+      ).toBe(true);
+    }
   });
 });
