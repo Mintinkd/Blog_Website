@@ -53,6 +53,19 @@ describe("issue #56：维度桶映射（表驱动）", () => {
         },
         "desktop",
       ],
+      [
+        "UA-CH ?0 的平板仍按 UA 识别",
+        {
+          clientHints: { "sec-ch-ua-mobile": "?0" },
+          userAgent: "Mozilla/5.0 (iPad)",
+        },
+        "tablet",
+      ],
+      [
+        "UA-CH ?0 且 UA 缺失",
+        { clientHints: { "sec-ch-ua-mobile": "?0" }, userAgent: null },
+        "desktop",
+      ],
       ["iPad", { userAgent: "Mozilla/5.0 (iPad)" }, "tablet"],
       [
         "Android 平板（无 Mobile）",
@@ -128,7 +141,11 @@ interface DimRow {
   count: number;
 }
 
-/** 全站与逐篇求和一致；另含小样本合并、数据不足、范围外三组数据 */
+/**
+ * 全站与逐篇求和一致；另含小样本合并、数据不足、范围外三组数据。
+ * device 两篇都无 < 5 的小桶：查询层保护按每次查询独立执行，验收(3) 的
+ * 「一致」指 SUM(count) 聚合计数，不要求保护后的展示桶可加总（见 §7.5 裁定）。
+ */
 const DIM_ROWS: DimRow[] = [
   {
     day: "2026-11-09",

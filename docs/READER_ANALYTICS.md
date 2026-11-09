@@ -67,7 +67,12 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 | 设备类别 | UA-CH `Sec-CH-UA-Mobile`，回退 UA 解析              | `desktop / mobile / tablet / unknown`               | 发现移动端预取、桌面端爬虫占比异常               | 每日桶计数，400 天             |
 | 机器人   | UA、`Sec-Fetch-*`、`cf.botManagement`               | 见 §4                                               | 直接决定 PV 是否虚高                             | 单独计数                       |
 
-> **实施裁定（#56）**：维度桶按 **UV（去重访客）** 计，不按 PV —— 只在 #55 的新访客分支随 D1 `batch()` 写入，与令牌 / 日聚合 / `view_count` 原子一致；直连、Cookie / 令牌命中、被过滤的请求都不写桶。缺失值落 `unknown`（`device` / `country`）或 `direct`（`referrer`）；同站按 Worker 请求 hostname 与 Referer hostname 相等判定为 `internal`；外部来源只保留小写域名，剥掉 path / query / 端口。
+> **实施裁定（#56）**：维度桶按**去重访客**计（与日聚合 `uv` 列同口径），不按每次页面请求 —— 只在 #55 的新访客分支随 D1 `batch()` 写入，与令牌 / 日聚合 / `view_count` 原子一致；直连、Cookie / 令牌命中、被过滤的请求都不写桶。
+>
+> - 缺失值落 `unknown`（`device` / `country`）或 `direct`（`referrer`）；同站按 Worker 请求 hostname 与 Referer hostname 相等判定为 `internal`；外部来源只保留小写域名，剥掉 path / query / 端口。
+> - 国家两位码由 #54 的 `readVisitorContext` 归一（含 `T1` 等 CF 特殊码），映射函数不重复校验。
+> - 同站判定以「SSR 直连的 Worker origin 与站点同域」为前提（见 README 文章详情页 SSR 段）；部署拆域时须同步调整。
+> - UA-CH `Sec-CH-UA-Mobile: ?0` 只表示「非手机」，平板同样上报 `?0`，故仍先按 UA 识别 `tablet`。
 
 ### Tier 1｜同意后（默认关闭）
 
@@ -276,7 +281,7 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 
 小样本保护：任一桶计数 < 5 时合并进「其他」；某维度总样本 < 20 时整块显示「数据不足」，不显示百分比。
 
-> **接口契约（#56）**：`GET /api/v1/admin/analytics/dimensions?dim=&range=&article_id=`；`dim` 仅 `device|country|referrer`，`range` 同 §6，`article_id` 省略为全站（`GROUP BY bucket` 聚合，不写全站行），非法值一律 400。返回 `{ dim, range, article_id, total, insufficient, buckets }`：桶 `< 5` 合并到稳定 key `other`（恒排最后）；`total < 20` 时 `insufficient: true` 且 `buckets: []`，前台据此显示「数据不足」。`other` 是接口 key，中文文案由 #58 的 `t()` 映射。
+> **接口契约（#56）**：`GET /api/v1/admin/analytics/dimensions?dim=&range=&article_id=`；`dim` 仅 `device|country|referrer`，`range` 同 §6，`article_id` 省略为全站（`GROUP BY bucket` 聚合，不写全站行），非法值一律 400。返回 `{ dim, range, article_id, total, insufficient, buckets }`：桶 `< 5` 合并到稳定 key `other`（恒排最后）；`total < 20` 时 `insufficient: true` 且 `buckets: []`，前台据此显示「数据不足」。`other` 是接口 key，中文文案由 #58 的 `t()` 映射。保护按每次查询独立执行，逐篇视图与全站视图各自合并 `other`；§10 验收「全站查询按 `GROUP BY` 聚合，结果与逐篇求和一致」指 `SUM(count)` 聚合计数，不要求保护后的展示桶可加总。
 
 ### 7.6 数据质量面板
 

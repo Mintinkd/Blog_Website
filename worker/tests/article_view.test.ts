@@ -428,7 +428,7 @@ describe("issue #55：§4.1 过滤与直连口径", () => {
   });
 });
 
-describe("issue #56：维度桶随 UV 计数写入", () => {
+describe("issue #56：维度桶随去重访客计数写入", () => {
   const RICH_HEADERS = {
     ...BROWSER_HEADERS,
     "x-visitor-country": "CN",

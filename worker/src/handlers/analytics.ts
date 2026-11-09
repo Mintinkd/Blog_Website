@@ -43,18 +43,25 @@ function rangeBounds(range: AnalyticsRange): { from: string; to: string } {
   };
 }
 
+/** 两个只读接口共用的 range 校验；错误文案由白名单派生，避免两处各自维护 */
+function parseRange(params: URLSearchParams): AnalyticsRange | Response {
+  const value = params.get("range");
+  if (!isAnalyticsRange(value)) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `无效的 range 参数（仅支持 ${Object.keys(RANGE_DAYS).join(" / ")}）`
+    );
+  }
+  return value;
+}
+
 /** 概览卡：Tier 0 可见 PV / UV / 过滤 bot；有效阅读属 Tier 1，恒为 null */
 export async function handleAnalyticsOverview(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const range = new URL(request.url).searchParams.get("range");
-  if (!isAnalyticsRange(range)) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      "无效的 range 参数（仅支持 today / 7d / 30d / 90d）"
-    );
-  }
+  const range = parseRange(new URL(request.url).searchParams);
+  if (range instanceof Response) return range;
 
   const { from, to } = rangeBounds(range);
 
@@ -82,16 +89,11 @@ export async function handleAnalyticsDimensions(
   env: Env
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  const range = params.get("range");
+  const range = parseRange(params);
+  if (range instanceof Response) return range;
   const dim = params.get("dim");
   const articleIdParam = params.get("article_id");
 
-  if (!isAnalyticsRange(range)) {
-    return error(
-      ErrorCodes.VALIDATION_FAILED,
-      "无效的 range 参数（仅支持 today / 7d / 30d / 90d）"
-    );
-  }
   if (!isAnalyticsDimension(dim)) {
     return error(
       ErrorCodes.VALIDATION_FAILED,

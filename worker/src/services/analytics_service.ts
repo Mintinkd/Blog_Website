@@ -266,7 +266,7 @@ export interface ArticleViewResult {
  * - SSR 链路：每次过滤后 200 都累加 `pv` / `requests`；Cookie 命中或令牌命中时
  *   跳过 UV 与累计阅读量（快路径）；首次命中按 §4.2 用一次 D1 batch 原子写入。
  * - 新访客（#56）：同一 batch 追加 device / country / referrer 三个单篇维度桶，
- *   口径与 UV 对齐；Cookie / 令牌命中、直连、被过滤的请求都不写维度桶。
+ *   口径与去重访客一致；Cookie / 令牌命中、直连、被过滤的请求都不写维度桶。
  *
  * 注：§4.2 伪代码第 1 步写「Cookie 命中直接跳过、不写库」，与 §10 验收
  * 「同 Cookie 连续两次 pv +2、uv +1」冲突；此处以验收与 §2 的 PV 定义为准。

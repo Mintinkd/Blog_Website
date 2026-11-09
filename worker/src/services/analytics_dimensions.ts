@@ -7,10 +7,10 @@ import type { VisitorContext } from "../utils/visitor_context";
  * - `dimensionBuckets()`：device / country / referrer 的纯映射，输入来自 #54 的
  *   `readVisitorContext`；同站 Referer 以 Worker 请求的 hostname 判定。
  * - `upsertDimensionStatements()`：只写单篇 `article_id` 行，不写全站行（§11 决策 4）；
- *   由 `recordArticleView` 放进同一 D1 `batch()`，与 UV 口径对齐。
+ *   由 `recordArticleView` 放进同一 D1 `batch()`，与日聚合 `uv` 列同口径。
  * - `protectSmallSamples()`：查询层小样本保护（§7.5），供分布接口使用。
  *
- * 口径裁定（#56）：维度桶按 **UV（去重访客）** 计，不按 PV；缺失值落
+ * 口径裁定（#56）：维度桶按**去重访客**计，不按每次页面请求；缺失值落
  * `unknown` / `direct`；桶 < 5 合并到稳定 key `other`，总样本 < 20 返回数据不足。
  */
 
@@ -33,22 +33,37 @@ export const DIRECT_BUCKET = "direct";
 export const INTERNAL_BUCKET = "internal";
 export const OTHER_BUCKET = "other";
 
+/** §3 设备类别；桶名与其它维度一样集中在常量，避免多处裸字面量漂移 */
+export const DEVICE_BUCKETS = {
+  desktop: "desktop",
+  mobile: "mobile",
+  tablet: "tablet",
+} as const;
+
 /** §7.5：桶计数小于该值合并进「其他」，维度总样本小于该值整块显示「数据不足」 */
 export const SMALL_BUCKET_THRESHOLD = 5;
 export const MIN_SAMPLE_SIZE = 20;
 
-/** §3：UA-CH `Sec-CH-UA-Mobile` 优先，缺失时回退 UA 解析 */
+/**
+ * §3：UA-CH `Sec-CH-UA-Mobile` 优先，缺失时回退 UA 解析。
+ * `?0` 只表示「非手机」——平板同样上报 `?0`，故仍先按 UA 识别平板，
+ * 再让 `?0` 压过 UA 中的手机特征（避免 UA-CH 与伪造 UA 冲突时误判）。
+ */
 function deviceBucket(context: VisitorContext): string {
   const hint = context.clientHints["sec-ch-ua-mobile"]?.trim();
-  if (hint === "?1") return "mobile";
-  if (hint === "?0") return "desktop";
+  if (hint === "?1") return DEVICE_BUCKETS.mobile;
 
   const ua = context.userAgent;
-  if (!ua) return UNKNOWN_BUCKET;
-  if (/ipad|tablet|playbook|silk/i.test(ua)) return "tablet";
-  if (/android/i.test(ua) && !/mobile/i.test(ua)) return "tablet";
-  if (/mobile|iphone|ipod|windows phone/i.test(ua)) return "mobile";
-  return "desktop";
+  if (!ua) {
+    return hint === "?0" ? DEVICE_BUCKETS.desktop : UNKNOWN_BUCKET;
+  }
+  if (/ipad|tablet|playbook|silk/i.test(ua)) return DEVICE_BUCKETS.tablet;
+  if (/android/i.test(ua) && !/mobile/i.test(ua)) return DEVICE_BUCKETS.tablet;
+  if (hint === "?0") return DEVICE_BUCKETS.desktop;
+  if (/mobile|iphone|ipod|windows phone/i.test(ua)) {
+    return DEVICE_BUCKETS.mobile;
+  }
+  return DEVICE_BUCKETS.desktop;
 }
 
 /** §3：只取域名、剥 path/query；同站记 `internal`，缺失 / 非法记 `direct` */
