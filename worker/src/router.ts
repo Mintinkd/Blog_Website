@@ -74,6 +74,8 @@ import { handleExport, handleImport } from "./handlers/admin";
 import {
   handleAnalyticsOverview,
   handleAnalyticsDimensions,
+  handleAnalyticsArticles,
+  handleAnalyticsQuality,
 } from "./handlers/analytics";
 import {
   handleAcquireLock,
@@ -502,7 +504,7 @@ addRoute(
   true
 );
 
-// 阅读统计概览 / 分布（issue #55、#56）：站级数据只对 admin 开放
+// 阅读统计概览 / 分布 / 明细 / 质量（issue #55–#57）：站级数据只对 admin 开放
 addRoute(
   "GET",
   "/admin/analytics/overview",
@@ -514,6 +516,20 @@ addRoute(
   "GET",
   "/admin/analytics/dimensions",
   async (req, env) => handleAnalyticsDimensions(req, env),
+  true,
+  true
+);
+addRoute(
+  "GET",
+  "/admin/analytics/articles",
+  async (req, env) => handleAnalyticsArticles(req, env),
+  true,
+  true
+);
+addRoute(
+  "GET",
+  "/admin/analytics/quality",
+  async (req, env) => handleAnalyticsQuality(req, env),
   true,
   true
 );

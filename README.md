@@ -149,7 +149,7 @@
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
 │       │   ├── admin.ts
-│       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布，#55、#56）
+│       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布 / 明细 / 质量，#55–#57）
 │       ├── services/
 │       │   ├── article_service.ts
 │       │   ├── edit_lock_service.ts
@@ -283,6 +283,8 @@ D1 (SQLite) 共 13 张表：
 | GET    | `/admin/scrape`               | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`）                                |
 | GET    | `/admin/analytics/overview`   | 阅读统计概览（admin；`range=today\|7d\|30d\|90d`，非法值 400；返回 PV / UV / 过滤 bot，Tier 0 的 `engaged` 为 `null`）                                    |
 | GET    | `/admin/analytics/dimensions` | 分布（admin；`dim=device\|country\|referrer`、`range` 白名单；省略 `article_id` 为全站 `GROUP BY`；桶 < 5 合并 `other`，总样本 < 20 返回 `insufficient`） |
+| GET    | `/admin/analytics/articles`   | 文章明细（admin；`range` 白名单、`page` 正整数；分页 20 / PV 降序 / 来源 Top1 / 固定 7 日 sparkline / `since` 起点；Tier 1 列为 `null`）                  |
+| GET    | `/admin/analytics/quality`    | 数据质量（admin；bot 占比 / 代理覆盖率 / 清理心跳 / 3σ 波动 / 令牌行数及告警；分母为 0 的比率返回 `null`）                                                |
 | GET    | `/settings`                   | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                                                   |
 | GET    | `/settings/all`               | 拉取全部可视化配置                                                                                                                                        |
 | PUT    | `/settings`                   | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                                                 |

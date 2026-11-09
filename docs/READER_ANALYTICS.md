@@ -269,6 +269,8 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 
 分页 20 条；空态「该时间段暂无阅读数据」。表头标注「自 `MIN(day)` 起」；`MIN(day)` 为空时不显示该标注。
 
+> **接口契约（#57）**：`GET /api/v1/admin/analytics/articles?range=&page=`；`range` 同 §6，`page` 省略为 1、非正整数 400。返回 `{ range, page, page_size: 20, total, total_pages, since, items }`；`items` 每项含 `id / title / slug / pv / uv / top_referrer / sparkline / engaged_rate / avg_dwell_bucket`。`sparkline` 固定最近 7 个站点时区日界（无数据补 0），**不跟随 `range`**；`top_referrer` 取该文章 `referrer` 桶合计最大值（同值按域名升序），无数据为 `null`。`since` 为全表 `MIN(day)`，为空返回 `null`（前台不显示「自 … 起」）；无数据时 `items: []`、`total: 0`。Tier 1 的有效阅读率 / 平均停留档恒为 `null`。
+
 ### 7.5 分布区（Tier 0：2 图 + 1 表；Tier 1 增补 2 图）
 
 | 图     | 维度       | 展示                                                  |
@@ -292,6 +294,13 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 | 清理任务心跳 | `analytics_last_job_at` | > 26 小时标红                 |
 | 异常波动     | 当日 PV 与 7 日均值偏差 | > 3σ 标黄，附「可能被刷」提示 |
 | 令牌表行数   | 清理任务是否正常        | > 10 万标黄                   |
+
+> **接口契约（#57）**：`GET /api/v1/admin/analytics/quality?range=`；返回 `{ range, from, to, pv, uv, requests, bot_filtered, bot_ratio, bot_ratio_alert, proxy_coverage, proxy_coverage_alert, heartbeat_at, heartbeat_alert, anomaly, today_pv, baseline_mean, baseline_sigma, token_rows, token_rows_alert, engaged_rate }`。
+>
+> - `proxy_coverage = pv / requests`；`bot_ratio = bot_filtered / (requests + bot_filtered)`（本表「占原始请求」）。分母为 0 时两者返回 `null`（前台显示 `—`），对应告警为 `false`；否则分别在 `< 0.9` / `> 0.4` 时置告警。
+> - 心跳读 `site_config.analytics_last_job_at`（UTC `YYYY-MM-DD HH:MM:SS`）；缺失、格式非法或超过 26 小时 → `heartbeat_alert: true`。
+> - 异常波动取今日之前 7 个日界的全站 PV 为基线，按总体标准差判定 `|today_pv - mean| > 3σ`；基线全 0（`mean = 0`，刚上线 / 无历史）不告警，避免误报。令牌行数 `> 10 万` 时 `token_rows_alert: true`。
+> - Tier 1 的 `engaged_rate` 恒为 `null`。
 
 ### 7.7 同意面板（仅 Tier 1）
 
