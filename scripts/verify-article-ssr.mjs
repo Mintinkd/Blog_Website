@@ -25,6 +25,7 @@ import {
   ERROR_PATH,
   MISSING_PATH,
   MOCK_PATHS,
+  VIEW_COOKIE,
   browserApiFixture,
   isMotionChunkUrl,
 } from "./article-ssr-fixture.mjs";
@@ -358,9 +359,7 @@ async function run() {
       assert.match(html, /<meta property="og:type" content="article"/);
       const setCookies = res.headers.getSetCookie?.() || [];
       assert.ok(
-        setCookies.includes(
-          "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"
-        ),
+        setCookies.includes(VIEW_COOKIE),
         "阅读量去重 Set-Cookie 未逐字回传浏览器（含 HttpOnly）"
       );
     });

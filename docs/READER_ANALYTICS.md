@@ -14,7 +14,7 @@
 
 ## 1. 现状与问题
 
-计数入口：`GET /api/v1/articles/:slug` → `handleGetArticle` → `incrementViewCount`。
+计数入口：`GET /api/v1/articles/:slug` → `handleGetArticle` → `recordArticleView`（#55 起；立档时的 `incrementViewCount` 已移除）。
 
 | 现状                                                            | 问题                                                      |
 | --------------------------------------------------------------- | --------------------------------------------------------- |
@@ -112,23 +112,24 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 
 > 规则改动必须同时更新 `bot_filtered` 的解释文案；否则「过滤量突增」会被误读成流量异常。
 
-本部署为免费版，`cf.botManagement` 不可用（Bot Management 为付费项），规则 5/6 保留为守卫分支、永不触发；`bot_filtered` 的解释文案需注明。
+本部署为免费版，`cf.botManagement` 不可用（Bot Management 为付费项），规则 5/6 保留为守卫分支、永不触发；`bot_filtered` 的解释文案需注明这一点。面向后台的解释文案由 #58「统计」面板落地（#55 只写数据，不含 UI）。
 
 未携带 `X-Real-IP` 的请求（直连 API）不产生 `pv`/`uv`，只在通过上述规则后累加 `requests`；被规则丢弃的直接请求不计 `requests`、也不计 `bot_filtered`——它们不在观测链路上，不是「被判定的机器人」。
 
 ### 4.2 去重
 
 ```
-1. 若请求带 view_<id> Cookie → 已计过，直接跳过（快路径，不写库）
+1. 若请求带 view_<id> Cookie → 跳过 UV 去重分支（快路径，不查 / 不写令牌）
 2. 否则计算 token = HMAC-SHA256(secret, X-Real-IP + UA + article_id + day)
-3. 查 analytics_view_token；存在 → 跳过
-4. 不存在 → D1 batch：插入 token(expires_at = now + 24h) + 日聚合 pv/uv/requests +1 + 累计 view_count +1
-5. 响应仍下发 view_<id> Cookie（保持现状，减少后续请求的 D1 写）
+3. 查 analytics_view_token；存在 → 同第 1 步，跳过 UV 去重分支
+4. 以上两步的「跳过」都仍按 §2 累加 pv / requests（Cookie 命中不写库的说法已作废）
+5. 新访客 → D1 batch：插入 token(expires_at = now + 24h) + 日聚合 pv/uv/requests +1 + 累计 view_count +1
+6. 响应仍下发 view_<id> Cookie（保持现状，减少后续请求的 D1 写）
 ```
 
-去重键必须用 SSR 转发的 `X-Real-IP`：SSR→Worker 这一跳的 `CF-Connecting-IP` 是 Pages 的出口地址，用它会把同一 POP 的所有访客合并成一个人。D1 没有交互式事务，第 4 步用 `batch()` 保证原子性。
+去重键必须用 SSR 转发的 `X-Real-IP`：SSR→Worker 这一跳的 `CF-Connecting-IP` 是 Pages 的出口地址，用它会把同一 POP 的所有访客合并成一个人。D1 没有交互式事务，第 5 步用 `batch()` 保证原子性。
 
-> **实施裁定（#55）**：第 1 步的「直接跳过」指跳过 UV 去重、`view_count` 与令牌查写，**不是跳过整次请求**；按 §2 定义，每个过滤后 200 仍须累加 `pv` 与 `requests`。这与 §10 验收「同 Cookie 连续两次：`view_count` +1、`pv` +2、`uv` +1」一致。
+> **实施裁定（#55）**：原第 1 步「直接跳过、不写库」与 §10 验收「同 Cookie 连续两次：`view_count` +1、`pv` +2、`uv` +1」冲突；以验收与 §2 的 PV 定义为准——第 1、3 步的「跳过」只指跳过 UV 去重、`view_count` 与令牌写入，过滤后 200 仍须累加 `pv` 与 `requests`。
 
 已知取舍：
 

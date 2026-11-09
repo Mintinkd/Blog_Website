@@ -39,6 +39,10 @@ export function isMotionChunkUrl(url) {
 
 export const SITE_TITLE = "SSR 回归测试站";
 
+/** Worker 下发的阅读量去重 Cookie（含 HttpOnly）；mock 与浏览器回归断言共用。 */
+export const VIEW_COOKIE =
+  "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly";
+
 export const ARTICLE = {
   id: 7,
   title: "SSR 回归验证文章",

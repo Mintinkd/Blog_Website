@@ -148,11 +148,12 @@
 │       │   ├── scrape.ts        # 网页抓取代理（admin-only；SSRF/robots/2MB/10s/每管理员限流）
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
-│       │   └── admin.ts
+│       │   ├── admin.ts
+│       │   └── analytics.ts         # 阅读统计后台只读接口（概览，#55）
 │       ├── services/
 │       │   ├── article_service.ts
 │       │   ├── edit_lock_service.ts
-│       │   └── analytics_service.ts  # 阅读统计：dayKey / 每日清理 / HMAC 密钥懒生成（issue #53）
+│       │   └── analytics_service.ts  # 阅读统计：dayKey / 清理 / HMAC 密钥 / recordArticleView（#53、#55）
 │       ├── models/              # 数据模型
 │       └── utils/               # 工具函数
 ├── astro.config.mjs
@@ -298,22 +299,22 @@ D1 (SQLite) 共 13 张表：
 
 ## 前台页面
 
-| 路径                 | 说明                                             | 渲染模式 |
-| -------------------- | ------------------------------------------------ | -------- |
-| `/`                  | 首页（Hero + 最新文章卡片网格）                  | 静态     |
-| `/articles`          | 文章列表（分页）                                 | 静态     |
-| `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + 阅读量 Cookie） | SSR      |
-| `/categories`        | 分类云（全部分类）                               | SSR      |
-| `/categories/:slug`  | 分类文章                                         | SSR      |
-| `/tags`              | 标签云（全部标签）                               | SSR      |
-| `/tags/:slug`        | 标签文章                                         | SSR      |
-| `/api/v1/*`          | API代理到Worker                                  | SSR      |
-| `/rss.xml`           | RSS订阅源                                        | SSR      |
-| `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                  | SSR      |
-| `/archives`          | 时间线归档                                       | 静态     |
-| `/about`             | 关于页面                                         | 静态     |
-| `/search`            | 搜索页                                           | 静态     |
-| `/admin`             | 后台管理                                         | 静态     |
+| 路径                 | 说明                                                                    | 渲染模式 |
+| -------------------- | ----------------------------------------------------------------------- | -------- |
+| `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
+| `/articles`          | 文章列表（分页）                                                        | 静态     |
+| `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
+| `/categories`        | 分类云（全部分类）                                                      | SSR      |
+| `/categories/:slug`  | 分类文章                                                                | SSR      |
+| `/tags`              | 标签云（全部标签）                                                      | SSR      |
+| `/tags/:slug`        | 标签文章                                                                | SSR      |
+| `/api/v1/*`          | API代理到Worker                                                         | SSR      |
+| `/rss.xml`           | RSS订阅源                                                               | SSR      |
+| `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
+| `/archives`          | 时间线归档                                                              | 静态     |
+| `/about`             | 关于页面                                                                | 静态     |
+| `/search`            | 搜索页                                                                  | 静态     |
+| `/admin`             | 后台管理                                                                | 静态     |
 
 ### 文章详情页 SSR
 

@@ -22,6 +22,7 @@ import {
   MISSING_SLUG,
   MOCK_PATHS,
   SITE_TITLE,
+  VIEW_COOKIE,
 } from "./article-ssr-fixture.mjs";
 
 function readPort() {
@@ -92,8 +93,7 @@ function createMockServer() {
           { code: 0, message: "ok", data: ARTICLE },
           {
             // 模拟 Worker 的阅读量去重 Cookie（含 HttpOnly）：页面应逐字回传浏览器。
-            "Set-Cookie":
-              "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
+            "Set-Cookie": VIEW_COOKIE,
           }
         );
         return;

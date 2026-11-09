@@ -287,20 +287,21 @@ export async function recordArticleView(
     return { setCookie };
   }
 
-  // Cookie / 令牌命中：仍是过滤后 200，PV 与 requests 照计，只跳过 UV 去重。
-  if (cookieHit) {
-    await bumpDaily(env, articleId, day, ["pv", "requests"]).run();
-    return { setCookie };
+  // Cookie 快路径与令牌命中都只跳过 UV 去重；过滤后 200 仍按 §2 累加 pv / requests。
+  // pendingToken 为 null 表示「非新访客」，两条路径共用一次日聚合写入。
+  let pendingToken: string | null = null;
+  if (!cookieHit) {
+    const secret = await getAnalyticsHmacSecret(env);
+    const token = await viewToken(secret, ip, userAgent, articleId, day);
+    const existing = await env.DB.prepare(
+      "SELECT token FROM analytics_view_token WHERE token = ?"
+    )
+      .bind(token)
+      .first();
+    if (!existing) pendingToken = token;
   }
 
-  const secret = await getAnalyticsHmacSecret(env);
-  const token = await viewToken(secret, ip, userAgent, articleId, day);
-  const existing = await env.DB.prepare(
-    "SELECT token FROM analytics_view_token WHERE token = ?"
-  )
-    .bind(token)
-    .first();
-  if (existing) {
+  if (pendingToken === null) {
     await bumpDaily(env, articleId, day, ["pv", "requests"]).run();
     return { setCookie };
   }
@@ -309,7 +310,7 @@ export async function recordArticleView(
   await env.DB.batch([
     env.DB.prepare(
       "INSERT INTO analytics_view_token (token, day, expires_at) VALUES (?, ?, ?)"
-    ).bind(token, day, expiresAt),
+    ).bind(pendingToken, day, expiresAt),
     bumpDaily(env, articleId, day, ["pv", "uv", "requests"]),
     env.DB.prepare(
       "UPDATE articles SET view_count = view_count + 1 WHERE id = ?"
