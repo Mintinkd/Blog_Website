@@ -16,6 +16,7 @@ export interface VisitorContext {
   secFetchDest: string | null;
   secPurpose: string | null;
   purpose: string | null;
+  xPurpose: string | null;
   country: string | null;
   /** `Sec-CH-UA*` 客户端提示，键为小写头名。 */
   clientHints: Readonly<Record<string, string>>;
@@ -41,6 +42,7 @@ export function readVisitorContext(request: Request): VisitorContext {
     secFetchDest: headerValue(headers, "sec-fetch-dest"),
     secPurpose: headerValue(headers, "sec-purpose"),
     purpose: headerValue(headers, "purpose"),
+    xPurpose: headerValue(headers, "x-purpose"),
     country: countryCode(headers.get("x-visitor-country")),
     clientHints,
   };

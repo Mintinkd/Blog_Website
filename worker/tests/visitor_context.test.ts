@@ -22,6 +22,7 @@ describe("访客上下文还原", () => {
           "sec-fetch-dest": "document",
           "sec-purpose": "prefetch",
           purpose: "prefetch",
+          "x-purpose": "preview",
           "x-visitor-country": "cn",
           "sec-ch-ua": '"Chromium";v="130"',
           "sec-ch-ua-mobile": "?0",
@@ -43,6 +44,7 @@ describe("访客上下文还原", () => {
       secFetchDest: "document",
       secPurpose: "prefetch",
       purpose: "prefetch",
+      xPurpose: "preview",
       country: "CN",
       clientHints: {
         "sec-ch-ua": '"Chromium";v="130"',
@@ -66,6 +68,7 @@ describe("访客上下文还原", () => {
       secFetchDest: null,
       secPurpose: null,
       purpose: null,
+      xPurpose: null,
       country: null,
       clientHints: {},
     });

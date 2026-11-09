@@ -120,6 +120,7 @@ describe("文章页服务端取数", () => {
           "sec-fetch-dest": "document",
           "sec-purpose": "prefetch",
           purpose: "prefetch",
+          "x-purpose": "preview",
           "sec-ch-ua": '"Chromium";v="130"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"Windows"',
@@ -145,6 +146,7 @@ describe("文章页服务端取数", () => {
     expect(forwarded.get("sec-fetch-dest")).toBe("document");
     expect(forwarded.get("sec-purpose")).toBe("prefetch");
     expect(forwarded.get("purpose")).toBe("prefetch");
+    expect(forwarded.get("x-purpose")).toBe("preview");
     expect(forwarded.get("sec-ch-ua")).toBe('"Chromium";v="130"');
     expect(forwarded.get("sec-ch-ua-mobile")).toBe("?0");
     expect(forwarded.get("sec-ch-ua-platform")).toBe('"Windows"');
@@ -162,10 +164,33 @@ describe("文章页服务端取数", () => {
         "sec-fetch-mode",
         "sec-purpose",
         "user-agent",
+        "x-purpose",
         "x-real-ip",
         "x-visitor-country",
       ].sort()
     );
+  });
+
+  it("没有 Cloudflare 来源头时不转发客户端伪造的 X-Real-IP / X-Visitor-Country", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ code: 0, message: "ok", data: publishedArticle })
+    );
+
+    await loadArticleForPage("forged", {
+      origin: "https://api.example.test",
+      request: new Request("https://blog.example.test/articles/forged", {
+        headers: {
+          "x-real-ip": "198.51.100.7",
+          "x-visitor-country": "ZZ",
+          "user-agent": "Mozilla/5.0 Test",
+        },
+      }),
+    });
+
+    const forwarded = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(forwarded.get("x-real-ip")).toBeNull();
+    expect(forwarded.get("x-visitor-country")).toBeNull();
+    expect(Array.from(forwarded.keys())).toEqual(["user-agent"]);
   });
 
   it("只转发实际存在的白名单头，不合成默认 UA / Accept", async () => {

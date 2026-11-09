@@ -17,7 +17,7 @@
 ## Consequences
 
 - **口径**：`articles.view_count` 继续表示「累计去重阅读量」（`阅读量` 的 GLOSSARY 定义不变），但时间序列改由日聚合表承载，后台趋势不再从累计数推算。
-- **观测链路**：计数仍在 Worker，但请求由 Pages 的 SSR 层发起。SSR 只转发白名单请求头（UA / Accept / Referer / Accept-Language / `Sec-Fetch-*` / `Sec-Purpose` / `Sec-CH-UA*` / `X-Real-IP` / `X-Visitor-Country`）；`CF-Connecting-IP` 在第二跳是 Pages 的出口地址，不能用作去重输入。这是 Tier 0 过滤与维度的前提，必须先于计数上线。
+- **观测链路**：计数仍在 Worker，但请求由 Pages 的 SSR 层发起。SSR 只转发白名单请求头（UA / Accept / Referer / Accept-Language / `Sec-Fetch-*` / `Sec-Purpose` / `X-Purpose` / `Sec-CH-UA*` / `X-Real-IP` / `X-Visitor-Country`）；`CF-Connecting-IP` 在第二跳是 Pages 的出口地址，不能用作去重输入。这是 Tier 0 过滤与维度的前提，必须先于计数上线。
 - **计数谓词**：只有带 `X-Real-IP` 的详情 200 产生 `PV`/`UV`；直连 API 只在通过机器人过滤后累加 `requests`，用于计算代理覆盖率。
 - **去重**：Cookie 仍是快路径；Cookie 缺失时用 `HMAC(analytics_hmac_secret, X-Real-IP + UA + article_id + 日期)` 的 24h 令牌兜底。IP 不落库，令牌到期即删；密钥独立于 `jwt_secret`。
 - **会话边界**：去重日按常量 `Asia/Shanghai` 切分，不按 UTC；改时区按数据迁移处理，不提供后台开关。

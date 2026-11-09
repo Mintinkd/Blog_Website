@@ -103,7 +103,7 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 按顺序判定，命中即丢弃并计入 `bot_filtered`：
 
 1. 方法不是 `GET`；
-2. `Sec-Purpose: prefetch` / `Purpose: prefetch` / `X-Purpose: preview`；
+2. `Sec-Purpose: prefetch` / `Purpose: prefetch` / `X-Purpose: preview`（SSR 白名单同时转发 `X-Purpose`）；
 3. `Sec-Fetch-Mode` 存在且不是 `navigate`；
 4. UA 缺失，或命中爬虫/预览正则（`bot|crawler|spider|preview|headless|curl|wget|python-requests|Go-http-client|facebookexternalhit|Twitterbot|Slackbot|TelegramBot|WhatsApp|Discordbot|Pinterest`）；
 5. `cf.botManagement.verifiedBot = true`；

@@ -120,6 +120,7 @@ const VISITOR_CONTEXT_HEADERS = [
   "sec-fetch-dest",
   "sec-purpose",
   "purpose",
+  "x-purpose",
 ] as const;
 
 /**
