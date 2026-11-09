@@ -67,6 +67,8 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 | 设备类别 | UA-CH `Sec-CH-UA-Mobile`，回退 UA 解析              | `desktop / mobile / tablet / unknown`               | 发现移动端预取、桌面端爬虫占比异常               | 每日桶计数，400 天             |
 | 机器人   | UA、`Sec-Fetch-*`、`cf.botManagement`               | 见 §4                                               | 直接决定 PV 是否虚高                             | 单独计数                       |
 
+> **实施裁定（#56）**：维度桶按 **UV（去重访客）** 计，不按 PV —— 只在 #55 的新访客分支随 D1 `batch()` 写入，与令牌 / 日聚合 / `view_count` 原子一致；直连、Cookie / 令牌命中、被过滤的请求都不写桶。缺失值落 `unknown`（`device` / `country`）或 `direct`（`referrer`）；同站按 Worker 请求 hostname 与 Referer hostname 相等判定为 `internal`；外部来源只保留小写域名，剥掉 path / query / 端口。
+
 ### Tier 1｜同意后（默认关闭）
 
 只在分类同意后采集，且**只落桶计数**。设备端不生成任何持久 ID。
@@ -174,7 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_view_token_expires
 -- 维度桶：只写单篇行；全站视图由查询时 GROUP BY 聚合
 CREATE TABLE IF NOT EXISTS analytics_dim_daily (
   day        TEXT    NOT NULL,
-  dim        TEXT    NOT NULL,               -- device|browser|os|country|language|screen|referrer|dwell|scroll
+  dim        TEXT    NOT NULL,               -- 全量取值；Tier 0 先落 device|country|referrer（#56）
   bucket     TEXT    NOT NULL,
   article_id INTEGER NOT NULL,               -- 所属文章；不写全站行
   count      INTEGER NOT NULL DEFAULT 0,
@@ -273,6 +275,8 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 | 来源   | `referrer` | 表格：来源域名 / 访问数 / 占比（有效阅读率仅 Tier 1） |
 
 小样本保护：任一桶计数 < 5 时合并进「其他」；某维度总样本 < 20 时整块显示「数据不足」，不显示百分比。
+
+> **接口契约（#56）**：`GET /api/v1/admin/analytics/dimensions?dim=&range=&article_id=`；`dim` 仅 `device|country|referrer`，`range` 同 §6，`article_id` 省略为全站（`GROUP BY bucket` 聚合，不写全站行），非法值一律 400。返回 `{ dim, range, article_id, total, insufficient, buckets }`：桶 `< 5` 合并到稳定 key `other`（恒排最后）；`total < 20` 时 `insufficient: true` 且 `buckets: []`，前台据此显示「数据不足」。`other` 是接口 key，中文文案由 #58 的 `t()` 映射。
 
 ### 7.6 数据质量面板
 

@@ -4,7 +4,7 @@
  * 只读 SSR 白名单头：缺失或空值一律 null，不合成默认 UA / Accept；
  * IP 只认 `X-Real-IP`、国家只认 `X-Visitor-Country`，避免把第二跳的
  * `CF-Connecting-IP`（Pages 出口地址）当成访客地址。供 #55 的过滤 /
- * 去重 / 维度使用；本票先锁定还原口径。
+ * 去重与 #56 的维度映射使用；本票只锁定还原口径。
  */
 export interface VisitorContext {
   ip: string | null;

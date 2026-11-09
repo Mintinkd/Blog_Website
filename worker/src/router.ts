@@ -71,7 +71,10 @@ import {
   handleDeleteFriendLink,
 } from "./handlers/friend_link";
 import { handleExport, handleImport } from "./handlers/admin";
-import { handleAnalyticsOverview } from "./handlers/analytics";
+import {
+  handleAnalyticsOverview,
+  handleAnalyticsDimensions,
+} from "./handlers/analytics";
 import {
   handleAcquireLock,
   handleReleaseLock,
@@ -499,11 +502,18 @@ addRoute(
   true
 );
 
-// 阅读统计概览（issue #55）：站级数据只对 admin 开放
+// 阅读统计概览 / 分布（issue #55、#56）：站级数据只对 admin 开放
 addRoute(
   "GET",
   "/admin/analytics/overview",
   async (req, env) => handleAnalyticsOverview(req, env),
+  true,
+  true
+);
+addRoute(
+  "GET",
+  "/admin/analytics/dimensions",
+  async (req, env) => handleAnalyticsDimensions(req, env),
   true,
   true
 );

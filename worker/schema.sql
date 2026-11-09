@@ -243,7 +243,7 @@ CREATE INDEX IF NOT EXISTS idx_view_token_expires
 -- 维度桶：只写单篇行；全站视图由查询时 GROUP BY 聚合
 CREATE TABLE IF NOT EXISTS analytics_dim_daily (
   day        TEXT    NOT NULL,
-  dim        TEXT    NOT NULL,               -- device|browser|os|country|language|screen|referrer|dwell|scroll
+  dim        TEXT    NOT NULL,               -- 全量取值；Tier 0 先落 device|country|referrer（#56）
   bucket     TEXT    NOT NULL,
   article_id INTEGER NOT NULL,               -- 所属文章；不写全站行
   count      INTEGER NOT NULL DEFAULT 0,

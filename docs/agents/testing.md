@@ -4,7 +4,7 @@
 
 ## Worker 测试
 
-`worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。
+`worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。维度桶映射的边界值由 `worker/tests/analytics_dimensions.test.ts` 的表驱动用例钉住，分布接口走 `router()` 全链路；同一行为不在浏览器回归里重复测。
 
 ## 前端单元测试
 

@@ -52,11 +52,20 @@ interface TokenRow {
   expires_at: string;
 }
 
+interface DimRow {
+  day: string;
+  dim: string;
+  bucket: string;
+  article_id: number;
+  count: number;
+}
+
 interface State {
   status: "published" | "draft";
   viewCount: number;
   daily: DailyRow[];
   tokens: TokenRow[];
+  dimRows: DimRow[];
   config: Map<string, string>;
   /** 非 batch 执行的写语句 */
   writes: string[];
@@ -72,6 +81,7 @@ function makeState(overrides: Partial<State> = {}): State {
     viewCount: 1,
     daily: [],
     tokens: [],
+    dimRows: [],
     config: new Map([["analytics_hmac_secret", HMAC_SECRET]]),
     writes: [],
     batches: [],
@@ -127,6 +137,28 @@ function applyWrite(state: State, sql: string, binds: unknown[]): void {
         row[counter] += 1;
       }
     }
+    return;
+  }
+  if (sql.startsWith("INSERT INTO analytics_dim_daily")) {
+    if (!sql.includes("count = count + 1")) {
+      throw new Error(`Unexpected dim SQL: ${sql}`);
+    }
+    const day = String(binds[0]);
+    const dim = String(binds[1]);
+    const bucket = String(binds[2]);
+    const articleId = Number(binds[3]);
+    let row = state.dimRows.find(
+      (r) =>
+        r.day === day &&
+        r.dim === dim &&
+        r.bucket === bucket &&
+        r.article_id === articleId
+    );
+    if (!row) {
+      row = { day, dim, bucket, article_id: articleId, count: 0 };
+      state.dimRows.push(row);
+    }
+    row.count += 1;
     return;
   }
   if (sql.startsWith("UPDATE articles SET view_count")) {
@@ -269,14 +301,17 @@ describe("issue #55：同 Cookie 与令牌去重", () => {
     expect(state.daily[0]).toMatchObject({ pv: 2, uv: 1, requests: 2 });
   });
 
-  it("首次计数用一次 D1 batch 原子提交令牌 + 日聚合 + 累计阅读量", async () => {
+  it("首次计数用一次 D1 batch 原子提交令牌 + 日聚合 + 阅读量 + 三个维度桶", async () => {
     const state = makeState();
     const env = makeEnv(state);
 
     await visit(env);
 
     expect(state.batches).toHaveLength(1);
-    expect(state.batches[0]).toHaveLength(3);
+    expect(state.batches[0]).toHaveLength(6);
+    expect(
+      state.batches[0].filter((sql) => sql.includes("analytics_dim_daily"))
+    ).toHaveLength(3);
     expect(
       state.batches[0].some((sql) => sql.includes("analytics_view_token"))
     ).toBe(true);
@@ -390,5 +425,72 @@ describe("issue #55：§4.1 过滤与直连口径", () => {
     expect(state.daily).toHaveLength(0);
     expect(state.writes).toHaveLength(0);
     expect(state.batches).toHaveLength(0);
+  });
+});
+
+describe("issue #56：维度桶随 UV 计数写入", () => {
+  const RICH_HEADERS = {
+    ...BROWSER_HEADERS,
+    "x-visitor-country": "CN",
+    "sec-ch-ua-mobile": "?1",
+    referer: "https://news.example.test/post?q=1",
+  };
+
+  it("新访客落 3 个单篇维度桶；同日不同访客累加，不产生全站行", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+
+    await visit(env, {
+      headers: { ...RICH_HEADERS, "x-real-ip": "203.0.113.9" },
+    });
+    await visit(env, {
+      headers: { ...RICH_HEADERS, "x-real-ip": "203.0.113.10" },
+    });
+
+    expect(state.dimRows).toEqual([
+      {
+        day: "2026-11-04",
+        dim: "device",
+        bucket: "mobile",
+        article_id: 7,
+        count: 2,
+      },
+      {
+        day: "2026-11-04",
+        dim: "country",
+        bucket: "CN",
+        article_id: 7,
+        count: 2,
+      },
+      {
+        day: "2026-11-04",
+        dim: "referrer",
+        bucket: "news.example.test",
+        article_id: 7,
+        count: 2,
+      },
+    ]);
+    expect(state.dimRows.every((row) => row.article_id === 7)).toBe(true);
+  });
+
+  it("Cookie 命中 / 令牌命中 / 直连 / 被过滤都不写维度桶", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+
+    await visit(env);
+    expect(state.dimRows).toHaveLength(3);
+
+    await visit(env, {
+      headers: { ...BROWSER_HEADERS, cookie: "view_7=1" },
+    });
+    await visit(env); // 令牌命中
+    await visit(env, { headers: directHeaders }); // 直连
+    await visit(env, {
+      headers: { ...BROWSER_HEADERS, "user-agent": "Googlebot/2.1" },
+    });
+
+    expect(state.dimRows).toHaveLength(3);
+    expect(state.dimRows.every((row) => row.count === 1)).toBe(true);
   });
 });

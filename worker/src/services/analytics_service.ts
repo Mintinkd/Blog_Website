@@ -3,6 +3,10 @@ import {
   readVisitorContext,
   type VisitorContext,
 } from "../utils/visitor_context";
+import {
+  dimensionBuckets,
+  upsertDimensionStatements,
+} from "./analytics_dimensions";
 
 /**
  * 阅读统计 Tier 0 的数据层（issue #53 / #55 / docs/READER_ANALYTICS.md §5、§9 第 1 步）。
@@ -13,7 +17,8 @@ import {
  *   心跳 `site_config.analytics_last_job_at`。
  * - `getAnalyticsHmacSecret()`：`site_config.analytics_hmac_secret` 首次使用时
  *   懒生成；独立于 `jwt_secret`，轮换 JWT 不影响去重令牌。
- * - `recordArticleView()`：详情 200 的过滤、24h 去重与日聚合（§4.1 / §4.2）。
+ * - `recordArticleView()`：详情 200 的过滤、24h 去重与日聚合（§4.1 / §4.2）；
+ *   新访客同批写三个单篇维度桶，映射见 `analytics_dimensions.ts`（#56）。
  */
 
 /** 站点时区常量（ADR 0005：不进 site_settings，改时区按数据迁移处理） */
@@ -260,6 +265,8 @@ export interface ArticleViewResult {
  * - 直连 API（无 `X-Real-IP`）：过滤后只累加 `requests`；
  * - SSR 链路：每次过滤后 200 都累加 `pv` / `requests`；Cookie 命中或令牌命中时
  *   跳过 UV 与累计阅读量（快路径）；首次命中按 §4.2 用一次 D1 batch 原子写入。
+ * - 新访客（#56）：同一 batch 追加 device / country / referrer 三个单篇维度桶，
+ *   口径与 UV 对齐；Cookie / 令牌命中、直连、被过滤的请求都不写维度桶。
  *
  * 注：§4.2 伪代码第 1 步写「Cookie 命中直接跳过、不写库」，与 §10 验收
  * 「同 Cookie 连续两次 pv +2、uv +1」冲突；此处以验收与 §2 的 PV 定义为准。
@@ -307,6 +314,7 @@ export async function recordArticleView(
   }
 
   const expiresAt = sqliteUtcTimestamp(new Date(Date.now() + TOKEN_TTL_MS));
+  const buckets = dimensionBuckets(context, new URL(request.url).hostname);
   await env.DB.batch([
     env.DB.prepare(
       "INSERT INTO analytics_view_token (token, day, expires_at) VALUES (?, ?, ?)"
@@ -315,6 +323,7 @@ export async function recordArticleView(
     env.DB.prepare(
       "UPDATE articles SET view_count = view_count + 1 WHERE id = ?"
     ).bind(articleId),
+    ...upsertDimensionStatements(env, articleId, day, buckets),
   ]);
   return { setCookie };
 }
