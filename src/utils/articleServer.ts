@@ -52,7 +52,7 @@ const FETCH_TIMEOUT_MS = 8_000;
  * - `not-found`：404，或上游意外返回草稿（未发布对匿名访客一律 404）；
  * - `error`：网络失败 / 非 2xx / 非法响应体，页面映射为 502 + 重试入口。
  *
- * 转发访客 Cookie（API 按 `view_<id>` 做 24 小时阅读量去重）与白名单上下文头
+ * 转发访客 Cookie（API 按 `view_<id>` 快路径 + 24h HMAC 令牌做去重）与白名单上下文头
  * （cf-connecting-ip → `X-Real-IP`、CF-IPCountry → `X-Visitor-Country`，其余见
  * `VISITOR_CONTEXT_HEADERS`）；上游下发的 Set-Cookie 原样返回，由页面回传浏览器。
  */

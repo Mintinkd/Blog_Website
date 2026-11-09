@@ -358,8 +358,10 @@ async function run() {
       assert.match(html, /<meta property="og:type" content="article"/);
       const setCookies = res.headers.getSetCookie?.() || [];
       assert.ok(
-        setCookies.some((cookie) => cookie.startsWith("view_7=1")),
-        "阅读量去重 Set-Cookie 未回传给浏览器"
+        setCookies.includes(
+          "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"
+        ),
+        "阅读量去重 Set-Cookie 未逐字回传浏览器（含 HttpOnly）"
       );
     });
 

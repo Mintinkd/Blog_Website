@@ -71,6 +71,7 @@ import {
   handleDeleteFriendLink,
 } from "./handlers/friend_link";
 import { handleExport, handleImport } from "./handlers/admin";
+import { handleAnalyticsOverview } from "./handlers/analytics";
 import {
   handleAcquireLock,
   handleReleaseLock,
@@ -494,6 +495,15 @@ addRoute(
   "POST",
   "/admin/import",
   async (req, env) => handleImport(req, env),
+  true,
+  true
+);
+
+// 阅读统计概览（issue #55）：站级数据只对 admin 开放
+addRoute(
+  "GET",
+  "/admin/analytics/overview",
+  async (req, env) => handleAnalyticsOverview(req, env),
   true,
   true
 );

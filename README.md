@@ -214,7 +214,7 @@ D1 (SQLite) 共 13 张表：
 | GET  | `/health`                           | 健康检查                                                                                                                                            |
 | POST | `/auth/login`                       | 登录（返回JWT token和用户信息；口令长度上限 200，超限直接 400 且不进入 KDF）                                                                        |
 | GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
-| GET  | `/articles/:slug`                   | 文章详情（流程内自增阅读量：Cookie 去重、24 小时 TTL）                                                                                              |
+| GET  | `/articles/:slug`                   | 文章详情（Tier 0 计数：§4.1 过滤、`view_<id>` Cookie + 24h HMAC 令牌去重、日聚合 pv/uv/requests；草稿预览不计数）                                   |
 | GET  | `/categories`                       | 分类列表                                                                                                                                            |
 | GET  | `/tags`                             | 标签列表                                                                                                                                            |
 | GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
@@ -262,29 +262,30 @@ D1 (SQLite) 共 13 张表：
 
 #### 管理员专属接口（需 admin 角色）
 
-| 方法   | 路径                | 说明                                                                                                                       |
-| ------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| DELETE | `/categories/:id`   | 删除分类                                                                                                                   |
-| DELETE | `/tags/:id`         | 删除标签                                                                                                                   |
-| GET    | `/users`            | 用户列表                                                                                                                   |
-| POST   | `/users`            | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                             |
-| PUT    | `/users/:id`        | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                       |
-| DELETE | `/users/:id`        | 删除用户（至少保留一个admin）                                                                                              |
-| GET    | `/config/all`       | 全部配置                                                                                                                   |
-| PUT    | `/config`           | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                           |
-| GET    | `/friend-links/all` | 全部友链                                                                                                                   |
-| POST   | `/friend-links`     | 创建友链（URL 仅 http/https）                                                                                              |
-| PUT    | `/friend-links/:id` | 更新友链（URL 仅 http/https）                                                                                              |
-| DELETE | `/friend-links/:id` | 删除友链                                                                                                                   |
-| GET    | `/admin/export`     | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                             |
-| POST   | `/admin/import`     | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                             |
-| GET    | `/admin/scrape`     | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`） |
-| GET    | `/settings`         | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                    |
-| GET    | `/settings/all`     | 拉取全部可视化配置                                                                                                         |
-| PUT    | `/settings`         | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                  |
-| POST   | `/settings/reset`   | 恢复默认可视化配置                                                                                                         |
-| GET    | `/settings/export`  | 导出配置 JSON                                                                                                              |
-| POST   | `/settings/import`  | 导入配置 JSON                                                                                                              |
+| 方法   | 路径                        | 说明                                                                                                                       |
+| ------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| DELETE | `/categories/:id`           | 删除分类                                                                                                                   |
+| DELETE | `/tags/:id`                 | 删除标签                                                                                                                   |
+| GET    | `/users`                    | 用户列表                                                                                                                   |
+| POST   | `/users`                    | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                             |
+| PUT    | `/users/:id`                | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                       |
+| DELETE | `/users/:id`                | 删除用户（至少保留一个admin）                                                                                              |
+| GET    | `/config/all`               | 全部配置                                                                                                                   |
+| PUT    | `/config`                   | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                           |
+| GET    | `/friend-links/all`         | 全部友链                                                                                                                   |
+| POST   | `/friend-links`             | 创建友链（URL 仅 http/https）                                                                                              |
+| PUT    | `/friend-links/:id`         | 更新友链（URL 仅 http/https）                                                                                              |
+| DELETE | `/friend-links/:id`         | 删除友链                                                                                                                   |
+| GET    | `/admin/export`             | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                             |
+| POST   | `/admin/import`             | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                             |
+| GET    | `/admin/scrape`             | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`） |
+| GET    | `/admin/analytics/overview` | 阅读统计概览（admin；`range=today\|7d\|30d\|90d`，非法值 400；返回 PV / UV / 过滤 bot，Tier 0 的 `engaged` 为 `null`）     |
+| GET    | `/settings`                 | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                    |
+| GET    | `/settings/all`             | 拉取全部可视化配置                                                                                                         |
+| PUT    | `/settings`                 | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                  |
+| POST   | `/settings/reset`           | 恢复默认可视化配置                                                                                                         |
+| GET    | `/settings/export`          | 导出配置 JSON                                                                                                              |
+| POST   | `/settings/import`          | 导入配置 JSON                                                                                                              |
 
 ### API 限流
 
@@ -318,7 +319,8 @@ D1 (SQLite) 共 13 张表：
 
 文章详情由 Astro 在请求时服务端渲染（issue #36 / [ADR 0004](docs/adr/0004-article-ssr-request-time-rendering.md)）：
 
-- **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
+- **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重，带 `HttpOnly`）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
+- **计数**：Worker 侧 `recordArticleView` 只计已发布文章 200；按 `docs/READER_ANALYTICS.md` §4.1 过滤爬虫 / 预取 / 非导航请求，SSR 链路（带 `X-Real-IP`）写日聚合 `pv` / `uv` / `requests` 与累计 `view_count`，直连 API 只累加 `requests`，被过滤的直连请求不写库；`view_<id>` Cookie 按 Cookie 快路径 + 24h HMAC 令牌去重，草稿预览不计数。
 - **访客上下文**：同时转发白名单 `User-Agent` / `Accept` / `Referer` / `Accept-Language` / `Sec-Fetch-Mode` / `Sec-Fetch-Dest` / `Sec-Purpose` / `Purpose` / `X-Purpose` / `Sec-CH-UA*`；`CF-IPCountry` 映射为 `X-Visitor-Country`。缺失的头不合成默认 UA / Accept，Worker 侧提供 `readVisitorContext` 按缺失还原为访客上下文，供机器人过滤与维度使用。
 - **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
 - **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 404 以外的非 2xx / 2xx 响应体非法 / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
@@ -466,7 +468,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 回传与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。文章 SSR 的浏览器回归（服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）也已在构建前接入 CI，使用 Playwright + 本地 mock；两条导航回归仍是手动 Playwright 脚本，安装、启动与设计检查单见 `docs/agents/testing.md`。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 逐字回传（含 `HttpOnly`）与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。文章 SSR 的浏览器回归（服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）也已在构建前接入 CI，使用 Playwright + 本地 mock；两条导航回归仍是手动 Playwright 脚本，安装、启动与设计检查单见 `docs/agents/testing.md`。
 
 ### Worker 后端开发
 

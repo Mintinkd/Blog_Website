@@ -1,6 +1,6 @@
 # 阅读统计：聚合优先，不引入访客指纹
 
-2026-11-04。现状 `incrementViewCount`（`worker/src/services/article_service.ts:261`）只按 `view_<id>` Cookie 去重并累加 `articles.view_count`：没有时间序列、没有机器人过滤，后台看不到读者构成；草稿预览（管理员/作者拉取未发布文章）也会计数。
+2026-11-04。立档时的 `incrementViewCount`（原在 `worker/src/services/article_service.ts`，#55 起由 `services/analytics_service.ts` 的 `recordArticleView` 取代）只按 `view_<id>` Cookie 去重并累加 `articles.view_count`：没有时间序列、没有机器人过滤，后台看不到读者构成；草稿预览（管理员/作者拉取未发布文章）也会计数。
 
 曾考虑用「网络与位置 + 设备与系统 + 浏览器特征 + 综合指纹 + 行为 + 登录痕迹/社交授权」的多维画像提升识别准确率，并在后台逐条查看。决定改为**聚合优先的分层采集**：Tier 0 在 Worker 侧完成计数、去重与粗维度聚合（不新增终端标识、零持久访客 ID），Tier 1 在获得分类同意后只补充「桶计数」维度；不引入 canvas/WebGL/audio/字体枚举，不建立跨天访客 ID，后台只提供聚合视图。
 

@@ -1,99 +1,394 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleGetArticle } from "../src/handlers/article";
 import type { Env } from "../src/index";
+import type { AuthResult } from "../src/middleware/auth";
 
 /**
- * #40：`GET /articles/:slug` 的阅读量契约（SSR 只负责转发 Cookie，不改变计数）。
+ * issue #55：`GET /articles/:slug` 的 Tier 0 计数契约（docs/READER_ANALYTICS.md §4）。
  *
- * 接缝：handler + 真实 service，D1 用记录 prepare/bind 顺序的桩。
- * 断言外部可观察行为：Set-Cookie 属性、同 Cookie 不重复计数、其他 Cookie 不影响去重。
+ * 接缝（工单 Key interfaces 点名，见 docs/agents/testing.md:87）：
+ *   - handleGetArticle → recordArticleView：过滤 / 去重 / 日聚合 / Cookie 全链路；
+ *   - 概览接口的 router 级鉴权见 tests/analytics_overview.test.ts。
+ *
+ * D1 用按 SQL 语义执行的内存桩（沿用 analytics_cleanup.test.ts 的做法）；
+ * 期望值均为手写字面量，不从被测实现反推。
  */
 
-const VIEW_COOKIE = "view_7=1; Path=/; Max-Age=86400; SameSite=Lax";
+const ARTICLE_ID = 7;
+const VIEW_COOKIE = "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly";
+const HMAC_SECRET = "a".repeat(64);
 
-const articleRow = {
-  id: 7,
-  title: "服务端渲染",
-  slug: "ssr",
-  content: "正文",
-  content_html: "",
-  summary: "摘要",
-  cover_image: "",
-  category_id: null,
-  category_name: null,
-  category_slug: null,
-  status: "published",
-  view_count: 1,
-  like_count: 0,
-  comment_count: 0,
-  author_id: null,
-  author_name: null,
-  published_at: "2026-10-22T00:00:00.000Z",
-  created_at: "2026-10-22T00:00:00.000Z",
+/** 2026-11-04 12:00 Asia/Shanghai；跨日用 15:59Z / 16:01Z 切到次日 */
+const NOW = new Date("2026-11-04T04:00:00.000Z");
+
+const ADMIN: AuthResult = {
+  username: "adminuser",
+  role: "admin",
+  mustChangePassword: false,
 };
 
-interface Statement {
+/** 通过 §4.1 七条规则、且带 SSR 转发的 X-Real-IP 的浏览器请求 */
+const BROWSER_HEADERS: Record<string, string> = {
+  "user-agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36",
+  accept: "text/html,application/xhtml+xml",
+  "x-real-ip": "203.0.113.9",
+  "sec-fetch-mode": "navigate",
+};
+
+interface DailyRow {
+  article_id: number;
+  day: string;
+  pv: number;
+  uv: number;
+  requests: number;
+  bot_filtered: number;
+  engaged: number;
+}
+
+interface TokenRow {
+  token: string;
+  day: string;
+  expires_at: string;
+}
+
+interface State {
+  status: "published" | "draft";
+  viewCount: number;
+  daily: DailyRow[];
+  tokens: TokenRow[];
+  config: Map<string, string>;
+  /** 非 batch 执行的写语句 */
+  writes: string[];
+  /** 每次 batch() 调用内的写语句，用于断言原子提交 */
+  batches: string[][];
+}
+
+const COUNTERS = ["pv", "uv", "requests", "bot_filtered", "engaged"] as const;
+
+function makeState(overrides: Partial<State> = {}): State {
+  return {
+    status: "published",
+    viewCount: 1,
+    daily: [],
+    tokens: [],
+    config: new Map([["analytics_hmac_secret", HMAC_SECRET]]),
+    writes: [],
+    batches: [],
+    ...overrides,
+  };
+}
+
+interface FakeStatement {
   sql: string;
   binds: unknown[];
+  bind(...args: unknown[]): FakeStatement;
+  run(): Promise<{ success: boolean; meta: { changes: number } }>;
+  first<T = unknown>(): Promise<T | null>;
+  all(): Promise<{ results: unknown[] }>;
 }
 
-function makeEnv(): { env: Env; statements: Statement[] } {
-  const statements: Statement[] = [];
-  const prepare = (sql: string) => {
-    const statement: Statement = { sql, binds: [] };
-    statements.push(statement);
-    const api = {
-      bind: (...binds: unknown[]) => {
-        statement.binds = binds;
-        return api;
+/** 按 SQL 语义落库；SQL 改了写法（如去掉 `x = x + 1`）测试必须跟着失败 */
+function applyWrite(state: State, sql: string, binds: unknown[]): void {
+  if (sql.includes("analytics_hmac_secret")) {
+    if (!state.config.get("analytics_hmac_secret")) {
+      state.config.set("analytics_hmac_secret", String(binds[0]));
+    }
+    return;
+  }
+  if (sql.startsWith("INSERT INTO analytics_view_token")) {
+    state.tokens.push({
+      token: String(binds[0]),
+      day: String(binds[1]),
+      expires_at: String(binds[2]),
+    });
+    return;
+  }
+  if (sql.startsWith("INSERT INTO analytics_article_daily")) {
+    const articleId = Number(binds[0]);
+    const day = String(binds[1]);
+    let row = state.daily.find(
+      (r) => r.article_id === articleId && r.day === day
+    );
+    if (!row) {
+      row = {
+        article_id: articleId,
+        day,
+        pv: 0,
+        uv: 0,
+        requests: 0,
+        bot_filtered: 0,
+        engaged: 0,
+      };
+      state.daily.push(row);
+    }
+    for (const counter of COUNTERS) {
+      if (new RegExp(`\\b${counter} = ${counter} \\+ 1\\b`).test(sql)) {
+        row[counter] += 1;
+      }
+    }
+    return;
+  }
+  if (sql.startsWith("UPDATE articles SET view_count")) {
+    state.viewCount += 1;
+    return;
+  }
+  throw new Error(`Unexpected write SQL: ${sql}`);
+}
+
+function makeEnv(state: State): Env {
+  const prepare = (sql: string): FakeStatement => {
+    const stmt: FakeStatement = {
+      sql,
+      binds: [],
+      bind(...args: unknown[]) {
+        stmt.binds = args;
+        return stmt;
       },
-      first: () =>
-        Promise.resolve(sql.includes("FROM articles a") ? articleRow : null),
-      all: () => Promise.resolve({ results: [] }),
-      run: () => Promise.resolve({ success: true, meta: { changes: 1 } }),
+      async run() {
+        state.writes.push(sql);
+        applyWrite(state, sql, stmt.binds);
+        return { success: true, meta: { changes: 1 } };
+      },
+      async first<T = unknown>(): Promise<T | null> {
+        if (sql.includes("FROM articles a")) {
+          return {
+            id: ARTICLE_ID,
+            title: "服务端渲染",
+            slug: "ssr",
+            content: "正文",
+            content_html: "",
+            summary: "摘要",
+            cover_image: "",
+            category_id: null,
+            category_name: null,
+            category_slug: null,
+            status: state.status,
+            view_count: state.viewCount,
+            like_count: 0,
+            comment_count: 0,
+            author_id: null,
+            author_name: null,
+            published_at: "2026-10-22T00:00:00.000Z",
+            created_at: "2026-10-22T00:00:00.000Z",
+          } as T;
+        }
+        if (sql.includes("key = 'analytics_hmac_secret'")) {
+          const value = state.config.get("analytics_hmac_secret");
+          return value ? ({ value } as T) : null;
+        }
+        if (sql.includes("FROM analytics_view_token")) {
+          const found = state.tokens.find(
+            (t) => t.token === String(stmt.binds[0])
+          );
+          return found ? ({ token: found.token } as T) : null;
+        }
+        return null;
+      },
+      async all() {
+        return { results: [] };
+      },
     };
-    return api;
+    return stmt;
   };
 
-  return { env: { DB: { prepare } } as unknown as Env, statements };
+  const db = {
+    prepare,
+    async batch(statements: FakeStatement[]) {
+      const group: string[] = [];
+      for (const statement of statements) {
+        group.push(statement.sql);
+        applyWrite(state, statement.sql, statement.binds);
+      }
+      state.batches.push(group);
+      return [];
+    },
+  };
+  return { DB: db } as unknown as Env;
 }
 
-function incrementCount(statements: Statement[]): number {
-  return statements.filter((s) =>
-    s.sql.startsWith("UPDATE articles SET view_count = view_count + 1")
-  ).length;
-}
-
-async function visit(env: Env, cookie?: string): Promise<Response> {
-  const headers = cookie ? { cookie } : undefined;
+function visit(
+  env: Env,
+  options: { headers?: Record<string, string>; auth?: AuthResult } = {}
+): Promise<Response> {
   return handleGetArticle(
-    new Request("https://api.example.test/api/v1/articles/ssr", { headers }),
+    new Request("https://api.example.test/api/v1/articles/ssr", {
+      headers: options.headers ?? BROWSER_HEADERS,
+    }),
     env,
-    { slug: "ssr" }
+    { slug: "ssr" },
+    options.auth
   );
 }
 
-describe("文章阅读量 Cookie", () => {
-  it("同一 Cookie 连续访问只计一次；无 Cookie 的新访客计一次并收到 24 小时 Cookie", async () => {
-    const { env, statements } = makeEnv();
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("issue #55：同 Cookie 与令牌去重", () => {
+  it("同 Cookie 连续两次：view_count +1、pv +2、uv +1、requests +2", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
 
     const first = await visit(env);
-    const second = await visit(env, "view_7=1");
-    const otherCookie = await visit(env, "theme=dark");
+    const second = await visit(env, {
+      headers: { ...BROWSER_HEADERS, cookie: "view_7=1" },
+    });
 
     expect(first.status).toBe(200);
     expect(first.headers.get("set-cookie")).toBe(VIEW_COOKIE);
-    expect(second.status).toBe(200);
     expect(second.headers.get("set-cookie")).toBeNull();
-    expect(otherCookie.headers.get("set-cookie")).toBe(VIEW_COOKIE);
-    expect(incrementCount(statements)).toBe(2);
+    expect(state.viewCount).toBe(2);
+    expect(state.daily).toEqual([
+      {
+        article_id: 7,
+        day: "2026-11-04",
+        pv: 2,
+        uv: 1,
+        requests: 2,
+        bot_filtered: 0,
+        engaged: 0,
+      },
+    ]);
   });
 
-  it("Cookie 去重按文章 id 隔离：其他文章的 view Cookie 不影响本文章", async () => {
-    const { env, statements } = makeEnv();
+  it("无 Cookie 但同 IP+UA 同日：令牌兜底，UV 只 +1", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
 
-    await visit(env, "view_8=1");
+    await visit(env);
+    await visit(env);
 
-    expect(incrementCount(statements)).toBe(1);
+    expect(state.viewCount).toBe(2);
+    expect(state.tokens).toHaveLength(1);
+    expect(state.daily[0]).toMatchObject({ pv: 2, uv: 1, requests: 2 });
+  });
+
+  it("首次计数用一次 D1 batch 原子提交令牌 + 日聚合 + 累计阅读量", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+
+    await visit(env);
+
+    expect(state.batches).toHaveLength(1);
+    expect(state.batches[0]).toHaveLength(3);
+    expect(
+      state.batches[0].some((sql) => sql.includes("analytics_view_token"))
+    ).toBe(true);
+    expect(
+      state.batches[0].some((sql) => sql.includes("analytics_article_daily"))
+    ).toBe(true);
+    expect(
+      state.batches[0].some((sql) =>
+        sql.includes("UPDATE articles SET view_count")
+      )
+    ).toBe(true);
+  });
+
+  it("跨日（Asia/Shanghai）同一 IP+UA：各计一次 UV", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+
+    vi.setSystemTime(new Date("2026-11-04T15:59:00.000Z")); // 上海 23:59
+    await visit(env);
+    vi.setSystemTime(new Date("2026-11-04T16:01:00.000Z")); // 上海次日 00:01
+    await visit(env);
+
+    expect(state.tokens).toHaveLength(2);
+    expect(
+      state.daily.map((row) => ({ day: row.day, uv: row.uv, pv: row.pv }))
+    ).toEqual([
+      { day: "2026-11-04", uv: 1, pv: 1 },
+      { day: "2026-11-05", uv: 1, pv: 1 },
+    ]);
+    expect(state.viewCount).toBe(3);
+  });
+});
+
+describe("issue #55：§4.1 过滤与直连口径", () => {
+  it("爬虫 UA / Sec-Purpose: prefetch / Sec-Fetch-Mode: no-cors 只累加 bot_filtered", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+
+    await visit(env, {
+      headers: { ...BROWSER_HEADERS, "user-agent": "Googlebot/2.1" },
+    });
+    await visit(env, {
+      headers: { ...BROWSER_HEADERS, "sec-purpose": "prefetch" },
+    });
+    await visit(env, {
+      headers: { ...BROWSER_HEADERS, "sec-fetch-mode": "no-cors" },
+    });
+
+    expect(state.daily).toEqual([
+      {
+        article_id: 7,
+        day: "2026-11-04",
+        pv: 0,
+        uv: 0,
+        requests: 0,
+        bot_filtered: 3,
+        engaged: 0,
+      },
+    ]);
+    expect(state.viewCount).toBe(1);
+    expect(state.tokens).toHaveLength(0);
+  });
+
+  it("草稿预览不计数、不下发 Cookie", async () => {
+    const state = makeState({ status: "draft" });
+    const env = makeEnv(state);
+
+    const res = await visit(env, { auth: ADMIN });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(state.daily).toHaveLength(0);
+    expect(state.writes).toHaveLength(0);
+    expect(state.batches).toHaveLength(0);
+    expect(state.viewCount).toBe(1);
+  });
+
+  it("直连 API（无 X-Real-IP）：requests +1，pv/uv 与阅读量不变", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+
+    const res = await visit(env, { headers: directHeaders });
+
+    expect(res.status).toBe(200);
+    expect(state.daily).toEqual([
+      {
+        article_id: 7,
+        day: "2026-11-04",
+        pv: 0,
+        uv: 0,
+        requests: 1,
+        bot_filtered: 0,
+        engaged: 0,
+      },
+    ]);
+    expect(state.viewCount).toBe(1);
+    expect(state.tokens).toHaveLength(0);
+    expect(res.headers.get("set-cookie")).toBe(VIEW_COOKIE);
+  });
+
+  it("被过滤的直连请求既不计 requests 也不计 bot_filtered", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+
+    await visit(env, {
+      headers: { ...directHeaders, "user-agent": "curl/8.0" },
+    });
+
+    expect(state.daily).toHaveLength(0);
+    expect(state.writes).toHaveLength(0);
+    expect(state.batches).toHaveLength(0);
   });
 });

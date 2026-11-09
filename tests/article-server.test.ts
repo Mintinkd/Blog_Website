@@ -251,7 +251,7 @@ describe("文章页服务端取数", () => {
     });
     response.headers.append(
       "Set-Cookie",
-      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax"
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"
     );
     stubFetch(response);
 
@@ -262,7 +262,7 @@ describe("文章页服务端取数", () => {
     expect(result).toEqual({
       status: "ok",
       article: publishedArticle,
-      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax"],
+      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"],
     });
   });
 
@@ -387,7 +387,7 @@ describe("文章页服务端取数", () => {
     const response = new Response("<html>bad gateway</html>", { status: 200 });
     response.headers.append(
       "Set-Cookie",
-      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax"
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"
     );
     stubFetch(response);
 
@@ -395,7 +395,7 @@ describe("文章页服务端取数", () => {
       loadArticleForPage("bad-json", { origin: "https://api.example.test" })
     ).resolves.toEqual({
       status: "error",
-      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax"],
+      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"],
     });
   });
 
@@ -463,14 +463,14 @@ describe("文章页响应头", () => {
       status: "ok",
       article: publishedArticle,
       setCookies: [
-        "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
-        "view_8=1; Path=/; Max-Age=86400; SameSite=Lax",
+        "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
+        "view_8=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
       ],
     });
 
     expect(headers.getSetCookie()).toEqual([
-      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
-      "view_8=1; Path=/; Max-Age=86400; SameSite=Lax",
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
+      "view_8=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
     ]);
   });
 
@@ -479,11 +479,11 @@ describe("文章页响应头", () => {
 
     applyArticleResponseHeaders(headers, {
       status: "error",
-      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax"],
+      setCookies: ["view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly"],
     });
 
     expect(headers.getSetCookie()).toEqual([
-      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
+      "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
     ]);
   });
 

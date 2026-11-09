@@ -74,8 +74,7 @@ export async function handleGetArticle(
   authResult?: AuthResult
 ): Promise<Response> {
   const { slug } = params;
-  const { getArticleBySlug, incrementViewCount } =
-    await import("../services/article_service");
+  const { getArticleBySlug } = await import("../services/article_service");
 
   const article = await getArticleBySlug(env, slug);
   if (!article) {
@@ -100,17 +99,20 @@ export async function handleGetArticle(
     if (!allowed) {
       return notFound("Article not found");
     }
+    // 后台编辑拉取 / 草稿预览不计数、不下发去重 Cookie（§2 / §11 决策 7）
+    return successResponse(article);
   }
 
-  const cookieHeader = request.headers.get("cookie") || undefined;
-  const viewed = await incrementViewCount(env, article.id, cookieHeader);
+  // 仅已发布文章 200 进入 Tier 0 计数：过滤、24h 去重、日聚合（§4）
+  const { recordArticleView } = await import("../services/analytics_service");
+  const { setCookie } = await recordArticleView(env, request, article.id);
 
   const response = successResponse(article);
-  if (viewed) {
+  if (setCookie) {
     const headers = new Headers(response.headers);
     headers.append(
       "Set-Cookie",
-      `view_${article.id}=1; Path=/; Max-Age=86400; SameSite=Lax`
+      `view_${article.id}=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly`
     );
     return new Response(response.body, {
       status: response.status,

@@ -91,8 +91,9 @@ function createMockServer() {
           200,
           { code: 0, message: "ok", data: ARTICLE },
           {
-            // 模拟 Worker 的阅读量去重 Cookie：页面应原样回传浏览器。
-            "Set-Cookie": "view_7=1; Path=/; Max-Age=86400; SameSite=Lax",
+            // 模拟 Worker 的阅读量去重 Cookie（含 HttpOnly）：页面应逐字回传浏览器。
+            "Set-Cookie":
+              "view_7=1; Path=/; Max-Age=86400; SameSite=Lax; HttpOnly",
           }
         );
         return;

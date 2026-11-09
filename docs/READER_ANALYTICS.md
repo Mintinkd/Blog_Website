@@ -1,6 +1,6 @@
 # 阅读统计设计：口径、分层采集与后台视图
 
-状态：设计稿，已定稿（对应 ADR `docs/adr/0005-reader-analytics-aggregate-first.md`，尚未实施）。
+状态：设计稿，已定稿（对应 ADR `docs/adr/0005-reader-analytics-aggregate-first.md`）；Tier 0 按 #53～#59 分批实施中，本文件是口径与验收的单一来源。
 
 **实施范围：仅 Tier 0。** Tier 1（§8）不在这批工单内；先按 §9 第 7 步观察两周数据，再单独评估，不预建 Tier 1 工单。
 
@@ -127,6 +127,8 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 ```
 
 去重键必须用 SSR 转发的 `X-Real-IP`：SSR→Worker 这一跳的 `CF-Connecting-IP` 是 Pages 的出口地址，用它会把同一 POP 的所有访客合并成一个人。D1 没有交互式事务，第 4 步用 `batch()` 保证原子性。
+
+> **实施裁定（#55）**：第 1 步的「直接跳过」指跳过 UV 去重、`view_count` 与令牌查写，**不是跳过整次请求**；按 §2 定义，每个过滤后 200 仍须累加 `pv` 与 `requests`。这与 §10 验收「同 Cookie 连续两次：`view_count` +1、`pv` +2、`uv` +1」一致。
 
 已知取舍：
 
