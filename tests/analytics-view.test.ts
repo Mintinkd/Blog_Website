@@ -3,6 +3,70 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import zh from "../src/i18n/zh.json";
 import en from "../src/i18n/en.json";
+
+/**
+ * 手写字面量的词条期望清单（独立于被测实现的 ANALYTICS_I18N_KEYS，
+ * 见 docs/agents/testing.md:88「期望值须有独立来源」）。
+ */
+const EXPECTED_KEYS = [
+  "analytics.nav",
+  "analytics.title",
+  "analytics.range",
+  "analytics.range_today",
+  "analytics.range_7d",
+  "analytics.range_30d",
+  "analytics.range_90d",
+  "analytics.article_filter",
+  "analytics.article_all",
+  "analytics.updated_at",
+  "analytics.loading",
+  "analytics.error",
+  "analytics.retry",
+  "analytics.no_data",
+  "analytics.pv",
+  "analytics.uv",
+  "analytics.bot_filtered",
+  "analytics.trend_title",
+  "analytics.trend_pv",
+  "analytics.trend_uv",
+  "analytics.trend_pending",
+  "analytics.trend_bot",
+  "analytics.articles_title",
+  "analytics.table_title",
+  "analytics.table_pv",
+  "analytics.table_uv",
+  "analytics.table_referrer",
+  "analytics.table_sparkline",
+  "analytics.table_since",
+  "analytics.table_empty",
+  "analytics.table_page",
+  "analytics.prev",
+  "analytics.next",
+  "analytics.dim_title",
+  "analytics.dim_device",
+  "analytics.dim_country",
+  "analytics.dim_referrer",
+  "analytics.dim_insufficient",
+  "analytics.dim_bucket",
+  "analytics.dim_count",
+  "analytics.dim_percent",
+  "analytics.device_desktop",
+  "analytics.device_mobile",
+  "analytics.device_tablet",
+  "analytics.device_unknown",
+  "analytics.bot_hint",
+  "analytics.quality_title",
+  "analytics.quality_bot_ratio",
+  "analytics.quality_coverage",
+  "analytics.quality_heartbeat",
+  "analytics.quality_anomaly",
+  "analytics.quality_tokens",
+  "analytics.quality_ok",
+  "analytics.quality_alert",
+  "analytics.quality_heartbeat_missing",
+  "analytics.quality_anomaly_hint",
+  "analytics.other",
+] as const;
 import {
   ANALYTICS_I18N_KEYS,
   TIER0_CARDS,
@@ -149,11 +213,48 @@ describe("issue #58：小样本保护与 Tier 1 隐藏（验收 3、5）", () =>
       expect(TIER0_DIMENSIONS).not.toContain(dim);
     }
   });
+
+  it("§7.5 设备桶名走 t() 中英映射", () => {
+    const translate = (key: string) =>
+      key === "analytics.device_desktop" ? "桌面" : key;
+    const view = dimensionRows(
+      {
+        total: 20,
+        insufficient: false,
+        buckets: [{ bucket: "desktop", count: 20 }],
+      },
+      translate,
+      "device",
+      "zh"
+    );
+    expect(view.rows[0].label).toBe("桌面");
+  });
+
+  it("§7.5 地区补区域名并 Top 8 截断", () => {
+    const codes = ["CN", "US", "JP", "GB", "DE", "FR", "SG", "AU", "BR", "CA"];
+    const view = dimensionRows(
+      {
+        total: 200,
+        insufficient: false,
+        buckets: codes.map((bucket) => ({ bucket, count: 20 })),
+      },
+      (key) => key,
+      "country",
+      "zh"
+    );
+    expect(view.rows).toHaveLength(8);
+    // Intl.DisplayNames 的中文区域名随 ICU 版本略有差异，只钉住「保留两位码」不变量
+    expect(view.rows[0].label.startsWith("CN")).toBe(true);
+  });
 });
 
 describe("issue #58：中英文案同步（验收 4）", () => {
+  it("实现清单与手写字面量清单完全一致", () => {
+    expect([...ANALYTICS_I18N_KEYS]).toEqual([...EXPECTED_KEYS]);
+  });
+
   it("所有 analytics.* 词条在 zh / en 都存在且非空", () => {
-    for (const key of ANALYTICS_I18N_KEYS) {
+    for (const key of EXPECTED_KEYS) {
       expect(
         String((zh as Record<string, string>)[key] ?? ""),
         `zh ${key}`
@@ -163,6 +264,19 @@ describe("issue #58：中英文案同步（验收 4）", () => {
         `en ${key}`
       ).not.toBe("");
     }
+  });
+
+  it("zh / en 的 analytics.* 键集合双向一致，不残留死词条", () => {
+    const keysOf = (messages: Record<string, string>) =>
+      Object.keys(messages)
+        .filter((key) => key.startsWith("analytics."))
+        .sort();
+    expect(keysOf(zh as Record<string, string>)).toEqual(
+      [...EXPECTED_KEYS].sort()
+    );
+    expect(keysOf(en as Record<string, string>)).toEqual(
+      [...EXPECTED_KEYS].sort()
+    );
   });
 
   it("面板模板里用到的 analytics.* key 全部在词条清单中", () => {

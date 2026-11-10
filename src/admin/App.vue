@@ -1562,7 +1562,10 @@
                 <div
                   v-for="row in analyticsQualityRows"
                   :key="row.key"
-                  :class="['analytics-quality-row', { alert: row.alert }]"
+                  :class="[
+                    'analytics-quality-row',
+                    { alert: row.alert, critical: row.critical },
+                  ]"
                 >
                   <span>{{ row.label }}</span>
                   <strong>{{ row.value }}</strong>
@@ -1571,6 +1574,8 @@
                   }}</span>
                 </div>
               </div>
+              <!-- §4.1：规则改动时同步的解释文案，说明免费版守卫分支 -->
+              <p class="analytics-bot-hint">{{ t("analytics.bot_hint") }}</p>
             </section>
           </div>
         </div>
@@ -1858,6 +1863,8 @@ const analyticsDimensions = ref<Record<string, DimensionData | null>>({
 const analyticsArticleOptions = ref<Array<{ id: number; title: string }>>([]);
 
 const analyticsCards = computed(() => {
+  // t() 读模块级 locale，显式依赖以便切语言时 computed 重新求值（不重挂载、不丢状态）
+  void currentLocale.value;
   const overview = analyticsOverview.value;
   const empty = !hasAnalyticsData(overview);
   const values: Record<string, string> = {
@@ -1885,15 +1892,22 @@ const analyticsTrendReady = computed(() =>
   hasEnoughTrendDays(analyticsTrend.value)
 );
 
-const analyticsDimensionViews = computed(() =>
-  TIER0_DIMENSIONS.map((dim) => ({
+const analyticsDimensionViews = computed(() => {
+  void currentLocale.value;
+  return TIER0_DIMENSIONS.map((dim) => ({
     key: dim,
     label: t(`analytics.dim_${dim}`),
-    view: dimensionRows(analyticsDimensions.value[dim] ?? null, t),
-  }))
-);
+    view: dimensionRows(
+      analyticsDimensions.value[dim] ?? null,
+      t,
+      dim,
+      currentLocale.value
+    ),
+  }));
+});
 
 const analyticsQualityRows = computed(() => {
+  void currentLocale.value;
   const quality = analyticsQuality.value;
   return [
     {
@@ -1913,6 +1927,8 @@ const analyticsQualityRows = computed(() => {
       label: t("analytics.quality_heartbeat"),
       value: quality?.heartbeat_at ?? t("analytics.quality_heartbeat_missing"),
       alert: !!quality?.heartbeat_alert,
+      // §7.6：心跳超 26h 标红，其余告警标黄
+      critical: !!quality?.heartbeat_alert,
     },
     {
       key: "anomaly",
@@ -1994,10 +2010,17 @@ async function loadAnalytics() {
         title: item.title,
       }));
     }
-    analyticsUpdatedAt.value = new Date().toLocaleTimeString(
-      getLocale() === "zh" ? "zh-CN" : "en-US",
-      { hour: "2-digit", minute: "2-digit" }
-    );
+    // §7.1「数据时间」优先用清理任务心跳；无心跳时回落到本次取数时刻
+    const heartbeat = quality.data?.heartbeat_at;
+    const stamp = heartbeat
+      ? new Date(String(heartbeat).replace(" ", "T") + "Z")
+      : new Date();
+    analyticsUpdatedAt.value = Number.isFinite(stamp.getTime())
+      ? stamp.toLocaleTimeString(getLocale() === "zh" ? "zh-CN" : "en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "—";
   } catch {
     analyticsError.value = true;
   } finally {
@@ -4261,6 +4284,15 @@ watch(currentTab, (tab) => {
 .analytics-quality-row.alert {
   border-color: var(--color-warning);
   background: rgba(255, 159, 10, 0.08);
+}
+.analytics-quality-row.critical {
+  border-color: var(--color-error);
+  background: rgba(255, 59, 48, 0.08);
+}
+.analytics-bot-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
 }
 .analytics-alert-tag {
   font-size: 0.7rem;

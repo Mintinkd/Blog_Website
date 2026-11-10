@@ -63,10 +63,14 @@ export const ANALYTICS_I18N_KEYS = [
   "analytics.dim_country",
   "analytics.dim_referrer",
   "analytics.dim_insufficient",
-  "analytics.dim_other",
   "analytics.dim_bucket",
   "analytics.dim_count",
   "analytics.dim_percent",
+  "analytics.device_desktop",
+  "analytics.device_mobile",
+  "analytics.device_tablet",
+  "analytics.device_unknown",
+  "analytics.bot_hint",
   "analytics.quality_title",
   "analytics.quality_bot_ratio",
   "analytics.quality_coverage",
@@ -184,17 +188,55 @@ export function buildSparklinePath(
     .join(" ");
 }
 
-/** §7.5：`insufficient` 时不返回桶；`other` 由 t() 映射中文案 */
+const DEVICE_BUCKET_KEYS: Record<string, string> = {
+  desktop: "analytics.device_desktop",
+  mobile: "analytics.device_mobile",
+  tablet: "analytics.device_tablet",
+  unknown: "analytics.device_unknown",
+};
+
+/** §7.5：设备名走 t() 中英词条；地区补 Intl 区域名（不维护易过期的国家名表） */
+function bucketLabel(
+  bucket: string,
+  dim: string | undefined,
+  t: (key: string) => string,
+  locale: string
+): string {
+  if (bucket === "other") return t("analytics.other");
+  if (dim === "device" && DEVICE_BUCKET_KEYS[bucket]) {
+    return t(DEVICE_BUCKET_KEYS[bucket]);
+  }
+  if (dim === "country" && /^[A-Z0-9]{2}$/.test(bucket)) {
+    const DisplayNames = (
+      Intl as unknown as {
+        DisplayNames?: new (
+          locales: string[],
+          options: { type: string }
+        ) => { of(code: string): string | undefined };
+      }
+    ).DisplayNames;
+    if (DisplayNames) {
+      const name = new DisplayNames([locale], { type: "region" }).of(bucket);
+      if (name && name !== bucket) return `${bucket} · ${name}`;
+    }
+  }
+  return bucket;
+}
+
+/** §7.5：`insufficient` 时不返回桶；`other` 由 t() 映射；地区 Top 8 截断 */
 export function dimensionRows(
   data: DimensionData | null,
-  t: (key: string) => string
+  t: (key: string) => string,
+  dim?: string,
+  locale = "zh"
 ): { insufficient: boolean; rows: DimensionRow[] } {
   if (!data) return { insufficient: false, rows: [] };
   if (data.insufficient) return { insufficient: true, rows: [] };
+  const buckets = dim === "country" ? data.buckets.slice(0, 8) : data.buckets;
   return {
     insufficient: false,
-    rows: data.buckets.map((bucket) => ({
-      label: bucket.bucket === "other" ? t("analytics.other") : bucket.bucket,
+    rows: buckets.map((bucket) => ({
+      label: bucketLabel(bucket.bucket, dim, t, locale),
       count: bucket.count,
       percent: formatRatio(data.total > 0 ? bucket.count / data.total : null),
     })),

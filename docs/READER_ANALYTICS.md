@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 | 文章     | 全部 / 单篇（可搜索）                              | 全部    |
 | 数据时间 | 只读文本：`更新于 HH:mm`（最近写入或清理任务心跳） | —       |
 
+> **实现说明（#58）**：#55–#57 的 4 个只读接口中只有 `dimensions` 接受 `article_id`，因此顶部「文章」筛选当前**只作用于分布区**；概览 / 趋势 / 文章表 / 质量仍为全站口径，下拉选项取 `/articles?page_size=50` 的前 50 篇。「数据时间」优先取 `quality.heartbeat_at`（清理任务心跳），无心跳时回落本次取数时刻。
+
 ### 7.2 概览卡（全量 6 张；Tier 0 可见 3 张）
 
 | 字段         | 口径                        | 空态          |
@@ -288,6 +290,8 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 
 > **接口契约（#56）**：`GET /api/v1/admin/analytics/dimensions?dim=&range=&article_id=`；`dim` 仅 `device|country|referrer`，`range` 同 §6，`article_id` 省略为全站（`GROUP BY bucket` 聚合，不写全站行），非法值一律 400。返回 `{ dim, range, article_id, total, insufficient, buckets }`：桶 `< 5` 合并到稳定 key `other`（恒排最后）；`total < 20` 时 `insufficient: true` 且 `buckets: []`，前台据此显示「数据不足」。`other` 是接口 key，中文文案由 #58 的 `t()` 映射。保护按每次查询独立执行，逐篇视图与全站视图各自合并 `other`；§10 验收「全站查询按 `GROUP BY` 聚合，结果与逐篇求和一致」指 `SUM(count)` 聚合计数，不要求保护后的展示桶可加总。
 
+> **前端展示（#58）**：设备桶名经 `t("analytics.device_*")` 中英映射（桌面 / 移动 / 平板 / 未知）；地区显示为「两位码 · `Intl.DisplayNames` 区域名」并按 Top 8 截断，不维护易过期的国家名表；`other` 由 `t("analytics.other")` 映射「其他」。
+
 ### 7.6 数据质量面板
 
 | 指标         | 含义                    | 告警阈值                      |
@@ -304,7 +308,7 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 > - 心跳读 `site_config.analytics_last_job_at`（UTC `YYYY-MM-DD HH:MM:SS`）；格式须严格匹配（缺秒 / 仅日期视为非法），缺失、格式非法或超过 26 小时 → `heartbeat_alert: true`。
 > - 异常波动取今日之前 7 个日界的全站 PV 为基线，按总体标准差判定 `|today_pv - mean| > 3σ`；基线全 0（`mean = 0`，刚上线 / 无历史）不告警，避免误报。令牌行数 `> 10 万` 时 `token_rows_alert: true`。
 > - `pv` / `uv` / `requests` / `bot_filtered` 按 `range` 汇总；`today_pv` / `baseline_mean` / `baseline_sigma` / `anomaly` 固定取今日与之前 7 日，不受 `range` 影响。
-> - Tier 1 的 `engaged_rate` 恒为 `null`。
+> - Tier 1 的 `engaged_rate` 恒为 `null`；心跳告警在前端用红色（`.critical`），其余告警用黄色（`.alert`）。质量面板底部展示 §4.1 要求的 `bot_filtered` 解释文案（免费版无 Bot Management、规则 5/6 为永不触发的守卫分支）。
 
 ### 7.7 同意面板（仅 Tier 1）
 

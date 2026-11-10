@@ -9,7 +9,7 @@ import {
 import { error, ErrorCodes, successResponse } from "../utils/response";
 
 /**
- * 阅读统计后台只读接口（issue #55 / #56 / #57 / docs/READER_ANALYTICS.md §6、§7.2、§7.4–§7.6）。
+ * 阅读统计后台只读接口（issue #55–#58 / docs/READER_ANALYTICS.md §6、§7.2–§7.6）。
  * 全部接口由 router 以 `requireAuth + requireAdmin` 注册；`range` / `dim` / `page` 走白名单。
  */
 
@@ -61,7 +61,7 @@ export function isAnalyticsRange(
   );
 }
 
-/** 含当日在内的 [from, to] 日界，四个只读接口共用一套时区口径 */
+/** 含当日在内的 [from, to] 日界，五个只读接口共用一套时区口径 */
 function rangeBounds(range: AnalyticsRange): { from: string; to: string } {
   const days = RANGE_DAYS[range];
   const to = dayKey();
@@ -71,7 +71,7 @@ function rangeBounds(range: AnalyticsRange): { from: string; to: string } {
   };
 }
 
-/** 四个只读接口共用的 range 校验；错误文案由白名单派生，避免多处各自维护 */
+/** 五个只读接口共用的 range 校验；错误文案由白名单派生，避免多处各自维护 */
 function parseRange(params: URLSearchParams): AnalyticsRange | Response {
   const value = params.get("range");
   if (!isAnalyticsRange(value)) {
