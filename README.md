@@ -35,7 +35,7 @@
 │   └── robots.txt
 ├── src/
 │   ├── admin/
-│   │   └── App.vue             # 后台管理SPA（Vue 3 + Element Plus）
+│   │   └── App.vue             # 后台管理SPA（含阅读统计「统计」面板，#58）
 │   ├── components/
 │   │   ├── article/
 │   │   │   └── ArticleCard.astro
@@ -83,6 +83,7 @@
 │   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
 │   ├── utils/
 │   │   ├── api.ts               # API请求工具
+│   │   ├── analyticsView.ts     # 统计面板纯函数（SVG 路径 / 空态 / 比率 / 小样本 / Tier 0 白名单，#58）
 │   │   ├── articleDate.ts       # 文章发布日期格式化（服务端首屏与客户端 locale 切换共用）
 │   │   ├── articleMeta.ts       # 文章页 SEO 元信息构造（title/description/canonical/OG，纯函数）
 │   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（三态映射、访客 Cookie 转发、Set-Cookie 回传、私有缓存）
@@ -149,7 +150,7 @@
 │       │   ├── auth_handler.ts
 │       │   ├── edit_lock.ts
 │       │   ├── admin.ts
-│       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布 / 明细 / 质量，#55–#57）
+│       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布 / 明细 / 质量 / 趋势，#55–#58）
 │       ├── services/
 │       │   ├── article_service.ts
 │       │   ├── edit_lock_service.ts
@@ -285,6 +286,7 @@ D1 (SQLite) 共 13 张表：
 | GET    | `/admin/analytics/dimensions` | 分布（admin；`dim=device\|country\|referrer`、`range` 白名单；省略 `article_id` 为全站 `GROUP BY`；桶 < 5 合并 `other`，总样本 < 20 返回 `insufficient`） |
 | GET    | `/admin/analytics/articles`   | 文章明细（admin；`range` 白名单、`page` 正整数；分页 20 / PV 降序 / 来源 Top1 / 固定 7 日 sparkline / `since` 起点；Tier 1 列为 `null`）                  |
 | GET    | `/admin/analytics/quality`    | 数据质量（admin；bot 占比 / 代理覆盖率 / 清理心跳 / 3σ 波动 / 令牌行数及告警；分母为 0 的比率返回 `null`）                                                |
+| GET    | `/admin/analytics/trend`      | 趋势（admin；`range` 白名单；按日返回 `pv` / `uv` / `bot_filtered`，无数据的日补 0；供后台 PV/UV 双线图使用，#58）                                        |
 | GET    | `/settings`                   | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                                                   |
 | GET    | `/settings/all`               | 拉取全部可视化配置                                                                                                                                        |
 | PUT    | `/settings`                   | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                                                 |

@@ -393,3 +393,47 @@ export async function handleAnalyticsQuality(
     engaged_rate: null,
   });
 }
+
+interface TrendDayRow {
+  day: string;
+  pv: number;
+  uv: number;
+  bot_filtered: number;
+}
+
+/**
+ * 趋势图数据源（issue #58 / §7.3）：按日 PV / UV / bot_filtered。
+ * 按 `range` 的日历天补齐，无数据的日补 0；是否画折线由前台按有效天数判断。
+ */
+export async function handleAnalyticsTrend(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const range = parseRange(new URL(request.url).searchParams);
+  if (range instanceof Response) return range;
+  const { from, to } = rangeBounds(range);
+
+  const result = await env.DB.prepare(
+    "SELECT day, SUM(pv) AS pv, SUM(uv) AS uv, " +
+      "SUM(bot_filtered) AS bot_filtered FROM analytics_article_daily " +
+      "WHERE day >= ? AND day <= ? GROUP BY day ORDER BY day"
+  )
+    .bind(from, to)
+    .all<TrendDayRow>();
+  const byDay = new Map((result.results ?? []).map((row) => [row.day, row]));
+
+  return successResponse({
+    range,
+    from,
+    to,
+    days: daySequence(RANGE_DAYS[range]).map((day) => {
+      const row = byDay.get(day);
+      return {
+        day,
+        pv: row?.pv ?? 0,
+        uv: row?.uv ?? 0,
+        bot_filtered: row?.bot_filtered ?? 0,
+      };
+    }),
+  });
+}

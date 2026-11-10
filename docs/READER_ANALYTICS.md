@@ -219,6 +219,7 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 | `GET`  | `/api/v1/admin/analytics/articles?range=7d&page=1`        | 文章明细表                                                     |
 | `GET`  | `/api/v1/admin/analytics/dimensions?dim=device&range=30d` | 分布；省略 `article_id` 表示全站聚合                           |
 | `GET`  | `/api/v1/admin/analytics/quality?range=7d`                | 数据质量面板                                                   |
+| `GET`  | `/api/v1/admin/analytics/trend?range=7d`                  | 按日趋势（#58 补，供 §7.3 双线图）                             |
 | `GET`  | `/api/v1/admin/analytics/consent?range=30d`               | 同意率（Tier 1）                                               |
 
 后台接口全部走现有 auth 中间件，且要求 `admin` 角色（统计是站级数据，不对 editor 开放）。`range` 只接受 `today|7d|30d|90d`，非法值 400。
@@ -254,6 +255,8 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 - 悬停显示当日数值与 `bot_filtered`。
 - 少于 2 天数据时显示「数据积累中」，不画 0 值折线。
 - 手写 SVG，不引入图表库。
+
+> **接口契约（#58）**：趋势数据源为 `GET /api/v1/admin/analytics/trend?range=`（admin，`range` 同 §6），返回 `{ range, from, to, days: [{ day, pv, uv, bot_filtered }] }`；按 `range` 的日历天补齐，无数据的日补 0。前台以「有数据的日界 ≥ 2」判断是否画双线，否则显示「数据积累中」；悬停信息由 `bot_filtered` 提供。PV / UV 共用同一最大值缩放。该接口是 #58 为 §7.3 补的最小只读数据源，不改动 #55–#57 的既有接口契约。
 
 ### 7.4 文章表
 
