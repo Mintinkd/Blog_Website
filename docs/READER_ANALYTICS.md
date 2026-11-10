@@ -1,6 +1,6 @@
 # 阅读统计设计：口径、分层采集与后台视图
 
-状态：设计稿，已定稿（对应 ADR `docs/adr/0005-reader-analytics-aggregate-first.md`）；Tier 0 按 #53～#59 分批实施中，本文件是口径与验收的单一来源。
+状态：设计稿，已定稿（对应 ADR `docs/adr/0005-reader-analytics-aggregate-first.md`）；**Tier 0 已落地**（#53–#59，2026-11-10），本文件仍是口径与验收的单一来源；按 §9 第 7 步观察两周后再评估 Tier 1。
 
 **实施范围：仅 Tier 0。** Tier 1（§8）不在这批工单内；先按 §9 第 7 步观察两周数据，再单独评估，不预建 Tier 1 工单。
 
@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 3. **计数改造**：`incrementViewCount` → `recordArticleView`，接入过滤、令牌去重、日聚合（`pv/uv/requests`）、维度桶；草稿预览不再计数；概览接口可读。
 4. **维度与查询**：维度桶映射与分布接口；文章明细与质量接口。
 5. **后台只读页**：概览 + 文章表 + 分布 + 质量面板（Tier 0 数据），手写 SVG。
-6. **隐私与文档**：新建 `/privacy`（中英）、页脚入口；README / GLOSSARY / ADR 同步。
+6. **隐私与文档**：新建 `/privacy`（中英）、页脚入口；README / GLOSSARY / ADR 同步。（已随 #59 落地）
 7. **观察两周**：看 `bot_filtered` 占比、代理覆盖率与 PV/UV 比值是否符合预期，再决定是否做 Tier 1。
 8. **Tier 1（可选，不预建工单）**：同意弹窗 + 同意凭证 + beacon + 分布补充。
 

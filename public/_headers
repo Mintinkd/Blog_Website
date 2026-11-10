@@ -28,6 +28,9 @@
 /articles*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
   Speculation-Rules: "/speculation-rules"
+/privacy*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+  Speculation-Rules: "/speculation-rules"
 /search*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
   Speculation-Rules: "/speculation-rules"

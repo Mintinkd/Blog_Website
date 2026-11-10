@@ -38,6 +38,7 @@ const EXPECTED_ROUTE_PATTERNS = [
   "/archives*",
   "/admin*",
   "/articles*",
+  "/privacy*",
   "/search*",
 ];
 

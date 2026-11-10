@@ -147,7 +147,10 @@ const initialCss = buildCss(initialSettings);
       )}
       <div class="container footer-inner">
         <p id="footer-text">&copy; {new Date().getFullYear()} Blog</p>
-        <a href="/rss.xml" data-feature="rss">RSS</a>
+        <div class="footer-links">
+          <a href="/privacy" data-i18n="nav.privacy">隐私</a>
+          <a href="/rss.xml" data-feature="rss">RSS</a>
+        </div>
       </div>
     </footer>
 
@@ -802,6 +805,11 @@ const initialCss = buildCss(initialSettings);
     align-items: center;
     color: var(--color-text-tertiary);
     font-size: 0.8rem;
+  }
+  .footer-links {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
   }
   .footer-inner a {
     color: var(--color-text-tertiary);

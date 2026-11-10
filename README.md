@@ -67,6 +67,7 @@
 │   │   ├── speculation-rules.ts     # 空预取规则集端点（SSR，覆盖 Cloudflare Speed Brain）
 │   │   ├── archives.astro       # 归档
 │   │   ├── about.astro          # 关于
+│   │   ├── privacy.astro        # 隐私与阅读统计披露（中英、页脚入口，#59）
 │   │   ├── search.astro         # 搜索
 │   │   ├── admin/index.astro    # 后台管理入口
 │   │   └── 404.astro
@@ -319,8 +320,11 @@ D1 (SQLite) 共 13 张表：
 | `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
 | `/archives`          | 时间线归档                                                              | 静态     |
 | `/about`             | 关于页面                                                                | 静态     |
+| `/privacy`           | 隐私与阅读统计披露（中英、页脚入口）                                    | 静态     |
 | `/search`            | 搜索页                                                                  | 静态     |
 | `/admin`             | 后台管理                                                                | 静态     |
+
+`/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；中英文案走 `data-i18n` + `refreshDomTranslations()`，入口在页脚。
 
 ### 文章详情页 SSR
 

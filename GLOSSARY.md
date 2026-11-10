@@ -60,11 +60,11 @@ _Avoid_: 版权声明、转载声明
 ## 阅读
 
 **阅读量**：
-文章详情页被阅读的次数；同一访客 24 小时内只计一次。
+文章详情页的累计去重阅读数；按站点时区 `Asia/Shanghai` 的日界计数，同一去重键当日只计一次（`view_<id>` Cookie 24 小时快路径 + 24 小时 HMAC 令牌兜底），跨日重新计数。
 _Avoid_: 浏览量、PV、访问量
 
 **去重访客**：
-当日未命中 `view_<id>` Cookie、且未命中 24 小时去重令牌的访客；去重键为 `X-Real-IP + User-Agent + article_id + 日期` 的 HMAC，同一去重键当日只计一次。
+当日未命中 `view_<id>` Cookie、且未命中 24 小时去重令牌的访客；去重键为 `HMAC(analytics_hmac_secret, X-Real-IP + User-Agent + article_id + 日期)`，`X-Real-IP` 只作 HMAC 输入、不落库，同一去重键当日只计一次。Cookie / 令牌命中仍累加 `pv` / `requests`，只跳过本计数与累计 `view_count`。
 _Avoid_: 独立访客、UV（报表列名另用「UV」）
 
 **有效阅读**：
@@ -72,11 +72,11 @@ _Avoid_: 独立访客、UV（报表列名另用「UV」）
 _Avoid_: 完读率、阅读完成
 
 **聚合桶**：
-维度值按预设区间归并后的计数行（如屏幕宽度 `769–1280`）；桶内不含任何单条访客记录。
+维度值归并后的计数行（Tier 0 为 `device` / `country` / `referrer` 的离散桶，按「文章 × 日期 × 桶」单篇行保存）；桶内不含任何单条访客记录，全站视图由 `GROUP BY bucket` 聚合，不写全站行。
 _Avoid_: 分组、标签
 
 **代理覆盖率**：
-`PV / requests`；详情请求中经由 SSR 代理链路计数的比例，用于发现转发契约断开；低于 90% 视为异常。
+`pv / requests`；详情请求中经由 SSR 代理链路计数的比例（直连 API 只累加 `requests` 作分母，不产生 PV），用于发现转发契约断开；低于 90% 视为异常。
 _Avoid_: 转发率、代理率
 
 **同意凭证**：

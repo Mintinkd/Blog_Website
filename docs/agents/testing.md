@@ -4,7 +4,7 @@
 
 ## Worker 测试
 
-`worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。维度桶映射的边界值由 `worker/tests/analytics_dimensions.test.ts` 的表驱动用例钉住，分布接口走 `router()` 全链路；文章明细 / 质量接口的聚合口径（分页 20、分母为 0、心跳边界、3σ）由 `worker/tests/analytics_reports.test.ts` 的 `router()` 全链路用例钉住；趋势接口由 `worker/tests/analytics_trend.test.ts` 覆盖；同一行为不在浏览器回归里重复测。后台「统计」面板的展示纯函数（SVG 路径 / 空态 / 比率 / 小样本 / Tier 0 白名单 / i18n 词条同步）由 `tests/analytics-view.test.ts` 钉住。
+`worker/` 的测试用 vitest：`cd worker && npm test`。CI 最早的门禁是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27、安全头 `npm run gen:headers` issue #28；各自重新生成 → git diff 必须为空），之后按 typecheck → 测试的顺序运行，任一失败即拦截部署。维度桶映射的边界值由 `worker/tests/analytics_dimensions.test.ts` 的表驱动用例钉住，分布接口走 `router()` 全链路；文章明细 / 质量接口的聚合口径（分页 20、分母为 0、心跳边界、3σ）由 `worker/tests/analytics_reports.test.ts` 的 `router()` 全链路用例钉住；趋势接口由 `worker/tests/analytics_trend.test.ts` 覆盖；同一行为不在浏览器回归里重复测。后台「统计」面板的展示纯函数（SVG 路径 / 空态 / 比率 / 小样本 / Tier 0 白名单 / i18n 词条同步）由 `tests/analytics-view.test.ts` 钉住。`/privacy` 页面与跨文档一致性（中英词条、页脚入口、`public/_headers` 护栏块、README 路由表、GLOSSARY 口径、ADR 状态）由 `tests/privacy-page.test.ts` 钉住；护栏白名单本身由 `worker/tests/cloudflare_guards.test.ts` 的手写清单逐字面量锁定。
 
 ## 前端单元测试
 
@@ -12,7 +12,7 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏及控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-article-ssr.mjs` 同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；CI 只跑文章 SSR 一条，两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏及控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-privacy-page.mjs` 是 #59 隐私页的手动回归：从页脚入口进入 `/privacy`，验证中英切换、HttpOnly / HMAC / 保留期披露文案与控制台无报错；同样拦截 `/api/v1/**`，依赖 dev server。`scripts/verify-article-ssr.mjs` 同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；CI 只跑文章 SSR 一条，两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
 
 ```bash
 npm install --no-save playwright

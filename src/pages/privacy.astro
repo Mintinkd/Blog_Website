@@ -1,0 +1,118 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+---
+
+<BaseLayout title="隐私与阅读统计" description="本页说明本站如何统计阅读量，以及哪些数据不会被保存。">
+  <section class="privacy-page">
+    <div class="page-header">
+      <h1 class="page-title" data-i18n="privacy.title">隐私与阅读统计</h1>
+      <p class="page-desc" data-i18n="privacy.desc">本页说明本站如何统计阅读量，以及哪些数据不会被保存。</p>
+    </div>
+
+    <p class="privacy-lead" data-i18n="privacy.intro">本站使用自建的聚合统计来回答「有多少人在读、从哪来」。它不依赖第三方分析服务，不设置广告或追踪 Cookie，也不建立跨天、跨设备的访客画像。</p>
+
+    <section class="privacy-section">
+      <h2 data-i18n="privacy.cookie_title">必要 Cookie</h2>
+      <p data-i18n="privacy.cookie_body">阅读文章时，服务端会下发一个名为 view_&lt;文章 ID&gt; 的 HttpOnly Cookie，最长保留 24 小时。它只用于避免同一浏览器重复计数，是计数功能本身所必需，不用于识别身份、不跨站共享，也不会因你拒绝任何选项而关闭。</p>
+    </section>
+
+    <section class="privacy-section">
+      <h2 data-i18n="privacy.purpose_title">采集的数据与目的</h2>
+      <p data-i18n="privacy.purpose_body">除 IP 外，下列字段都来自浏览器请求头，仅用于按日汇总，不保存原始值：</p>
+      <ul class="privacy-list">
+        <li data-i18n="privacy.item_cookie">view_ Cookie：24 小时内同一浏览器只计一次阅读。</li>
+        <li data-i18n="privacy.item_hmac">IP 地址：只作为 HMAC-SHA256 的输入，生成 24 小时去重令牌；IP 本身不落库、不出现在日志或后台。</li>
+        <li data-i18n="privacy.item_ua">User-Agent：判断设备类别（桌面 / 移动 / 平板）并过滤爬虫与预取请求。</li>
+        <li data-i18n="privacy.item_referer">Referer：只取域名（剥掉路径与查询参数），用于区分站内跳转与外部引流。</li>
+        <li data-i18n="privacy.item_country">国家两位码：由边缘网络提供的国家代码，用于读者地区分布；不保留省级或精确位置。</li>
+        <li data-i18n="privacy.item_device">设备类别：由客户端提示或 UA 推导的四档枚举，不含设备型号或指纹。</li>
+      </ul>
+    </section>
+
+    <section class="privacy-section">
+      <h2 data-i18n="privacy.retention_title">保留期限</h2>
+      <p data-i18n="privacy.retention_body">去重令牌 24 小时后由每日清理任务删除；日聚合与维度桶保留 400 天。所有统计都以「文章 × 日期 × 类别」的计数行保存，不含单条访问记录。</p>
+      <ul class="privacy-list">
+        <li data-i18n="privacy.item_token">令牌：24 小时，到期即删。</li>
+        <li data-i18n="privacy.item_aggregate">聚合：400 天，之后自动清理。</li>
+      </ul>
+    </section>
+
+    <section class="privacy-section">
+      <h2 data-i18n="privacy.scope_title">明确不做的事</h2>
+      <p data-i18n="privacy.scope_body">不建立跨天或跨设备的访客 ID；不做 canvas / WebGL / 字体等指纹识别；不展示或导出单访客明细；不把原始 IP、完整 UA、精确坐标写入数据库；本批统计不引入同意弹窗，因为只使用必要 Cookie 与聚合数据。</p>
+    </section>
+
+    <section class="privacy-section">
+      <h2 data-i18n="privacy.contact_title">联系方式</h2>
+      <p data-i18n="privacy.contact_body">如对统计口径或数据保留有疑问，请通过「关于」页面找到博主联系方式，或在仓库 Mintinkd/Blog_Website 提交 issue。</p>
+    </section>
+
+    <p class="privacy-note" data-i18n="privacy.note">本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页并引入分类同意。</p>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.35rem;
+  }
+
+  .page-desc {
+    font-size: 0.9rem;
+    color: var(--color-text-tertiary);
+  }
+
+  .privacy-lead {
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: var(--color-text-secondary);
+    padding: 0.9rem 1rem;
+    background: var(--color-accent-subtle);
+    border-left: 3px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+  }
+
+  .privacy-section {
+    margin-top: 1.75rem;
+  }
+
+  .privacy-section h2 {
+    font-size: 1.1rem;
+    font-weight: 650;
+    color: var(--color-text-primary);
+    margin-bottom: 0.6rem;
+  }
+
+  .privacy-section p,
+  .privacy-list li {
+    font-size: 0.9rem;
+    line-height: 1.85;
+    color: var(--color-text-secondary);
+  }
+
+  .privacy-list {
+    margin: 0.6rem 0 0;
+    padding-left: 1.2rem;
+  }
+
+  .privacy-list li {
+    margin-bottom: 0.35rem;
+  }
+
+  .privacy-note {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: var(--color-text-tertiary);
+  }
+</style>
