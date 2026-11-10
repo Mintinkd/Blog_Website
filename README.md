@@ -113,6 +113,8 @@
 │   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
 │   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
 │   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（CI 构建前执行；服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
+│   ├── verify-admin-analytics.mjs # 后台「统计」面板回归（Playwright；空库 / 有数据两场景，#58）
+│   ├── verify-privacy-page.mjs   # 隐私页回归（Playwright；页脚入口 / 中英切换 / 无 JS 文案，#59）
 │   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
@@ -324,7 +326,7 @@ D1 (SQLite) 共 13 张表：
 | `/search`            | 搜索页                                                                  | 静态     |
 | `/admin`             | 后台管理                                                                | 静态     |
 
-`/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；中英文案走 `data-i18n` + `refreshDomTranslations()`，入口在页脚。
+`/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
 
 ### 文章详情页 SSR
 

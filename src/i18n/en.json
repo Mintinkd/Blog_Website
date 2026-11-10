@@ -267,18 +267,18 @@
   "privacy.purpose_title": "What is collected and why",
   "privacy.purpose_body": "Apart from the IP, the fields below come from request headers and are used only for daily aggregates; raw values are not stored:",
   "privacy.item_cookie": "view_ cookie: one read per browser within 24 hours.",
-  "privacy.item_hmac": "IP address: used only as an input to HMAC-SHA256 for a 24-hour dedupe token. The IP itself is never stored, logged, or shown in the dashboard.",
-  "privacy.item_ua": "User-Agent: classify device (desktop / mobile / tablet) and filter bots and prefetches.",
+  "privacy.item_hmac": "IP address: used only as an input to HMAC-SHA256 for a 24-hour dedupe token. The IP itself is never stored or shown in the dashboard.",
+  "privacy.item_ua": "User-Agent: classify device (desktop / mobile / tablet / unknown) and filter bots and prefetches.",
   "privacy.item_referer": "Referer: domain only (path and query stripped), to distinguish internal clicks from external referrals.",
   "privacy.item_country": "Two-letter country code: supplied by the edge network for regional distribution; no province-level or precise location.",
   "privacy.item_device": "Device class: a four-value enum from client hints or UA; no model or fingerprint.",
   "privacy.retention_title": "Retention",
-  "privacy.retention_body": "Dedupe tokens are deleted after 24 hours by a daily cleanup; daily aggregates and dimension buckets are kept for 400 days. Everything is stored as (article, day, bucket) counters — never as individual visit records.",
+  "privacy.retention_body": "Dedupe tokens are deleted after 24 hours by a daily cleanup; daily aggregates and dimension buckets are kept for 400 days. The day boundary follows the site time zone Asia/Shanghai; everything is stored as (article, day, bucket) counters — never as individual visit records.",
   "privacy.item_token": "Tokens: 24 hours, then deleted.",
   "privacy.item_aggregate": "Aggregates: 400 days, then purged.",
   "privacy.scope_title": "What we explicitly do not do",
   "privacy.scope_body": "No cross-day or cross-device visitor IDs; no canvas / WebGL / font fingerprinting; no per-visitor views or exports; no raw IP, full UA, or precise coordinates in the database. This batch adds no consent banner because it uses only an essential cookie and aggregate data.",
   "privacy.contact_title": "Contact",
-  "privacy.contact_body": "Questions about these metrics or retention? Reach the author via the About page or open an issue in the Mintinkd/Blog_Website repository.",
-  "privacy.note": "This page applies to Reading Analytics Tier 0. If finer-grained metrics are added later, this page and a granular consent flow will be updated first."
+  "privacy.contact_body": "Questions about these metrics or retention? Open an issue in the Mintinkd/Blog_Website repository.",
+  "privacy.note": "This page applies to Reading Analytics Tier 0. If finer-grained metrics are added later, this page will be updated first."
 }

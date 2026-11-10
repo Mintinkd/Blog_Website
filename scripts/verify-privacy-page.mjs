@@ -66,10 +66,20 @@ async function run() {
       "中文标题应由 data-i18n 渲染"
     );
 
-    // 关键披露段落必须出现在静态 HTML 中（无 JS 也完整）
-    const body = await page.locator(".privacy-page").innerText();
-    for (const phrase of ["HttpOnly", "HMAC-SHA256", "24 小时", "400 天"]) {
-      assert.ok(body.includes(phrase), `披露文案应包含 ${phrase}`);
+    // 独立禁用 JS 的 context：直接读首屏 HTML，确认披露文案不依赖客户端 hydration
+    const noJsContext = await browser.newContext({
+      javaScriptEnabled: false,
+      locale: "zh-CN",
+    });
+    try {
+      const staticPage = await noJsContext.newPage();
+      await staticPage.goto(`${BASE}/privacy`, { waitUntil: "load" });
+      const staticHtml = await staticPage.content();
+      for (const phrase of ["HttpOnly", "HMAC-SHA256", "24 小时", "400 天"]) {
+        assert.ok(staticHtml.includes(phrase), `静态 HTML 应包含 ${phrase}`);
+      }
+    } finally {
+      await noJsContext.close();
     }
 
     await page.locator("#locale-toggle-btn").click();

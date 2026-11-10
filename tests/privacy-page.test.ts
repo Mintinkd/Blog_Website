@@ -89,9 +89,30 @@ describe("issue #59：隐私页中英文案（验收 1）", () => {
     }
   });
 
+  it("页面内嵌中文与 zh.json 逐条一致，无 JS 首屏不漂移", () => {
+    const page = read("src/pages/privacy.astro");
+    const decode = (text: string) =>
+      text
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .trim();
+    const pairs = Array.from(
+      page.matchAll(/data-i18n="(privacy\.[a-z_]+)"[^>]*>([^<]+)</g),
+      (match) => [match[1], decode(match[2])] as const
+    );
+    expect(pairs.length).toBe(
+      PRIVACY_KEYS.filter((key) => key.startsWith("privacy.")).length
+    );
+    for (const [key, text] of pairs) {
+      expect(text, key).toBe((zh as Record<string, string>)[key]);
+    }
+  });
+
   it("页脚有 /privacy 入口且文案走 data-i18n", () => {
     const layout = read("src/components/layout/BaseLayout.astro");
     expect(layout).toMatch(/href="\/privacy"[^>]*data-i18n="nav\.privacy"/);
+    expect(layout).toContain('data-i18n="nav.privacy">隐私<');
   });
 });
 

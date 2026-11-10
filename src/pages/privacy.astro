@@ -21,8 +21,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       <p data-i18n="privacy.purpose_body">除 IP 外，下列字段都来自浏览器请求头，仅用于按日汇总，不保存原始值：</p>
       <ul class="privacy-list">
         <li data-i18n="privacy.item_cookie">view_ Cookie：24 小时内同一浏览器只计一次阅读。</li>
-        <li data-i18n="privacy.item_hmac">IP 地址：只作为 HMAC-SHA256 的输入，生成 24 小时去重令牌；IP 本身不落库、不出现在日志或后台。</li>
-        <li data-i18n="privacy.item_ua">User-Agent：判断设备类别（桌面 / 移动 / 平板）并过滤爬虫与预取请求。</li>
+        <li data-i18n="privacy.item_hmac">IP 地址：只作为 HMAC-SHA256 的输入，生成 24 小时去重令牌；IP 本身不落库、不进入后台。</li>
+        <li data-i18n="privacy.item_ua">User-Agent：判断设备类别（桌面 / 移动 / 平板 / 未知）并过滤爬虫与预取请求。</li>
         <li data-i18n="privacy.item_referer">Referer：只取域名（剥掉路径与查询参数），用于区分站内跳转与外部引流。</li>
         <li data-i18n="privacy.item_country">国家两位码：由边缘网络提供的国家代码，用于读者地区分布；不保留省级或精确位置。</li>
         <li data-i18n="privacy.item_device">设备类别：由客户端提示或 UA 推导的四档枚举，不含设备型号或指纹。</li>
@@ -31,7 +31,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
     <section class="privacy-section">
       <h2 data-i18n="privacy.retention_title">保留期限</h2>
-      <p data-i18n="privacy.retention_body">去重令牌 24 小时后由每日清理任务删除；日聚合与维度桶保留 400 天。所有统计都以「文章 × 日期 × 类别」的计数行保存，不含单条访问记录。</p>
+      <p data-i18n="privacy.retention_body">去重令牌 24 小时后由每日清理任务删除；日聚合与维度桶保留 400 天。日界按站点时区 Asia/Shanghai 切分；所有统计都以「文章 × 日期 × 类别」的计数行保存，不含单条访问记录。</p>
       <ul class="privacy-list">
         <li data-i18n="privacy.item_token">令牌：24 小时，到期即删。</li>
         <li data-i18n="privacy.item_aggregate">聚合：400 天，之后自动清理。</li>
@@ -45,10 +45,10 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
     <section class="privacy-section">
       <h2 data-i18n="privacy.contact_title">联系方式</h2>
-      <p data-i18n="privacy.contact_body">如对统计口径或数据保留有疑问，请通过「关于」页面找到博主联系方式，或在仓库 Mintinkd/Blog_Website 提交 issue。</p>
+      <p data-i18n="privacy.contact_body">如对统计口径或数据保留有疑问，请在仓库 Mintinkd/Blog_Website 提交 issue。</p>
     </section>
 
-    <p class="privacy-note" data-i18n="privacy.note">本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页并引入分类同意。</p>
+    <p class="privacy-note" data-i18n="privacy.note">本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页。</p>
   </section>
 </BaseLayout>
 

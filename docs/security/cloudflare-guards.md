@@ -22,7 +22,7 @@ Cloudflare 自定义域会在 HTML 上追加两项与本站策略冲突的内容
 单一事实源：`scripts/cloudflare-guards.mjs`（类型声明 `.d.mts`）持有路径、MIME、规则体与两个护栏头；两条渠道分别消费：
 
 1. **静态 / 预渲染页面**（`_headers`，Pages 静态资产；不作用于 Functions 响应）：
-   `renderHeadersFile()` 在 `/*` 5 头块之后，为 `HTML_ROUTE_PATTERNS`（`/`、`/404*`、`/about*`、`/archives*`、`/admin*`、`/articles*`、`/search*`，与 `dist/_routes.json` 的 exclude 页面路由对齐）各渲染一个规则块：
+   `renderHeadersFile()` 在 `/*` 5 头块之后，为 `HTML_ROUTE_PATTERNS`（`/`、`/404*`、`/about*`、`/archives*`、`/admin*`、`/articles*`、`/privacy*`、`/search*`，与 `dist/_routes.json` 的 exclude 页面路由对齐）各渲染一个规则块：
 
    ```txt
    /about*
