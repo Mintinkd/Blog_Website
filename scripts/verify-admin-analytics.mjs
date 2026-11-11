@@ -22,6 +22,7 @@ const ok = (data) => ({ code: 0, message: "ok", data });
 
 function fixtures(mode) {
   const empty = mode === "empty";
+  const modeError = mode === "error";
   const days = DAYS.map((day, index) => ({
     day,
     pv: !empty && index >= 5 ? (index - 4) * 5 : 0,
@@ -29,6 +30,7 @@ function fixtures(mode) {
     bot_filtered: !empty && index >= 5 ? 1 : 0,
   }));
   return {
+    modeError,
     overview: ok({
       range: "7d",
       pv: empty ? 0 : 15,
@@ -105,6 +107,9 @@ function fixtures(mode) {
 }
 
 function fixtureFor(pathname, searchParams, fixture) {
+  if (fixture.modeError && pathname.includes("/admin/analytics/overview")) {
+    return { code: 500, message: "D1 error", data: null };
+  }
   if (pathname.includes("/admin/analytics/overview")) return fixture.overview;
   if (pathname.includes("/admin/analytics/trend")) return fixture.trend;
   if (pathname.includes("/admin/analytics/articles")) return fixture.articles;
@@ -240,6 +245,21 @@ async function run() {
         console.log(
           "OK 有数据：概览卡、PV/UV 双线、sparkline、Tier 1 隐藏、无报错"
         );
+      } finally {
+        await context.close();
+      }
+    }
+
+    {
+      const { context, page, errors } = await openPanel(browser, "error");
+      try {
+        const errorBox = page.locator(".analytics-panel .error-msg");
+        await errorBox.waitFor({ timeout: 10000 });
+        const text = await errorBox.innerText();
+        assert.match(text, /overview: 500/, "错误态应显示失败接口与 code");
+        assert.match(text, /D1 error/, "错误态应带上服务端消息");
+        assert.deepEqual(errors, [], `错误态控制台不应报错：${errors}`);
+        console.log("OK 错误态：显示 overview: 500 / D1 error、无报错");
       } finally {
         await context.close();
       }

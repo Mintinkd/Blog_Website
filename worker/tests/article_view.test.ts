@@ -71,6 +71,8 @@ interface State {
   writes: string[];
   /** 每次 batch() 调用内的写语句，用于断言原子提交 */
   batches: string[][];
+  /** 模拟生产缺表 / D1 故障：analytics 写入一律抛错（2026-11-11 故障回归） */
+  failAnalyticsWrites?: boolean;
 }
 
 const COUNTERS = ["pv", "uv", "requests", "bot_filtered", "engaged"] as const;
@@ -178,6 +180,9 @@ function makeEnv(state: State): Env {
         return stmt;
       },
       async run() {
+        if (state.failAnalyticsWrites && sql.includes("analytics_")) {
+          throw new Error("no such table: analytics_article_daily");
+        }
         state.writes.push(sql);
         applyWrite(state, sql, stmt.binds);
         return { success: true, meta: { changes: 1 } };
@@ -227,6 +232,9 @@ function makeEnv(state: State): Env {
   const db = {
     prepare,
     async batch(statements: FakeStatement[]) {
+      if (state.failAnalyticsWrites) {
+        throw new Error("no such table: analytics_article_daily");
+      }
       const group: string[] = [];
       for (const statement of statements) {
         group.push(statement.sql);
@@ -492,5 +500,28 @@ describe("issue #56：维度桶随去重访客计数写入", () => {
 
     expect(state.dimRows).toHaveLength(3);
     expect(state.dimRows.every((row) => row.count === 1)).toBe(true);
+  });
+});
+
+describe("2026-11-11 故障回归：计数失败不得拖挂文章详情响应", () => {
+  it("D1 写入抛错时仍返回 200 与正文、不下发去重 Cookie，并记录错误日志", async () => {
+    const state = makeState({ failAnalyticsWrites: true });
+    const env = makeEnv(state);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await visit(env);
+      const body = (await res.json()) as {
+        code: number;
+        data: { title: string };
+      };
+
+      expect(res.status).toBe(200);
+      expect(body.code).toBe(0);
+      expect(body.data.title).toBe("服务端渲染");
+      expect(res.headers.get("Set-Cookie")).toBeNull();
+      expect(spy).toHaveBeenCalledOnce();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

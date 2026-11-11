@@ -76,6 +76,7 @@ import {
   buildSparklinePath,
   buildTrendPaths,
   dimensionRows,
+  formatAnalyticsFailures,
   formatMetric,
   formatRatio,
   hasAnalyticsData,
@@ -302,5 +303,30 @@ describe("issue #58：中英文案同步（验收 4）", () => {
     expect(t("analytics.title")).not.toBe(zhLabel);
     setLocale("zh");
     expect(t("analytics.title")).toBe(zhLabel);
+  });
+});
+
+describe("2026-11-11 加固：统计面板错误可诊断", () => {
+  it("formatAnalyticsFailures 拼出失败接口名、code 与消息", () => {
+    expect(formatAnalyticsFailures([])).toBe("");
+    expect(formatAnalyticsFailures([{ name: "overview", code: 500 }])).toBe(
+      "overview: 500"
+    );
+    expect(
+      formatAnalyticsFailures([
+        { name: "overview", code: 500 },
+        { name: "trend", code: null, message: "NetworkError" },
+      ])
+    ).toBe("overview: 500; trend: ? (NetworkError)");
+  });
+
+  it("README 部署段含 D1 迁移手动检查清单", () => {
+    const readme = readFileSync(
+      join(import.meta.dirname, "..", "README.md"),
+      "utf8"
+    );
+    expect(readme).toMatch(/数据库迁移是手动步骤/);
+    expect(readme).toContain("wrangler d1 execute blog-db --remote");
+    expect(readme).toContain("sqlite_master");
   });
 });

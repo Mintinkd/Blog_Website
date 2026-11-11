@@ -104,8 +104,15 @@ export async function handleGetArticle(
   }
 
   // 仅已发布文章 200 进入 Tier 0 计数：过滤、24h 去重、日聚合（§4）
-  const { recordArticleView } = await import("../services/analytics_service");
-  const { setCookie } = await recordArticleView(env, request, article.id);
+  // 计数是旁路能力：D1 迁移缺失 / 抖动不得拖挂文章正文响应（2026-11-11 生产故障）
+  let setCookie = false;
+  try {
+    const { recordArticleView } = await import("../services/analytics_service");
+    const result = await recordArticleView(env, request, article.id);
+    setCookie = result.setCookie;
+  } catch (error) {
+    console.error("analytics: recordArticleView failed", error);
+  }
 
   const response = successResponse(article);
   if (setCookie) {

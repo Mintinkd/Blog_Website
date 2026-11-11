@@ -561,6 +561,16 @@ CREATE INDEX IF NOT EXISTS idx_dim_daily_lookup
 
 ## 部署
 
+> **⚠️ 数据库迁移是手动步骤**：GitHub Actions 不执行 D1 迁移（CI 无生产库凭证）。凡本次推送包含 `worker/schema.sql` 变更，部署完成后必须按上文「初始化数据库 / 增量 DDL」段在**生产** D1 执行对应语句，并核对新对象确实存在：
+>
+> ```bash
+> cd worker
+> npx wrangler d1 execute blog-db --remote --file=./<本次增量DDL>.sql
+> npx wrangler d1 execute blog-db --remote --command "SELECT name FROM sqlite_master WHERE name LIKE 'analytics%' ORDER BY name"
+> ```
+>
+> 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）。代码侧已加计数容错，但**迁移仍须手动执行**，不可跳过。
+
 ### GitHub Secrets 配置
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：

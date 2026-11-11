@@ -1332,6 +1332,9 @@
           </div>
           <div v-else-if="analyticsError" class="error-msg">
             {{ t("analytics.error") }}
+            <small v-if="analyticsErrorDetail" class="analytics-error-detail">
+              {{ analyticsErrorDetail }}
+            </small>
             <button class="btn-secondary" @click="loadAnalytics()">
               {{ t("analytics.retry") }}
             </button>
@@ -1809,10 +1812,12 @@ import {
   buildSparklinePath,
   buildTrendPaths,
   dimensionRows,
+  formatAnalyticsFailures,
   formatMetric,
   formatRatio,
   hasAnalyticsData,
   hasEnoughTrendDays,
+  type AnalyticsFailure,
   type DimensionData,
   type TrendDay,
 } from "../utils/analyticsView.ts";
@@ -1850,6 +1855,8 @@ const analyticsArticleId = ref("");
 const analyticsPage = ref(1);
 const analyticsLoading = ref(false);
 const analyticsError = ref(false);
+/** 失败接口 / code / 服务端消息，错误态里一并展示（2026-11-11 可诊断性加固） */
+const analyticsErrorDetail = ref("");
 const analyticsUpdatedAt = ref("—");
 const analyticsOverview = ref<any>(null);
 const analyticsTrend = ref<TrendDay[]>([]);
@@ -1951,6 +1958,7 @@ async function loadAnalytics() {
   if (userRole.value !== "admin") return;
   analyticsLoading.value = true;
   analyticsError.value = false;
+  analyticsErrorDetail.value = "";
   const range = analyticsRange.value;
   const articleQuery = analyticsArticleId.value
     ? `&article_id=${encodeURIComponent(analyticsArticleId.value)}`
@@ -1982,17 +1990,28 @@ async function loadAnalytics() {
       ),
       api("GET", "/articles?page_size=50"),
     ]);
-    const responses = [
-      overview,
-      trend,
-      articles,
-      quality,
-      device,
-      country,
-      referrer,
+    const checks = [
+      { name: "overview", res: overview },
+      { name: "trend", res: trend },
+      { name: "articles", res: articles },
+      { name: "quality", res: quality },
+      { name: "device", res: device },
+      { name: "country", res: country },
+      { name: "referrer", res: referrer },
     ];
-    if (responses.some((item) => item?.code !== 0)) {
+    const failures: AnalyticsFailure[] = checks
+      .filter((item) => item.res?.code !== 0)
+      .map((item) => ({
+        name: item.name,
+        code: item.res?.code ?? null,
+        message:
+          typeof item.res?.message === "string" && item.res.message !== "ok"
+            ? item.res.message
+            : undefined,
+      }));
+    if (failures.length > 0) {
       analyticsError.value = true;
+      analyticsErrorDetail.value = formatAnalyticsFailures(failures);
       return;
     }
     analyticsOverview.value = overview.data;
@@ -2021,8 +2040,10 @@ async function loadAnalytics() {
           minute: "2-digit",
         })
       : "—";
-  } catch {
+  } catch (error) {
     analyticsError.value = true;
+    analyticsErrorDetail.value =
+      error instanceof Error ? error.message : String(error);
   } finally {
     analyticsLoading.value = false;
   }
@@ -4118,6 +4139,14 @@ watch(currentTab, (tab) => {
 .analytics-header {
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+.analytics-error-detail {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  opacity: 0.85;
+  word-break: break-all;
 }
 .analytics-filters {
   display: flex;
