@@ -8,14 +8,52 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 
 <script>
   import { createApp } from 'vue';
+  import type { App } from 'vue';
   import ElementPlus from 'element-plus';
   import 'element-plus/dist/index.css';
 
-  const mount = document.getElementById('admin-app-mount');
-  if (mount) {
-    const { default: AdminApp } = await import('../../admin/App.vue');
-    const app = createApp(AdminApp);
-    app.use(ElementPlus);
-    app.mount(mount);
+  // ClientRouter 的软导航（含浏览器前进/后退的 popstate）不会重跑已执行过的模块脚本：
+  // Astro 给跑过的 <script type="module" src> 打上 data-astro-exec，swap 后 runScripts()
+  // 直接跳过。原来在顶层只挂载一次，历史导航回到 /admin/ 时就只剩空的
+  // #admin-app-mount，表现为「页面不加载」。与站内其他页面统一，改由
+  // astro:page-load 驱动（首次硬加载同样触发一次）。
+  type AdminRuntime = { app: App | null; mounting: boolean; bound: boolean };
+  const w = window as Window & { __blogAdminRuntime?: AdminRuntime };
+  const runtime = (w.__blogAdminRuntime ??= { app: null, mounting: false, bound: false });
+
+  function unmountAdmin() {
+    if (!runtime.app) return;
+    // App.vue 的 onBeforeUnmount 会释放编辑锁并移除 window/document 监听；
+    // 不卸载会在每次进出后台时累积重复监听器。
+    runtime.app.unmount();
+    runtime.app = null;
+  }
+
+  async function mountAdmin() {
+    const initial = document.getElementById('admin-app-mount');
+    if (!initial || runtime.app || runtime.mounting) return;
+    runtime.mounting = true;
+    try {
+      const { default: AdminApp } = await import('../../admin/App.vue');
+      // 以 import 完成后的当前 DOM 为准：期间若又发生了一次前进/后退，
+      // 挂到新的容器上；若已经离开后台，则不再挂载。
+      const mount = document.getElementById('admin-app-mount');
+      if (runtime.app || !mount) return;
+      const app = createApp(AdminApp);
+      app.use(ElementPlus);
+      app.mount(mount);
+      runtime.app = app;
+    } finally {
+      runtime.mounting = false;
+    }
+  }
+
+  if (!runtime.bound) {
+    runtime.bound = true;
+    document.addEventListener('astro:page-load', () => { void mountAdmin(); });
+    // DOM 确实被替换后再卸载：导航被取消时不会把当前页卸载成空白。
+    document.addEventListener('astro:after-swap', unmountAdmin);
+    // 兜底：挂载点已在 DOM 但 page-load 已错过时立即挂载（mountAdmin 幂等）。
+    if (document.getElementById('admin-app-mount')) void mountAdmin();
   }
 </script>
