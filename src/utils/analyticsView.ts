@@ -226,23 +226,16 @@ function bucketLabel(
 export interface AnalyticsFailure {
   name: string;
   code: number | string | null;
-  message?: string;
 }
 
 /**
- * 失败接口清单 → 错误态里可直接展示的技术细节（接口名 / code / 服务端消息）。
- * 不含需翻译的文案，中英切换由 t() 的标题部分负责。
+ * 失败接口清单 → 错误态里可直接展示的技术细节（接口名 / code）。
+ * 不透传服务端 message，避免内部错误文本进入 DOM；中英切换由 t() 的标题负责。
  */
 export function formatAnalyticsFailures(
   failures: readonly AnalyticsFailure[]
 ): string {
-  return failures
-    .map((item) => {
-      const code = item.code ?? "?";
-      const message = item.message ? ` (${item.message})` : "";
-      return `${item.name}: ${code}${message}`;
-    })
-    .join("; ");
+  return failures.map((item) => `${item.name}: ${item.code ?? "?"}`).join("; ");
 }
 
 /** §7.5：`insufficient` 时不返回桶；`other` 由 t() 映射；地区 Top 8 截断 */

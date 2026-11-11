@@ -144,6 +144,8 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 - 同一用户换 UA（浏览器升级）会多算 1 次；换日会重新计 1 次，符合「24 小时」口径。
 - 令牌表需定时清理（每日 cron，见 §9），避免无限增长。
 
+> **异常降级（2026-11-11 加固）**：计数写库抛错（缺表 / D1 抖动）时，`handleGetArticle` 只记录 Worker 错误日志并照常返回文章正文，且**不下发 `view_` Cookie**，让下一次访问重试计数，不伪造「已去重」状态。该次请求的 PV / UV / `requests` / `view_count` 丢失，故障恢复后由后续访问自然补齐，不回填历史；可观测信号是 Worker 日志中的 `analytics: recordArticleView failed`。
+
 ### 4.3 有效阅读
 
 - 计数条件：`document.visibilityState === 'visible'` 的累计时长 ≥ 15s，且最大滚动比例 ≥ 50%。

@@ -160,4 +160,23 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
     const spec = read("docs/READER_ANALYTICS.md");
     expect(spec).toContain("Tier 0 已落地");
   });
+
+  it("README 部署段含可直接执行的 D1 迁移清单与纯新增 SQL 文件", () => {
+    const readme = read("README.md");
+    expect(readme).toMatch(/数据库迁移是手动步骤/);
+    expect(readme).toContain("wrangler d1 execute blog-db --remote");
+    expect(readme).toContain("sqlite_master");
+    expect(readme).toContain("idx_view_token%");
+    expect(readme).toContain("schema-tier0-incremental.sql");
+
+    const ddl = read("worker/schema-tier0-incremental.sql");
+    expect(ddl.match(/CREATE TABLE IF NOT EXISTS/g)).toHaveLength(3);
+    expect(ddl.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(2);
+    expect(ddl).not.toMatch(/^(DROP|DELETE|UPDATE|ALTER)\s/im);
+  });
+
+  it("spec §4.2 注明计数写库失败时的降级口径", () => {
+    const spec = read("docs/READER_ANALYTICS.md");
+    expect(spec).toContain("异常降级（2026-11-11 加固）");
+  });
 });

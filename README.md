@@ -84,7 +84,7 @@
 │   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
 │   ├── utils/
 │   │   ├── api.ts               # API请求工具
-│   │   ├── analyticsView.ts     # 统计面板纯函数（SVG 路径 / 空态 / 比率 / 小样本 / Tier 0 白名单，#58）
+│   │   ├── analyticsView.ts     # 统计面板纯函数（SVG 路径 / 空态 / 比率 / 小样本 / 失败接口格式化 / Tier 0 白名单，#58）
 │   │   ├── articleDate.ts       # 文章发布日期格式化（服务端首屏与客户端 locale 切换共用）
 │   │   ├── articleMeta.ts       # 文章页 SEO 元信息构造（title/description/canonical/OG，纯函数）
 │   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（三态映射、访客 Cookie 转发、Set-Cookie 回传、私有缓存）
@@ -113,7 +113,7 @@
 │   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
 │   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
 │   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（CI 构建前执行；服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
-│   ├── verify-admin-analytics.mjs # 后台「统计」面板回归（Playwright；空库 / 有数据两场景，#58）
+│   ├── verify-admin-analytics.mjs # 后台「统计」面板回归（Playwright；空库 / 有数据 / 错误态三场景，#58）
 │   ├── verify-privacy-page.mjs   # 隐私页回归（Playwright；页脚入口 / 中英切换 / 无 JS 文案，#59）
 │   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
@@ -121,7 +121,8 @@
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定 + 每日 cron，实际生效）
-│   ├── schema.sql               # 数据库Schema
+│   ├── schema.sql                    # 数据库Schema
+│   ├── schema-tier0-incremental.sql  # 阅读统计 Tier 0 增量 DDL（已有部署升级直接 --file 执行）
 │   ├── package.json             # 后端依赖与脚本（typecheck / test）
 │   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
 │   ├── vitest.config.mjs        # Worker 测试配置（node 环境，避免继承根级 jsdom）
@@ -506,41 +507,11 @@ npx wrangler d1 execute blog-db --remote --file=./schema.sql
 
 > **已有部署升级**：schema.sql 文件尾部的迁移语句仅供增量执行一次；对已有库请单独执行新增的迁移语句，勿重复执行全文（会因 `duplicate column` 报错）。
 
-**阅读统计（Tier 0）增量 DDL**：已有库升级时只执行以下语句（均 `IF NOT EXISTS`，重复执行安全）；不要重跑 `schema.sql` 全文。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
+**阅读统计（Tier 0）增量 DDL**：已有库升级时只执行 `worker/schema-tier0-incremental.sql`（5 条语句，均 `IF NOT EXISTS`，重复执行安全）；不要重跑 `schema.sql` 全文。该文件与 `worker/schema.sql` 尾部「阅读统计 Tier 0」段同义，是**唯一可执行来源**。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
 
-```sql
-CREATE TABLE IF NOT EXISTS analytics_article_daily (
-  article_id   INTEGER NOT NULL,
-  day          TEXT    NOT NULL,
-  pv           INTEGER NOT NULL DEFAULT 0,
-  uv           INTEGER NOT NULL DEFAULT 0,
-  requests     INTEGER NOT NULL DEFAULT 0,
-  engaged      INTEGER NOT NULL DEFAULT 0,
-  bot_filtered INTEGER NOT NULL DEFAULT 0,
-  updated_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (article_id, day)
-);
-
-CREATE TABLE IF NOT EXISTS analytics_view_token (
-  token      TEXT PRIMARY KEY,
-  day        TEXT NOT NULL,
-  expires_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_view_token_expires
-  ON analytics_view_token(expires_at);
-
-CREATE TABLE IF NOT EXISTS analytics_dim_daily (
-  day        TEXT    NOT NULL,
-  dim        TEXT    NOT NULL,
-  bucket     TEXT    NOT NULL,
-  article_id INTEGER NOT NULL,
-  count      INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (day, dim, bucket, article_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dim_daily_lookup
-  ON analytics_dim_daily(day, dim);
+```bash
+cd worker
+npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
 ```
 
 > 每日 cron（`0 16 * * *`，即 Asia/Shanghai 00:00）由 Worker `scheduled` 入口执行：删除过期令牌、删除 400 天保留窗口外的日聚合与维度桶，并写入 `site_config.analytics_last_job_at` 心跳。
@@ -565,8 +536,8 @@ CREATE INDEX IF NOT EXISTS idx_dim_daily_lookup
 >
 > ```bash
 > cd worker
-> npx wrangler d1 execute blog-db --remote --file=./<本次增量DDL>.sql
-> npx wrangler d1 execute blog-db --remote --command "SELECT name FROM sqlite_master WHERE name LIKE 'analytics%' ORDER BY name"
+> npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
+> npx wrangler d1 execute blog-db --remote --command "SELECT type, name FROM sqlite_master WHERE name LIKE 'analytics%' OR name LIKE 'idx_view_token%' OR name LIKE 'idx_dim_daily%' ORDER BY type, name"
 > ```
 >
 > 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）。代码侧已加计数容错，但**迁移仍须手动执行**，不可跳过。

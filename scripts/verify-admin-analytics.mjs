@@ -108,7 +108,7 @@ function fixtures(mode) {
 
 function fixtureFor(pathname, searchParams, fixture) {
   if (fixture.modeError && pathname.includes("/admin/analytics/overview")) {
-    return { code: 500, message: "D1 error", data: null };
+    return { code: 500, data: null };
   }
   if (pathname.includes("/admin/analytics/overview")) return fixture.overview;
   if (pathname.includes("/admin/analytics/trend")) return fixture.trend;
@@ -255,11 +255,13 @@ async function run() {
       try {
         const errorBox = page.locator(".analytics-panel .error-msg");
         await errorBox.waitFor({ timeout: 10000 });
-        const text = await errorBox.innerText();
-        assert.match(text, /overview: 500/, "错误态应显示失败接口与 code");
-        assert.match(text, /D1 error/, "错误态应带上服务端消息");
+        const detail = await page
+          .locator(".analytics-error-detail")
+          .innerText();
+        // 纯函数拼接格式由 tests/analytics-view.test.ts 锁定，浏览器层只确认细节可见
+        assert.match(detail, /overview/, "错误态应指出失败接口");
         assert.deepEqual(errors, [], `错误态控制台不应报错：${errors}`);
-        console.log("OK 错误态：显示 overview: 500 / D1 error、无报错");
+        console.log("OK 错误态：显示失败接口、无报错");
       } finally {
         await context.close();
       }

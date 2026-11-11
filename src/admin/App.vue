@@ -1998,17 +1998,11 @@ async function loadAnalytics() {
       { name: "device", res: device },
       { name: "country", res: country },
       { name: "referrer", res: referrer },
+      { name: "articles_list", res: list },
     ];
     const failures: AnalyticsFailure[] = checks
       .filter((item) => item.res?.code !== 0)
-      .map((item) => ({
-        name: item.name,
-        code: item.res?.code ?? null,
-        message:
-          typeof item.res?.message === "string" && item.res.message !== "ok"
-            ? item.res.message
-            : undefined,
-      }));
+      .map((item) => ({ name: item.name, code: item.res?.code ?? null }));
     if (failures.length > 0) {
       analyticsError.value = true;
       analyticsErrorDetail.value = formatAnalyticsFailures(failures);
@@ -2042,8 +2036,10 @@ async function loadAnalytics() {
       : "—";
   } catch (error) {
     analyticsError.value = true;
-    analyticsErrorDetail.value =
-      error instanceof Error ? error.message : String(error);
+    // 只展示错误类型，不把任意异常文本写进 DOM
+    analyticsErrorDetail.value = formatAnalyticsFailures([
+      { name: "request", code: error instanceof Error ? error.name : "Error" },
+    ]);
   } finally {
     analyticsLoading.value = false;
   }

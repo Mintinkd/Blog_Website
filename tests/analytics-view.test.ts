@@ -307,7 +307,7 @@ describe("issue #58：中英文案同步（验收 4）", () => {
 });
 
 describe("2026-11-11 加固：统计面板错误可诊断", () => {
-  it("formatAnalyticsFailures 拼出失败接口名、code 与消息", () => {
+  it("formatAnalyticsFailures 拼出失败接口名与 code，覆盖边界", () => {
     expect(formatAnalyticsFailures([])).toBe("");
     expect(formatAnalyticsFailures([{ name: "overview", code: 500 }])).toBe(
       "overview: 500"
@@ -315,18 +315,12 @@ describe("2026-11-11 加固：统计面板错误可诊断", () => {
     expect(
       formatAnalyticsFailures([
         { name: "overview", code: 500 },
-        { name: "trend", code: null, message: "NetworkError" },
+        { name: "trend", code: null },
       ])
-    ).toBe("overview: 500; trend: ? (NetworkError)");
-  });
-
-  it("README 部署段含 D1 迁移手动检查清单", () => {
-    const readme = readFileSync(
-      join(import.meta.dirname, "..", "README.md"),
-      "utf8"
-    );
-    expect(readme).toMatch(/数据库迁移是手动步骤/);
-    expect(readme).toContain("wrangler d1 execute blog-db --remote");
-    expect(readme).toContain("sqlite_master");
+    ).toBe("overview: 500; trend: ?");
+    expect(
+      formatAnalyticsFailures([{ name: "request", code: "TypeError" }])
+    ).toBe("request: TypeError");
+    expect(formatAnalyticsFailures([{ name: "x", code: 0 }])).toBe("x: 0");
   });
 });
