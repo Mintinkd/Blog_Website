@@ -126,23 +126,29 @@
             </thead>
             <tbody>
               <tr v-for="a in articles" :key="a.id">
-                <td>
+                <td :data-label="t('admin.title')">
                   <a :href="`/articles/${a.slug}`" target="_blank">{{
                     a.title
                   }}</a>
                 </td>
-                <td>{{ a.author_name || "-" }}</td>
-                <td>
+                <td :data-label="t('admin.author')">
+                  {{ a.author_name || "-" }}
+                </td>
+                <td :data-label="t('admin.status')">
                   <span :class="['status-badge', a.status]">{{
                     a.status === "published"
                       ? t("article.published")
                       : t("article.draft")
                   }}</span>
                 </td>
-                <td>{{ a.category?.name || "-" }}</td>
-                <td>{{ a.view_count }}</td>
-                <td>{{ formatDate(a.created_at) }}</td>
-                <td class="actions">
+                <td :data-label="t('admin.category')">
+                  {{ a.category?.name || "-" }}
+                </td>
+                <td :data-label="t('article.views')">{{ a.view_count }}</td>
+                <td :data-label="t('admin.created_at')">
+                  {{ formatDate(a.created_at) }}
+                </td>
+                <td class="actions" :data-label="t('admin.actions')">
                   <button @click="editArticle(a)">{{ t("admin.edit") }}</button>
                   <button @click="deleteArticle(a.id)" class="btn-danger">
                     {{ t("admin.delete") }}
@@ -367,10 +373,12 @@
             </thead>
             <tbody>
               <tr v-for="c in categories" :key="c.id">
-                <td>{{ c.name }}</td>
-                <td>{{ c.slug }}</td>
-                <td>{{ c.article_count || 0 }}</td>
-                <td class="actions">
+                <td :data-label="t('admin.name')">{{ c.name }}</td>
+                <td :data-label="t('admin.slug')">{{ c.slug }}</td>
+                <td :data-label="t('admin.article_count')">
+                  {{ c.article_count || 0 }}
+                </td>
+                <td class="actions" :data-label="t('admin.actions')">
                   <button
                     v-if="
                       userRole === 'admin' ||
@@ -463,9 +471,9 @@
             </thead>
             <tbody>
               <tr v-for="tag in tags" :key="tag.id">
-                <td>{{ tag.name }}</td>
-                <td>{{ tag.slug }}</td>
-                <td class="actions">
+                <td :data-label="t('admin.name')">{{ tag.name }}</td>
+                <td :data-label="t('admin.slug')">{{ tag.slug }}</td>
+                <td class="actions" :data-label="t('admin.actions')">
                   <button
                     v-if="userRole === 'admin'"
                     @click="deleteTag(tag.id)"
@@ -774,18 +782,11 @@
             </thead>
             <tbody>
               <tr v-for="c in comments" :key="c.id">
-                <td>{{ c.nickname }}</td>
-                <td
-                  style="
-                    max-width: 300px;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                  "
-                >
+                <td :data-label="t('admin.nickname')">{{ c.nickname }}</td>
+                <td class="cell-clip" :data-label="t('admin.content')">
                   {{ c.content }}
                 </td>
-                <td>
+                <td :data-label="t('admin.articles')">
                   <a
                     :href="`/articles/${c.article_slug || ''}`"
                     target="_blank"
@@ -793,7 +794,7 @@
                     >{{ c.article_title }}</a
                   >
                 </td>
-                <td>
+                <td :data-label="t('admin.status')">
                   <span :class="['status-badge', c.status]">{{
                     c.status === "pending"
                       ? t("admin.pending")
@@ -802,8 +803,10 @@
                         : t("admin.rejected")
                   }}</span>
                 </td>
-                <td>{{ formatDate(c.created_at) }}</td>
-                <td class="actions">
+                <td :data-label="t('admin.created_at')">
+                  {{ formatDate(c.created_at) }}
+                </td>
+                <td class="actions" :data-label="t('admin.actions')">
                   <button
                     v-if="c.status === 'pending'"
                     @click="approveComment(c.id)"
@@ -906,17 +909,21 @@
             </thead>
             <tbody>
               <tr v-for="u in users" :key="u.id">
-                <td>{{ u.username }}</td>
-                <td>{{ u.display_name || "-" }}</td>
-                <td>
+                <td :data-label="t('admin.username')">{{ u.username }}</td>
+                <td :data-label="t('admin.display_name')">
+                  {{ u.display_name || "-" }}
+                </td>
+                <td :data-label="t('admin.role')">
                   <span :class="['status-badge', u.role]">{{
                     u.role === "admin"
                       ? t("admin.role_admin")
                       : t("admin.role_editor")
                   }}</span>
                 </td>
-                <td>{{ formatDate(u.created_at) }}</td>
-                <td class="actions">
+                <td :data-label="t('admin.created_at')">
+                  {{ formatDate(u.created_at) }}
+                </td>
+                <td class="actions" :data-label="t('admin.actions')">
                   <button
                     @click="
                       editingUserId = u.id;
@@ -1025,8 +1032,8 @@
             </thead>
             <tbody>
               <tr v-for="fl in safeFriendLinks" :key="fl.id">
-                <td>{{ fl.name }}</td>
-                <td>
+                <td :data-label="t('admin.name')">{{ fl.name }}</td>
+                <td :data-label="'URL'">
                   <a
                     v-if="fl.safe_url"
                     :href="fl.safe_url"
@@ -1036,9 +1043,11 @@
                   >
                   <span v-else style="font-size: 0.8rem">{{ fl.url }}</span>
                 </td>
-                <td>{{ fl.description || "-" }}</td>
-                <td>{{ fl.sort_order }}</td>
-                <td>
+                <td :data-label="t('admin.description')">
+                  {{ fl.description || "-" }}
+                </td>
+                <td :data-label="t('admin.sort_order')">{{ fl.sort_order }}</td>
+                <td :data-label="t('admin.status')">
                   <span
                     :class="[
                       'status-badge',
@@ -1049,7 +1058,7 @@
                     }}</span
                   >
                 </td>
-                <td class="actions">
+                <td class="actions" :data-label="t('admin.actions')">
                   <button
                     @click="
                       editingFriendLinkId = fl.id;
@@ -3941,6 +3950,15 @@ watch(currentTab, (tab) => {
 
 .data-table td a {
   color: var(--color-accent);
+  overflow-wrap: anywhere;
+}
+
+/* 评论内容在桌面端保持单行省略，移动端卡片模式再放开换行 */
+.data-table .cell-clip {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-badge {
@@ -4513,12 +4531,138 @@ watch(currentTab, (tab) => {
   .login-card {
     padding: 1.5rem;
   }
+  .scrape-form input,
+  .scrape-selector input {
+    min-width: 0;
+    width: 100%;
+  }
   .analytics-table {
     display: block;
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     white-space: nowrap;
+  }
+
+  /* 数据表在手机上改成卡片：每行一张卡，字段名在左、值在右。
+     7 列表格硬塞进 375px 时每列只有约 40px，中文会逐字竖排。 */
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .data-table tr {
+    margin-bottom: 0.75rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .data-table tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .data-table tr:has(td.empty) {
+    padding: 0;
+    background: none;
+    border: 0;
+  }
+
+  .data-table td {
+    display: grid;
+    grid-template-columns: 4.75rem minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.45rem 0;
+    border-bottom: 1px dashed var(--color-border-light);
+    overflow-wrap: anywhere;
+  }
+
+  .data-table td:last-child {
+    padding-bottom: 0.1rem;
+    border-bottom: 0;
+  }
+
+  .data-table td[data-label]::before {
+    content: attr(data-label);
+    color: var(--color-text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .data-table td.empty {
+    display: block;
+    padding: 1.5rem 0.5rem;
+    border-bottom: 0;
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+
+  .data-table td.cell-clip {
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .data-table td.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.6rem;
+  }
+
+  .data-table td.actions::before {
+    margin-right: auto;
+  }
+
+  .data-table td.actions button {
+    min-height: 40px;
+    padding: 0.45rem 0.9rem;
+  }
+
+  /* 文案覆盖：桌面端四列并排，手机端键名独占一行、中英各半行 */
+  .copy-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .copy-row.head {
+    display: none;
+  }
+
+  .copy-row > :first-child,
+  .copy-row > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 359px) {
+  /* 280px 下两列各只剩 78px，中英文都看不清，直接单列堆叠 */
+  .copy-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .copy-row > :first-child,
+  .copy-row > :last-child {
+    grid-column: auto;
   }
 }
 /* ── 阅读统计面板（issue #58 / §7） ── */
@@ -4647,7 +4791,8 @@ watch(currentTab, (tab) => {
 }
 .analytics-dims {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* 280px 视口下内容区只有约 206px，固定 240px 下限会把卡片顶出面板 */
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 1rem;
 }
 .analytics-dim h4 {

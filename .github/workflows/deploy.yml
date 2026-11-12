@@ -62,7 +62,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       # P3：文章 SSR 回归在部署前跑；两条导航回归仍手动，避免首版 CI 过重。
-      - name: Test Article SSR (Playwright)
+      - name: Test Article SSR + Admin Responsive (Playwright)
         timeout-minutes: 10
         env:
           ARTICLE_API_ORIGIN: http://127.0.0.1:4322
@@ -99,6 +99,9 @@ jobs:
             tail -n 200 "$LOG" >&2
             exit 1
           fi
+
+          # 后台 6 张数据表在手机上卡片化；同时守住统计/抓取/外观页无横向溢出。
+          node scripts/verify-admin-responsive.mjs
 
       - name: Build Astro site
         run: npm run build

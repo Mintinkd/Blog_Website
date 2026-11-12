@@ -12,7 +12,7 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏、错误态显示失败接口与 code、控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-privacy-page.mjs` 是 #59 隐私页的手动回归：从页脚入口进入 `/privacy`，验证中英切换、HttpOnly / HMAC / 保留期披露文案与控制台无报错；同样拦截 `/api/v1/**`，依赖 dev server。`scripts/verify-admin-history-nav.mjs` 是后台「前进/后退白屏」的手动回归：必须用真实链接点击造同文档 `popstate` 历史项（`page.goto` 造的是跨文档历史，后退会走 bfcache 恢复，测不到 ClientRouter 软导航），断言 forward / back 两个方向回到 `/admin/` 后 `#admin-app-mount` 恰好一个根节点、离开时旧 Vue 实例已卸载、反复往返幂等、控制台无报错；用 `astro:after-swap` 计数证明确实发生软导航，避免 bfcache 假通过。同样先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-profile-card.mjs` 是个人名片的手动回归：用一个内存 mock 服务端状态串起「后台 `PUT /config` → 前台 `GET /config`」，覆盖未配置占位、字段编辑 / 头像上传预览 / 社交链接增删与空行过滤、保存后 `/about` 立即读到最新值、375px 无横向溢出、XSS 文本转义与 `javascript:` 链接丢弃、控制台无报错；同样拦截 `/api/v1/**`，不访问真实 Worker，先起 `npx astro dev --port 4321`。`scripts/verify-article-ssr.mjs` 同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；CI 只跑文章 SSR 一条，两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏、错误态显示失败接口与 code、控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-privacy-page.mjs` 是 #59 隐私页的手动回归：从页脚入口进入 `/privacy`，验证中英切换、HttpOnly / HMAC / 保留期披露文案与控制台无报错；同样拦截 `/api/v1/**`，依赖 dev server。`scripts/verify-admin-history-nav.mjs` 是后台「前进/后退白屏」的手动回归：必须用真实链接点击造同文档 `popstate` 历史项（`page.goto` 造的是跨文档历史，后退会走 bfcache 恢复，测不到 ClientRouter 软导航），断言 forward / back 两个方向回到 `/admin/` 后 `#admin-app-mount` 恰好一个根节点、离开时旧 Vue 实例已卸载、反复往返幂等、控制台无报错；用 `astro:after-swap` 计数证明确实发生软导航，避免 bfcache 假通过。同样先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-profile-card.mjs` 是个人名片的手动回归：用一个内存 mock 服务端状态串起「后台 `PUT /config` → 前台 `GET /config`」，覆盖未配置占位、字段编辑 / 头像上传预览 / 社交链接增删与空行过滤、保存后 `/about` 立即读到最新值、375px 无横向溢出、XSS 文本转义与 `javascript:` 链接丢弃、控制台无报错；同样拦截 `/api/v1/**`，不访问真实 Worker，先起 `npx astro dev --port 4321`。`scripts/verify-admin-responsive.mjs` 是后台移动端回归：注入 admin 登录态并拦截 `/api/v1/**`，在 280px / 375px 触控视口下逐页检查 6 张 `.data-table` 的单元格 ≥120px、单元格带 `data-label`、页面与主区域无横向滚动，另查外观页文案输入框 ≥80px；1280px 确认桌面表格布局未受影响。`scripts/verify-article-ssr.mjs` 与它同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
 
 ```bash
 npm install --no-save playwright
@@ -62,6 +62,20 @@ node scripts/verify-article-ssr.mjs
 回归上下文固定 `locale: zh-CN`，保证中文 UI 文案断言稳定。
 
 `ARTICLE_API_ORIGIN` 只在 dev 且显式设置时生效；生产构建忽略它，继续走 `WORKER_ORIGIN`（`src/utils/workerOrigin.ts`）。
+
+### 后台移动端（CI + 手动）
+
+后台数据表在 `< 768px` 改为卡片布局，字段名依赖 `data-label`。回归脚本用本地 fixture
+替代真实 Worker，不依赖生产账号：
+
+```powershell
+npx astro dev --port 4321
+$env:PW_CHANNEL='msedge'   # 仅用系统 Edge 时
+node scripts/verify-admin-responsive.mjs
+```
+
+脚本在 280px / 375px 下遍历 12 个后台面板，锁定「单元格不被挤成竖排」和
+「页面 / 主区域无横向滚动」；1280px 再确认桌面表格布局未受影响。
 
 ### 新增回归检查单
 
