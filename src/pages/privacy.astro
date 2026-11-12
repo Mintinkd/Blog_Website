@@ -58,11 +58,12 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .page-title {
-    font-size: 1.75rem;
+    font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
     margin-bottom: 0.35rem;
+    overflow-wrap: anywhere;
   }
 
   .page-desc {
@@ -74,10 +75,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-size: 0.95rem;
     line-height: 1.8;
     color: var(--color-text-secondary);
-    padding: 0.9rem 1rem;
+    padding: clamp(0.75rem, 2.5vw, 0.9rem) clamp(0.75rem, 3vw, 1rem);
     background: var(--color-accent-subtle);
     border-left: 3px solid var(--color-accent);
     border-radius: var(--radius-sm);
+    overflow-wrap: anywhere;
   }
 
   .privacy-section {
@@ -85,10 +87,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .privacy-section h2 {
-    font-size: 1.1rem;
+    font-size: clamp(1.02rem, 2vw, 1.1rem);
     font-weight: 650;
     color: var(--color-text-primary);
     margin-bottom: 0.6rem;
+    overflow-wrap: anywhere;
   }
 
   .privacy-section p,
@@ -101,6 +104,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .privacy-list {
     margin: 0.6rem 0 0;
     padding-left: 1.2rem;
+    overflow-wrap: anywhere;
   }
 
   .privacy-list li {

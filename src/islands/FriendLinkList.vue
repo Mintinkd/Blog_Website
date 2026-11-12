@@ -69,6 +69,8 @@ onMounted(async () => {
 
 .link-item {
   padding: 0.4rem 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .link-url {

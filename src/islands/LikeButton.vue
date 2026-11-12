@@ -1,14 +1,32 @@
 <template>
-  <button class="like-btn" :class="{ liked: isLiked }" @click="toggleLike" :disabled="loading" data-feature="likes">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" :fill="isLiked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+  <button
+    class="like-btn"
+    :class="{ liked: isLiked }"
+    @click="toggleLike"
+    :disabled="loading"
+    data-feature="likes"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      :fill="isLiked ? 'currentColor' : 'none'"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path
+        d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+      ></path>
     </svg>
     <span class="like-count">{{ likeCount }}</span>
   </button>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted } from "vue";
 
 const props = defineProps<{ articleId: number; initialCount?: number }>();
 
@@ -18,7 +36,9 @@ const loading = ref(false);
 
 onMounted(async () => {
   try {
-    const response = await fetch(`/api/v1/articles/${props.articleId}/like-status`);
+    const response = await fetch(
+      `/api/v1/articles/${props.articleId}/like-status`
+    );
     const data = await response.json();
     if (data.code === 0 && data.data) {
       isLiked.value = data.data.liked;
@@ -34,7 +54,7 @@ async function toggleLike() {
 
   try {
     const response = await fetch(`/api/v1/articles/${props.articleId}/like`, {
-      method: 'POST',
+      method: "POST",
     });
     const data = await response.json();
 
@@ -43,7 +63,7 @@ async function toggleLike() {
       likeCount.value += data.data.liked ? 1 : -1;
     }
   } catch (e) {
-    console.error('Like toggle failed:', e);
+    console.error("Like toggle failed:", e);
   } finally {
     loading.value = false;
   }
@@ -54,7 +74,9 @@ async function toggleLike() {
 .like-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
+  min-height: 44px;
   padding: 0.5rem 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

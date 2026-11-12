@@ -17,15 +17,16 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 
 <style>
   .page-header {
-    margin-bottom: 2rem;
+    margin-bottom: clamp(1.25rem, 3vw, 2rem);
   }
 
   .page-title {
-    font-size: 1.75rem;
+    font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
     margin-bottom: 0.35rem;
+    overflow-wrap: anywhere;
   }
 
   .page-desc {
@@ -190,19 +191,22 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
   }
 
   .list-card-body {
-    padding: 1.5rem;
+    padding: clamp(1rem, 2.4vw, 1.5rem);
   }
 
   .list-card-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem 0.5rem;
     margin-bottom: 0.5rem;
     font-size: 0.8rem;
+    min-width: 0;
   }
 
   .list-card-category {
     display: inline-block;
+    max-width: 100%;
     padding: 0.15rem 0.6rem;
     border-radius: 999px;
     font-size: 0.75rem;
@@ -228,11 +232,12 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
   }
 
   .list-card-title {
-    font-size: 1.05rem;
+    font-size: clamp(1rem, 1.4vw, 1.05rem);
     font-weight: 600;
     color: var(--color-text-primary);
     line-height: 1.4;
     margin-bottom: 0.35rem;
+    overflow-wrap: anywhere;
   }
 
   .list-card-summary {
@@ -248,14 +253,18 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 
   .list-card-footer {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
   }
 
   .list-card-tags {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.35rem;
+    min-width: 0;
   }
 
   .list-card-tag {
@@ -280,15 +289,17 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 
   .pagination {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
-    margin-top: 2rem;
+    gap: 0.75rem;
+    margin-top: clamp(1.5rem, 4vw, 2rem);
     padding-top: 1.5rem;
     border-top: 1px solid var(--color-border-light);
   }
 
   .pag-btn {
+    min-height: 44px;
     padding: 0.45rem 1rem;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
@@ -307,5 +318,33 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
   .pag-info {
     font-size: 0.85rem;
     color: var(--color-text-tertiary);
+  }
+
+  /* 平板起改成横向卡片：封面在左、正文在右。
+     21:9 的封面在 1000px+ 的单列里会高到 450px，横向布局把
+     宽屏空间让给标题和摘要，一屏能看到更多文章。 */
+  @media (min-width: 768px) {
+    .list-card-link {
+      display: grid;
+      grid-template-columns: minmax(220px, 30%) minmax(0, 1fr);
+      align-items: stretch;
+    }
+
+    .list-card-cover {
+      aspect-ratio: auto;
+      height: 100%;
+      min-height: 170px;
+    }
+
+    .list-card-body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: clamp(1rem, 2vw, 1.5rem);
+    }
+
+    .list-card-summary {
+      -webkit-line-clamp: 3;
+    }
   }
 </style>

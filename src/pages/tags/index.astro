@@ -21,26 +21,30 @@ export const prerender = false;
     margin-bottom: 0.5rem;
   }
   .page-title {
-    font-size: 1.75rem;
+    font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
   }
   .page-desc {
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
-    margin-bottom: 2rem;
+    margin-bottom: clamp(1.25rem, 3vw, 2rem);
   }
   .tags-cloud {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
+    gap: clamp(0.45rem, 1.5vw, 0.6rem);
   }
   .tag-item {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    max-width: 100%;
+    min-height: 44px;
     padding: 0.45rem 0.9rem;
+    overflow-wrap: anywhere;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);

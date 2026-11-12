@@ -18,16 +18,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 60vh;
+    min-height: 55vh;
+    padding: clamp(1rem, 4vw, 2rem) 0;
     text-align: center;
   }
 
   .not-found-inner {
     max-width: 400px;
+    min-width: 0;
   }
 
   .error-code {
-    font-size: 5rem;
+    font-size: clamp(3.5rem, 18vw, 5rem);
     font-weight: 800;
     color: var(--color-accent);
     line-height: 1;
@@ -36,11 +38,12 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .error-title {
-    font-size: 1.5rem;
+    font-size: clamp(1.3rem, 4vw, 1.5rem);
     font-weight: 600;
     color: var(--color-text-primary);
     margin-top: 0.75rem;
     margin-bottom: 0.5rem;
+    overflow-wrap: anywhere;
   }
 
   .error-message {
@@ -53,6 +56,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .back-home {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-height: 44px;
     padding: 0.6rem 1.5rem;
     background-color: var(--color-accent);
     color: #fff;

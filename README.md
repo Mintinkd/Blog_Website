@@ -44,7 +44,7 @@
 │   │   │   ├── EmptyState.astro
 │   │   │   └── ScrollProgress.astro  # 顶部滚动进度条
 │   │   └── layout/
-│   │       └── BaseLayout.astro  # 全局布局（毛玻璃导航栏）
+│   │       └── BaseLayout.astro  # 全局布局（毛玻璃导航栏 + 移动端下拉菜单）
 │   ├── islands/                 # Vue交互组件（Astro岛屿架构）
 │   │   ├── ThemeToggle.vue
 │   │   ├── SearchBox.vue
@@ -77,6 +77,7 @@
 │   ├── styles/
 │   │   ├── variables.css        # 设计令牌（颜色、字体、阴影、背景、动效等）
 │   │   ├── global.css           # 全局样式（含 .site-bg 固定背景层）
+│   │   ├── responsive.css       # 响应式层（断点 / 流式留白 / 触控 / 移动导航）
 │   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级/加载失败兜底）
 │   │   └── prose.css            # 文章排版样式
 │   ├── generated/
@@ -175,6 +176,7 @@
 ├── CODING_STANDARDS.md          # 判断类编码规则（code-review Standards 轴依据）
 ├── GLOSSARY.md                  # 领域术语表（domain-modeling 沉淀）
 └── docs/                         # 设计与功能文档
+    ├── responsive-design.md      # 响应式断点、布局策略与验证矩阵
     ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
     ├── BACKGROUND_IMAGE.md      # 全站背景图说明
     ├── SITE_SETTINGS.md         # 可视化配置中心说明
@@ -437,6 +439,22 @@ D1 (SQLite) 共 13 张表：
   - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差；
   - motion chunk 动态 import 失败或 3s 内未完成初始化时，写入 `<html data-motion-failed>`，强制 `[data-reveal]` 可见（与禁用 JS 的 `<noscript>` 兜底互补）。
 - **生命周期**：`BaseLayout.astro` 引入 Astro `ClientRouter` 并在 `astro:page-load` 后调用 `initMotion()`；动态渲染的内容触发 `motion:refresh` 事件重新绑定。
+
+### 响应式布局
+
+全站从 280px 极窄手机到 3440px 超宽屏使用同一套移动优先断点，详表与验证矩阵见
+[`docs/responsive-design.md`](docs/responsive-design.md)。
+
+- **全局层**：`src/styles/responsive.css` 在 `global.css` 之后单独引入，负责流式页边距
+  （`clamp(0.75rem, 4vw, 2rem)`）、页面标题字号、触控目标、安全区与浮动组件定位。
+- **布局**：首页 1 / 2 / 3 列（`768px`、`1280px`）；文章列表在 `< 768px` 用纵向卡片，
+  `≥ 768px` 改为封面在左的横向卡片；文章详情最大 760px；超宽屏保持版心宽度不拉伸正文。
+- **移动导航**：`< 768px` 显示汉堡按钮，复用同一份 `.nav-links` 作为下拉面板；
+  支持 `aria-expanded`、焦点管理、`Escape` / 点击外部关闭、ClientRouter 导航后复位。
+- **内容适配**：正文 16px 起、长标题 / 英文 / 链接可断行、宽表格与代码块在自身容器内
+  横向滚动；页头页脚与悬浮一言避让刘海和手势条。
+- **验证**：12 个视口 × 13 条路由（含文章详情、动态分类 / 标签页与 `/admin`）
+  检查无横向滚动、无溢出、无意外裁切；280 / 375 / 667×375 下移动菜单交互通过。
 
 ## 站点配置动态化
 

@@ -1,9 +1,11 @@
 .prose {
   color: var(--color-text-primary);
   line-height: 1.8;
-  font-size: 1.05rem;
+  /* 手机保持 16px 以上（避免 iOS 聚焦缩放），宽屏略放大到 16.8px */
+  font-size: clamp(1rem, 0.35vw + 0.92rem, 1.05rem);
   overflow-wrap: break-word;
   word-break: break-word;
+  min-width: 0;
 }
 
 .prose h1,
@@ -23,21 +25,21 @@
 }
 
 .prose h1 {
-  font-size: 2rem;
+  font-size: clamp(1.45rem, 3.5vw, 2rem);
 }
 
 .prose h2 {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.4vw, 1.5rem);
   padding-bottom: 0.4em;
   border-bottom: 2px solid var(--color-accent-subtle);
 }
 
 .prose h3 {
-  font-size: 1.25rem;
+  font-size: clamp(1.1rem, 1.8vw, 1.25rem);
 }
 
 .prose h4 {
-  font-size: 1.1rem;
+  font-size: clamp(1.02rem, 1.2vw, 1.1rem);
 }
 
 .prose p {
@@ -210,4 +212,63 @@
   border-top: 1px solid var(--color-border-light);
   padding-top: 1em;
   margin-top: 2.5em;
+}
+
+/* 标题锚点跳转时不要被固定导航盖住 */
+.prose [id] {
+  scroll-margin-top: calc(
+    var(--header-height) + env(safe-area-inset-top, 0px) + 1.25rem
+  );
+}
+
+/* ============================================================
+ * 窄屏正文：收紧留白，宽表格/代码块在自身容器内滚动
+ * ============================================================ */
+@media (max-width: 767px) {
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    margin-top: 1.55em;
+  }
+
+  .prose ul,
+  .prose ol {
+    padding-left: 1.25em;
+  }
+
+  .prose blockquote {
+    padding: 0.8em 1em;
+    margin: 1.25em 0;
+  }
+
+  .prose pre {
+    padding: 2.7em 0.85em 0.85em;
+  }
+
+  .prose pre code {
+    font-size: 0.78rem;
+  }
+
+  .prose .code-bar {
+    padding: 0.4em 0.75em;
+  }
+
+  /* 宽表格不撑破页面，改为表格内部横向滚动 */
+  .prose table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .prose th,
+  .prose td {
+    padding: 0.5em 0.7em;
+  }
 }

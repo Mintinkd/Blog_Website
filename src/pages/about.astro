@@ -20,15 +20,16 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <style>
   .page-header {
-    margin-bottom: 2rem;
+    margin-bottom: clamp(1.25rem, 3vw, 2rem);
   }
 
   .page-title {
-    font-size: 1.75rem;
+    font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
     margin-bottom: 0.35rem;
+    overflow-wrap: anywhere;
   }
 
   .page-desc {
@@ -60,7 +61,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    padding: 2rem;
+    padding: clamp(1rem, 3vw, 2rem);
   }
 </style>
 
@@ -127,8 +128,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    padding: clamp(1rem, 3vw, 1.5rem);
+    margin-bottom: clamp(1rem, 3vw, 1.5rem);
   }
 
   .profile-card__head {
@@ -226,10 +227,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     background: var(--color-accent-subtle, transparent);
   }
 
-  @media (max-width: 640px) {
-    .profile-card {
-      padding: 1.15rem;
-    }
+  @media (max-width: 480px) {
     .profile-card__head {
       align-items: flex-start;
       gap: 0.85rem;
@@ -243,6 +241,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       font-size: 1.1rem;
     }
     .profile-card__link {
+      min-height: 44px;
       font-size: 0.78rem;
     }
   }

@@ -4480,6 +4480,7 @@ watch(currentTab, (tab) => {
 @media (max-width: 767px) {
   .admin-layout {
     flex-direction: column;
+    gap: 1rem;
   }
   .admin-sidebar {
     width: 100%;
@@ -4488,10 +4489,36 @@ watch(currentTab, (tab) => {
   .sidebar-nav {
     flex-direction: row;
     overflow-x: auto;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .nav-item {
+    flex: none;
+    width: auto;
+    min-height: 44px;
+    white-space: nowrap;
   }
   .sidebar-footer {
     border-top: none;
     padding-top: 0;
+  }
+  .admin-main {
+    padding: 1rem;
+  }
+  .panel-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .login-card {
+    padding: 1.5rem;
+  }
+  .analytics-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
   }
 }
 /* ── 阅读统计面板（issue #58 / §7） ── */

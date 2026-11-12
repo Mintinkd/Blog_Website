@@ -33,7 +33,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 <style>
   .hero {
     text-align: center;
-    padding: 5rem 0 3.5rem;
+    padding: clamp(2rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 3.5rem);
     position: relative;
   }
 
@@ -55,23 +55,24 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .hero-title {
-    font-size: 3rem;
+    font-size: clamp(1.9rem, 6vw, 3rem);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.03em;
     line-height: 1.15;
     margin-bottom: 1rem;
+    overflow-wrap: anywhere;
   }
 
   .hero-subtitle {
-    font-size: 1.15rem;
+    font-size: clamp(1rem, 1.6vw, 1.15rem);
     color: var(--color-text-secondary);
     line-height: 1.6;
     margin-bottom: 0.5rem;
   }
 
   .hero-desc {
-    font-size: 0.95rem;
+    font-size: clamp(0.9rem, 1.3vw, 0.95rem);
     color: var(--color-text-tertiary);
     line-height: 1.6;
     margin-bottom: 2rem;
@@ -83,6 +84,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
   .hero-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
     justify-content: center;
   }
@@ -90,6 +92,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .hero-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-height: 44px;
     padding: 0.65rem 1.5rem;
     border-radius: var(--radius-md);
     font-size: 0.9rem;
@@ -152,7 +156,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .article-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: clamp(0.9rem, 1.5vw, 1.25rem);
   }
 
   .article-grid.grid-single {
@@ -162,24 +166,30 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     margin-right: auto;
   }
 
-  @media (min-width: 640px) {
+  /* 平板起双列；桌面起三列，避免超宽屏只有两张巨卡 */
+  @media (min-width: 768px) {
     .article-grid {
       grid-template-columns: repeat(2, 1fr);
     }
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1280px) {
     .article-grid {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 
-  @media (max-width: 639px) {
+  /* 矮横屏：压缩首屏高度，让文章列表尽量露出来 */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .hero {
+      padding: 1.25rem 0 1.5rem;
+    }
     .hero-title {
-      font-size: 2rem;
+      font-size: clamp(1.6rem, 4.5vw, 2.1rem);
+      margin-bottom: 0.5rem;
     }
-    .hero-subtitle {
-      font-size: 1rem;
+    .hero-desc {
+      margin-bottom: 1rem;
     }
   }
 </style>
@@ -320,7 +330,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .card-body {
-    padding: 1.5rem;
+    padding: clamp(1rem, 2.4vw, 1.5rem);
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -328,14 +338,17 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
   .card-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem 0.5rem;
     margin-bottom: 0.75rem;
     font-size: 0.8rem;
+    min-width: 0;
   }
 
   .card-category {
     display: inline-block;
+    max-width: 100%;
     padding: 0.15rem 0.6rem;
     border-radius: 999px;
     font-size: 0.75rem;
@@ -363,12 +376,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   }
 
   .card-title {
-    font-size: 1.1rem;
+    font-size: clamp(1rem, 1.4vw, 1.1rem);
     font-weight: 600;
     color: var(--color-text-primary);
     line-height: 1.4;
     margin-bottom: 0.5rem;
     letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -389,15 +403,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
   .card-footer {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
   }
 
   .card-tags {
     display: flex;
     gap: 0.35rem;
     flex-wrap: wrap;
+    min-width: 0;
   }
 
   .card-tag {

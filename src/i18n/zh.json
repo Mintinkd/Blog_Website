@@ -1,6 +1,7 @@
 {
   "site.title": "博客",
   "site.description": "记录技术与生活的个人博客",
+  "nav.menu": "菜单",
   "nav.home": "首页",
   "nav.articles": "文章",
   "nav.archives": "归档",

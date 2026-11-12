@@ -1,0 +1,218 @@
+/* ============================================================
+ * 响应式设计层（RWD）
+ *
+ * 断点（移动优先，min-width）：
+ *   compact    < 480px   小屏手机（280px 起）
+ *   mobile     480–767px 手机
+ *   tablet     768–1023px 平板 / 手机横屏
+ *   laptop     1024–1279px 笔记本
+ *   desktop    1280–1679px 桌面
+ *   wide       1680–1919px 宽屏
+ *   ultrawide  ≥ 1920px  超宽屏
+ *
+ * 另外单独处理矮横屏：
+ *   (orientation: landscape) and (max-height: 500px)
+ *
+ * 布局策略：
+ *   1. 版心由 --content-max-width 控制（后台可配置，带 !important），
+ *      这里不再覆盖宽度，只在超宽屏用多列网格提高空间利用率。
+ *   2. 页边距、标题字号、区块间距用 clamp() 在断点之间连续变化，
+ *      避免每档断点各写一套固定像素。
+ *   3. 窄屏（< 768px）拆掉 page-layout → main-content → 内容卡片的三层
+ *      内边距，只保留最外层页边距，防止正文被挤成一条细柱。
+ *   4. flex/grid 子项一律 min-width: 0；元信息、标签、页脚允许换行。
+ *   5. 代码块、宽表格在自身容器内横向滚动，页面本身不得出现横向滚动。
+ * ============================================================ */
+
+:root {
+  /* 页面左右安全边距：小屏 12px，随视口增长，桌面封顶 32px */
+  --page-gutter: clamp(0.75rem, 4vw, 2rem);
+  /* 页头下方的首屏留白 */
+  --page-top-gap: clamp(1.5rem, 5vw, 3rem);
+  /* 页面主标题（.page-title）的统一流体字号 */
+  --page-title-size: clamp(1.4rem, 4vw, 1.75rem);
+}
+
+/* ---------- 版心与页面骨架 ---------- */
+
+.page-layout {
+  padding-left: max(var(--page-gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--page-gutter), env(safe-area-inset-right, 0px));
+  padding-top: calc(
+    var(--header-height) + env(safe-area-inset-top, 0px) + var(--page-top-gap)
+  );
+}
+
+.container {
+  padding-left: max(var(--page-gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--page-gutter), env(safe-area-inset-right, 0px));
+}
+
+/* 手机 / 小平板：收紧中间层的内边距，但保留毛玻璃衬底。
+   衬底保证页面标题/摘要直接叠在背景图上时仍有足够对比度；
+   内边距从 2rem 收到 0.75rem，避免正文被三层 padding 挤成细柱。 */
+@media (max-width: 767px) {
+  .main-content {
+    padding: 1rem clamp(0.5rem, 2vw, 0.75rem);
+    background: color-mix(in srgb, var(--color-bg-primary) 86%, transparent);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+    backdrop-filter: blur(10px) saturate(1.15);
+    border-radius: var(--radius-lg);
+  }
+}
+
+/* 任何弹性/网格容器里的长内容都不应撑破父级 */
+.page-layout,
+.main-content,
+.page-header,
+.section-header,
+.card-meta,
+.card-footer,
+.list-card-meta,
+.list-card-footer,
+.article-meta-top,
+.footer-inner {
+  min-width: 0;
+}
+
+.page-header,
+.section-header,
+.card-meta,
+.card-footer,
+.list-card-meta,
+.list-card-footer,
+.article-meta-top {
+  flex-wrap: wrap;
+}
+
+.card-tags,
+.list-card-tags,
+.article-tags {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.page-title,
+.section-title,
+.card-title,
+.list-card-title,
+.article-title,
+.error-title,
+.archive-year {
+  overflow-wrap: anywhere;
+}
+
+/* 标签/分类云：长名称可换行，不把卡片顶出容器 */
+.tag-item,
+.category-item,
+.taxonomy-item,
+.profile-card__link {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 媒体与正文内的可滚动容器 ---------- */
+
+img,
+video,
+iframe,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+iframe {
+  border: 0;
+}
+
+.prose pre,
+.prose table {
+  max-width: 100%;
+}
+
+/* 长链接、长英文单词允许在任意位置断行（CJK 本来就会换行） */
+.prose a,
+.list-card-title,
+.card-title,
+.article-title,
+.profile-card__bio,
+.privacy-section p,
+.privacy-list li {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 触控目标 ---------- */
+
+@media (pointer: coarse) {
+  .hero-btn,
+  .pag-btn,
+  .back-link,
+  .back-home,
+  .like-btn,
+  .submit-btn,
+  .search-btn,
+  .tag-item,
+  .category-item,
+  .taxonomy-item,
+  .profile-card__link {
+    min-height: 44px;
+  }
+
+  .nav-icon,
+  .nav-toggle {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .active-filter-clear {
+    width: 32px;
+    height: 32px;
+  }
+
+  .code-copy {
+    min-height: 32px;
+  }
+}
+
+/* ---------- 浮动组件：窄屏收进右下角安全区 ---------- */
+/* 桌面端位置由 JS 以百分比写入 left/top；手机端强制改到按钮列，
+   避免悬浮一言停在正文中间。拖动在窄屏由脚本禁用。 */
+@media (max-width: 767px) {
+  hitokoto-widget {
+    left: auto !important;
+    right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+    top: auto !important;
+    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+  }
+
+  .hk-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .hk-card {
+    width: min(272px, calc(100vw - 1.5rem));
+    max-width: calc(100vw - 1.5rem);
+  }
+}
+
+/* ---------- 矮横屏（手机横放 / 小窗口） ---------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --page-top-gap: 1.25rem;
+  }
+
+  hitokoto-widget {
+    bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* ---------- 超宽屏：保持阅读宽度，不拉伸正文 ---------- */
+@media (min-width: 1920px) {
+  :root {
+    /* 版心仍由 --content-max-width 决定；这里只把页边距固定到设计值，
+       避免 4vw 在 3000px 以上继续变大。 */
+    --page-gutter: 2rem;
+  }
+}

@@ -182,6 +182,7 @@ function formatDate(dateStr: string): string {
 
 <style scoped>
 .search-box {
+  width: 100%;
   max-width: 600px;
   margin: 0 auto;
 }
@@ -189,6 +190,7 @@ function formatDate(dateStr: string): string {
 .search-input-wrapper {
   display: flex;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .search-input {
@@ -213,12 +215,16 @@ function formatDate(dateStr: string): string {
 }
 
 .search-btn {
+  flex: none;
+  min-width: 48px;
+  min-height: 44px;
   padding: 0.75rem 1rem;
   background-color: var(--color-accent);
   color: #fff;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
+  justify-content: center;
   transition: background-color 0.2s;
 }
 
@@ -240,11 +246,15 @@ function formatDate(dateStr: string): string {
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-md);
   width: fit-content;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .active-filter-label {
+  min-width: 0;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .active-filter-label strong {
@@ -306,9 +316,10 @@ function formatDate(dateStr: string): string {
 }
 
 .result-title {
-  font-size: 1.1rem;
+  font-size: clamp(1rem, 1.6vw, 1.1rem);
   font-weight: 600;
   margin-bottom: 0.3rem;
+  overflow-wrap: anywhere;
 }
 
 .result-title a {
@@ -334,7 +345,7 @@ function formatDate(dateStr: string): string {
 .no-results,
 .search-loading {
   text-align: center;
-  padding: 2rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
   color: var(--color-text-secondary);
 }
 </style>

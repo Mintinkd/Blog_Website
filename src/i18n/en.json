@@ -1,6 +1,7 @@
 {
   "site.title": "Blog",
   "site.description": "A personal blog about technology and life",
+  "nav.menu": "Menu",
   "nav.home": "Home",
   "nav.articles": "Articles",
   "nav.archives": "Archives",

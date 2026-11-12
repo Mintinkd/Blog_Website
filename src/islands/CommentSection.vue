@@ -37,26 +37,30 @@
           required
         ></textarea>
       </div>
-      <div v-if="submitMessage" class="submit-message" :class="{ success: submitSuccess, error: !submitSuccess }">
+      <div
+        v-if="submitMessage"
+        class="submit-message"
+        :class="{ success: submitSuccess, error: !submitSuccess }"
+      >
         {{ submitMessage }}
       </div>
       <button type="submit" class="submit-btn" :disabled="submitting">
-        {{ submitting ? '提交中...' : '提交评论' }}
+        {{ submitting ? "提交中..." : "提交评论" }}
       </button>
     </form>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DOMPurify from 'dompurify';
+import { ref, onMounted } from "vue";
+import DOMPurify from "dompurify";
 
 const props = defineProps<{ articleId: number }>();
 
 const comments = ref<any[]>([]);
-const form = ref({ nickname: '', content: '' });
+const form = ref({ nickname: "", content: "" });
 const submitting = ref(false);
-const submitMessage = ref('');
+const submitMessage = ref("");
 const submitSuccess = ref(false);
 
 onMounted(() => {
@@ -65,20 +69,22 @@ onMounted(() => {
 
 async function loadComments() {
   try {
-    const response = await fetch(`/api/v1/articles/${props.articleId}/comments`);
+    const response = await fetch(
+      `/api/v1/articles/${props.articleId}/comments`
+    );
     const data = await response.json();
     if (data.code === 0 && data.data) {
       comments.value = data.data.items || [];
     }
   } catch (e) {
-    console.error('Load comments failed:', e);
+    console.error("Load comments failed:", e);
   }
 }
 
 async function submitComment() {
   if (!form.value.nickname.trim() || !form.value.content.trim()) return;
   if (form.value.content.length > 1000) {
-    submitMessage.value = '评论内容不能超过1000字';
+    submitMessage.value = "评论内容不能超过1000字";
     submitSuccess.value = false;
     return;
   }
@@ -86,33 +92,36 @@ async function submitComment() {
   const sanitized = DOMPurify.sanitize(form.value.content);
 
   submitting.value = true;
-  submitMessage.value = '';
+  submitMessage.value = "";
 
   try {
-    const response = await fetch(`/api/v1/articles/${props.articleId}/comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nickname: form.value.nickname.trim(),
-        content: sanitized,
-      }),
-    });
+    const response = await fetch(
+      `/api/v1/articles/${props.articleId}/comments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nickname: form.value.nickname.trim(),
+          content: sanitized,
+        }),
+      }
+    );
 
     const data = await response.json();
 
     if (data.code === 0) {
-      submitMessage.value = '评论已提交，等待审核';
+      submitMessage.value = "评论已提交，等待审核";
       submitSuccess.value = true;
-      form.value.content = '';
+      form.value.content = "";
     } else if (data.code === 10007) {
-      submitMessage.value = '评论太频繁，请稍后再试';
+      submitMessage.value = "评论太频繁，请稍后再试";
       submitSuccess.value = false;
     } else {
-      submitMessage.value = data.message || '提交失败';
+      submitMessage.value = data.message || "提交失败";
       submitSuccess.value = false;
     }
   } catch (e) {
-    submitMessage.value = '网络错误，请重试';
+    submitMessage.value = "网络错误，请重试";
     submitSuccess.value = false;
   } finally {
     submitting.value = false;
@@ -120,21 +129,23 @@ async function submitComment() {
 }
 
 function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('zh-CN');
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("zh-CN");
 }
 </script>
 
 <style scoped>
 .comment-section {
-  margin-top: 3rem;
+  margin-top: clamp(2rem, 5vw, 3rem);
+  min-width: 0;
 }
 
 .section-title {
-  font-size: 1.3rem;
+  font-size: clamp(1.15rem, 2.2vw, 1.3rem);
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 1.5rem;
+  overflow-wrap: anywhere;
 }
 
 .comment-list {
@@ -148,8 +159,10 @@ function formatDate(dateStr: string): string {
 
 .comment-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.35rem 0.75rem;
   margin-bottom: 0.5rem;
 }
 
@@ -166,6 +179,7 @@ function formatDate(dateStr: string): string {
 .comment-content {
   color: var(--color-text-secondary);
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .no-comments {
@@ -182,19 +196,22 @@ function formatDate(dateStr: string): string {
   margin-bottom: 0.75rem;
 }
 
-.form-input, .form-textarea {
+.form-input,
+.form-textarea {
   width: 100%;
+  /* >=16px：避免 iOS 聚焦输入框时自动放大页面 */
+  font-size: 1rem;
   padding: 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
-  font-size: 0.95rem;
   outline: none;
   transition: border-color 0.2s;
 }
 
-.form-input:focus, .form-textarea:focus {
+.form-input:focus,
+.form-textarea:focus {
   border-color: var(--color-accent);
 }
 
@@ -220,6 +237,7 @@ function formatDate(dateStr: string): string {
 }
 
 .submit-btn {
+  min-height: 44px;
   padding: 0.6rem 1.5rem;
   background-color: var(--color-accent);
   color: #fff;
