@@ -457,7 +457,7 @@ D1 (SQLite) 共 13 张表：
 
 ### 前置要求
 
-- Node.js 22+
+- Node.js 22.12+（Worker 的 wrangler 4 要求；CI 使用 22.x 最新版）
 - npm
 
 ### 安装依赖
