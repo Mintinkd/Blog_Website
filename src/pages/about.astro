@@ -8,6 +8,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       <h1 class="page-title" data-i18n="page.about">关于</h1>
       <p class="page-desc" data-i18n="page.about_desc">了解这个博客和它的作者</p>
     </div>
+    <div id="about-profile"></div>
     <div id="about-content">
       <div class="loading-placeholder">
         <div class="loading-spinner"></div>
@@ -65,6 +66,18 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <script>
   import { t } from '../utils/i18n.ts';
+  import { parseProfileCard, renderProfileCardHtml } from '../utils/profileCard.ts';
+
+  /** 名片始终渲染：未配置 / 接口失败时输出占位名片，不让 /about 缺一块 */
+  function renderProfile(raw: unknown, siteTitle: string) {
+    const holder = document.getElementById('about-profile');
+    if (!holder) return;
+    holder.innerHTML = renderProfileCardHtml(parseProfileCard(raw), {
+      siteTitle,
+      emptyText: t('about.card_empty'),
+      ariaLabel: t('about.card_label'),
+    });
+  }
 
   async function loadAbout() {
     const container = document.getElementById('about-content');
@@ -75,6 +88,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       const data = await response.json();
 
       if (data.code === 0 && data.data) {
+        renderProfile(data.data.profile_card, data.data.site_title || '');
         const aboutContent = data.data.about_content;
         if (aboutContent) {
           const { renderMarkdown } = await import('../utils/markdown.ts');
@@ -82,8 +96,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         } else {
           container.innerHTML = `<div class="about-empty"><p>${t('about.no_content')}</p></div>`;
         }
+      } else {
+        renderProfile(undefined, '');
       }
     } catch (e) {
+      renderProfile(undefined, '');
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
     }
   }
@@ -99,5 +116,134 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     text-align: center;
     padding: 3rem 0;
     color: var(--color-text-tertiary);
+  }
+
+  /* 个人名片：与 .prose 正文卡片同款底/描边/圆角，颜色全部走主题变量 */
+  #about-profile:empty {
+    display: none;
+  }
+
+  .profile-card {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .profile-card__head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .profile-card__avatar {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    border-radius: 18px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-tertiary);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+
+  .profile-card__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .profile-card__avatar--fallback {
+    background: var(--color-accent-subtle, var(--color-bg-tertiary));
+    color: var(--color-accent);
+  }
+
+  .profile-card__avatar-initial {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .profile-card__identity {
+    min-width: 0;
+  }
+
+  .profile-card__name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-card__role {
+    font-size: 0.85rem;
+    color: var(--color-text-tertiary);
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-card__bio {
+    margin: 1rem 0 0;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+  }
+
+  .profile-card__bio--placeholder {
+    color: var(--color-text-tertiary);
+  }
+
+  .profile-card__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .profile-card__link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.9rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition:
+      border-color var(--transition-fast),
+      color var(--transition-fast),
+      background var(--transition-fast);
+  }
+
+  .profile-card__link:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-accent-subtle, transparent);
+  }
+
+  @media (max-width: 640px) {
+    .profile-card {
+      padding: 1.15rem;
+    }
+    .profile-card__head {
+      align-items: flex-start;
+      gap: 0.85rem;
+    }
+    .profile-card__avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 15px;
+    }
+    .profile-card__name {
+      font-size: 1.1rem;
+    }
+    .profile-card__link {
+      font-size: 0.78rem;
+    }
   }
 </style>

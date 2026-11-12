@@ -166,6 +166,9 @@ INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_descript
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('site_keywords', '博客,技术,开发', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('posts_per_page', '10', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('about_content', '', 1);
+-- 个人名片（/about 页）：value 为 JSON 字符串，空串 = 未配置，前台走占位名片降级。
+-- 老库无此行也无妨：PUT /config 用 UPSERT 首次保存时自动建行，无需迁移。
+INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('profile_card', '', 1);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_username', 'admin', 0);
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_password_hash', '', 0);
 -- jwt_secret: auto-generated on first read if empty (self-healing), see worker/src/middleware/auth.ts

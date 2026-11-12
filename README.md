@@ -356,7 +356,7 @@ D1 (SQLite) 共 13 张表：
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
 - **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
 - **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；自动映射标题/摘要/封面/已有标签并追加来源脚注；预览支持 Markdown/渲染切换；「生成草稿并编辑」打开现有文章编辑器并预填标题/slug/summary/封面/正文/分类 1/标签/draft，保存前不创建任何数据
-- **关于页面** — Markdown编辑，保存后前台实时更新（仅admin）
+- **关于页面** — Markdown 编辑 + 个人名片（姓名 / 职位 / 简介 / 头像 / 可增删社交链接）配置，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
@@ -448,10 +448,19 @@ D1 (SQLite) 共 13 张表：
 | `site_subtitle`    | 首页Hero区域副标题                                        |
 | `site_description` | 首页Hero描述、meta description、OG描述                    |
 | `site_keywords`    | meta keywords                                             |
-| `about_content`    | `/about` 页面内容                                         |
+| `about_content`    | `/about` 页面 Markdown 正文                               |
+| `profile_card`     | `/about` 页面顶部个人名片（JSON 字符串）                  |
 
 - 页面级 description 优先级高于站点级（不会被覆盖）
 - 首页 Hero 区域的默认文案在无配置时显示，有配置后自动替换
+
+### 个人名片（`profile_card`）
+
+- **存储与更新**：`site_config` 的单个键，value 为 JSON 字符串。后台「关于页面」面板可编辑各字段、增删社交链接、上传头像（复用 `POST /api/v1/media/upload`）并保存；前台 `/about` 每次加载都从 `GET /api/v1/config` 读取最新值，无需重新构建页面。
+- **字段**：`name`（姓名，80 字）、`role`（职位 / 头衔，120 字）、`bio`（简介，500 字）、`avatar`（头像地址）、`links`（最多 6 条 `{ label, url }` 社交联系方式，可增删）。
+- **安全**：写入时 Worker 过滤未知字段、限制长度，URL 仅放行 `http(s)://`、`mailto:` 与站内 `/` 路径（拒绝 `javascript:` / `data:` / `//host`）；前台所有文本转义后才进入 `innerHTML`，头像地址同样做协议校验。
+- **降级**：键不存在 / 空串 / 坏 JSON / 接口失败时仍渲染卡片骨架 —— 空头像用姓名首字母色块，空姓名回退站点名（再回退「博主」），空职位与简介隐藏该行，无链接不渲染按钮区，完全未配置显示引导文案。
+- **无需 D1 迁移**：`PUT /config` 使用 UPSERT，老库首次保存自动建行（`is_public=1`）；`schema.sql` 的种子行只用于全新环境。
 
 ## 本地开发
 

@@ -132,6 +132,8 @@
   "page.no_articles_category": "No articles in this category",
   "page.no_articles_tag": "No articles with this tag",
   "about.no_content": "The author hasn't written an introduction yet",
+  "about.card_label": "Author profile",
+  "about.card_empty": "The author hasn't filled in the profile card yet",
   "article.check_link": "Please check if the link is correct",
   "admin.comments": "Comments",
   "admin.media": "Media",

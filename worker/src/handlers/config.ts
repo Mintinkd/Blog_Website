@@ -1,5 +1,10 @@
 import { Env } from "../index";
 import { successResponse, error, ErrorCodes } from "../utils/response";
+import {
+  PROFILE_CARD_KEY,
+  parseProfileCardJson,
+  serializeProfileCard,
+} from "../utils/profile-card";
 
 /**
  * #51：配置写入键白名单——与 schema.sql 的种子 INSERT 键集合一致。
@@ -12,6 +17,7 @@ const CONFIG_KEY_WHITELIST = new Set([
   "site_keywords",
   "posts_per_page",
   "about_content",
+  PROFILE_CARD_KEY,
   "admin_username",
   "admin_password_hash",
   "jwt_secret",
@@ -77,15 +83,29 @@ export async function handleUpdateConfig(
     if (NO_EMPTY_KEYS.has(key) && value === "") {
       return error(ErrorCodes.VALIDATION_FAILED, `配置键 ${key} 不得为空`);
     }
+    // 名片是 JSON blob：先解析净化再落库，避免坏数据 / 伪协议 URL 进入公开配置。
+    if (key === PROFILE_CARD_KEY) {
+      const normalized = parseProfileCardJson(value);
+      if (!normalized.ok) {
+        return error(ErrorCodes.VALIDATION_FAILED, normalized.message);
+      }
+      updates.push({ key, value: serializeProfileCard(normalized.value) });
+      continue;
+    }
     updates.push({ key, value });
   }
 
   const updatedAt = new Date().toISOString();
+  // UPSERT 而非 UPDATE：新增展示型配置键（如 profile_card）无需先在 D1 里 seed，
+  // 老库升级后首次保存即可自动建行。ON CONFLICT 分支不触碰 is_public，
+  // 既有敏感键（jwt_secret / 密码哈希）仍保持 0，不会被这里改成公开。
   for (const { key, value } of updates) {
     await env.DB.prepare(
-      "UPDATE site_config SET value = ?, updated_at = ? WHERE key = ?"
+      `INSERT INTO site_config (key, value, is_public, updated_at)
+       VALUES (?, ?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
     )
-      .bind(value, updatedAt, key)
+      .bind(key, value, updatedAt)
       .run();
   }
 

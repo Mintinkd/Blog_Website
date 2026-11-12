@@ -132,6 +132,8 @@
   "page.no_articles_category": "该分类暂无文章",
   "page.no_articles_tag": "该标签暂无文章",
   "about.no_content": "博主尚未编写介绍",
+  "about.card_label": "博主名片",
+  "about.card_empty": "博主还没有填写名片信息",
   "article.check_link": "请检查链接是否正确",
   "admin.comments": "评论管理",
   "admin.media": "图片管理",

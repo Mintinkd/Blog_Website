@@ -532,6 +532,134 @@
             >
               {{ t("admin.about_hint") }}
             </p>
+
+            <!-- 个人名片：展示在 /about 页面顶部，与下方 Markdown 正文互不干扰 -->
+            <div class="profile-editor">
+              <div class="profile-editor-head">
+                <h3>个人名片</h3>
+                <span>展示在 /about 页面顶部；留空的字段前台会自动隐藏</span>
+              </div>
+
+              <div class="form-group">
+                <label>头像</label>
+                <div class="profile-avatar-row">
+                  <div class="profile-avatar-preview">
+                    <img
+                      v-if="profileForm.avatar"
+                      :src="profileForm.avatar"
+                      alt="头像预览"
+                    />
+                    <span v-else class="profile-avatar-initial">?</span>
+                  </div>
+                  <div class="profile-avatar-actions">
+                    <label class="btn-secondary profile-upload-btn">
+                      {{
+                        profileAvatarUploading
+                          ? t("common.loading")
+                          : t("admin.upload")
+                      }}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                        :disabled="profileAvatarUploading"
+                        @change="uploadProfileAvatar"
+                        style="display: none"
+                      />
+                    </label>
+                    <button
+                      v-if="profileForm.avatar"
+                      class="btn-secondary"
+                      @click="profileForm.avatar = ''"
+                    >
+                      移除头像
+                    </button>
+                    <p class="profile-tip">
+                      支持 PNG / JPG / GIF / WebP / SVG，≤
+                      10MB。上传后需点「保存名片」才生效。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>姓名</label>
+                <input
+                  v-model="profileForm.name"
+                  maxlength="80"
+                  placeholder="例如：老大 / Laoda"
+                />
+              </div>
+              <div class="form-group">
+                <label>职位 / 头衔</label>
+                <input
+                  v-model="profileForm.role"
+                  maxlength="120"
+                  placeholder="例如：独立开发者 · Indie Maker"
+                />
+              </div>
+              <div class="form-group">
+                <label>简介</label>
+                <textarea
+                  v-model="profileForm.bio"
+                  rows="3"
+                  maxlength="500"
+                  placeholder="一句话介绍自己"
+                ></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>社交联系方式</label>
+                <div
+                  v-for="(link, index) in profileForm.links"
+                  :key="index"
+                  class="profile-link-row"
+                >
+                  <input
+                    v-model="link.label"
+                    maxlength="30"
+                    placeholder="名称"
+                    class="profile-link-label"
+                  />
+                  <input
+                    v-model="link.url"
+                    maxlength="500"
+                    placeholder="https://... / mailto:... / /rss.xml"
+                    class="profile-link-url"
+                  />
+                  <button
+                    class="btn-danger profile-link-remove"
+                    @click="removeProfileLink(index)"
+                  >
+                    删除
+                  </button>
+                </div>
+                <button
+                  class="btn-secondary"
+                  :disabled="profileForm.links.length >= 6"
+                  @click="addProfileLink"
+                >
+                  + 添加链接
+                </button>
+                <p class="profile-tip">
+                  最多 6 条；仅支持 http(s)://、mailto: 与站内 /
+                  路径。名称或地址留空的行保存时自动忽略。
+                </p>
+              </div>
+
+              <div class="profile-editor-actions">
+                <button
+                  class="btn-primary"
+                  :disabled="profileSaving"
+                  @click="saveProfile"
+                >
+                  {{ profileSaving ? t("admin.save_loading") : "保存名片" }}
+                </button>
+                <span v-if="profileMsg" class="msg">{{ profileMsg }}</span>
+              </div>
+            </div>
+
+            <div class="profile-editor-divider"></div>
+
             <div class="form-group">
               <label>关于页内容 (Markdown)</label>
               <textarea
@@ -2163,6 +2291,73 @@ const aboutContent = ref("");
 const aboutSaving = ref(false);
 const aboutMsg = ref("");
 
+// ===== 个人名片（/about 页顶部）=====
+interface ProfileLinkForm {
+  label: string;
+  url: string;
+}
+interface ProfileForm {
+  name: string;
+  role: string;
+  bio: string;
+  avatar: string;
+  links: ProfileLinkForm[];
+}
+
+/** 三条空值示例：只预填名称，地址留空；保存时过滤掉未填完整的行 */
+function defaultProfileLinks(): ProfileLinkForm[] {
+  return [
+    { label: "GitHub", url: "" },
+    { label: "Email", url: "" },
+    { label: "RSS", url: "" },
+  ];
+}
+
+function emptyProfileForm(): ProfileForm {
+  return {
+    name: "",
+    role: "",
+    bio: "",
+    avatar: "",
+    links: defaultProfileLinks(),
+  };
+}
+
+/** 后台表单容错解析：坏 JSON / 字段异常一律回退空表单，不让编辑页白屏 */
+function parseProfileForm(raw: unknown): ProfileForm {
+  let src: any = raw;
+  if (typeof src === "string") {
+    if (!src.trim()) return emptyProfileForm();
+    try {
+      src = JSON.parse(src);
+    } catch {
+      return emptyProfileForm();
+    }
+  }
+  if (!src || typeof src !== "object" || Array.isArray(src)) {
+    return emptyProfileForm();
+  }
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  const links: ProfileLinkForm[] = Array.isArray(src.links)
+    ? src.links.slice(0, 6).map((l: any) => ({
+        label: text(l?.label),
+        url: text(l?.url),
+      }))
+    : [];
+  return {
+    name: text(src.name),
+    role: text(src.role),
+    bio: text(src.bio),
+    avatar: text(src.avatar),
+    links: links.length ? links : defaultProfileLinks(),
+  };
+}
+
+const profileForm = ref<ProfileForm>(emptyProfileForm());
+const profileSaving = ref(false);
+const profileAvatarUploading = ref(false);
+const profileMsg = ref("");
+
 const users = ref<any[]>([]);
 const showUserForm = ref(false);
 const userForm = ref({
@@ -2448,6 +2643,7 @@ async function loadConfig() {
         posts_per_page: parseInt(data.data.posts_per_page) || 10,
       };
       aboutContent.value = data.data.about_content || "";
+      profileForm.value = parseProfileForm(data.data.profile_card);
     }
   } finally {
     configLoading.value = false;
@@ -2856,6 +3052,70 @@ async function saveAbout() {
   }
 }
 
+async function saveProfile() {
+  profileSaving.value = true;
+  profileMsg.value = "";
+  try {
+    // 半填 / 全空的示例行不提交，由后端白名单与协议校验兜住剩下的非法地址
+    const links = profileForm.value.links
+      .map((l) => ({ label: l.label.trim(), url: l.url.trim() }))
+      .filter((l) => l.label && l.url);
+    const data = await api("PUT", "/config", {
+      profile_card: JSON.stringify({
+        name: profileForm.value.name,
+        role: profileForm.value.role,
+        bio: profileForm.value.bio,
+        avatar: profileForm.value.avatar,
+        links,
+      }),
+    });
+    if (data.code === 0) profileMsg.value = t("admin.save_success");
+    else profileMsg.value = data.message || t("admin.save_failed");
+  } catch {
+    profileMsg.value = t("admin.save_failed");
+  } finally {
+    profileSaving.value = false;
+  }
+}
+
+async function uploadProfileAvatar(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  profileAvatarUploading.value = true;
+  profileMsg.value = "";
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const res = await fetch(`${API}/media/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token.value}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.code === 0 && data.data?.url) {
+      profileForm.value.avatar = data.data.url;
+      profileMsg.value = "头像已上传，请点「保存名片」生效";
+    } else {
+      alert(data.message || t("admin.upload_failed"));
+    }
+  } catch {
+    alert(t("admin.upload_failed"));
+  } finally {
+    profileAvatarUploading.value = false;
+    input.value = "";
+  }
+}
+
+function addProfileLink() {
+  if (profileForm.value.links.length >= 6) return;
+  profileForm.value.links.push({ label: "", url: "" });
+}
+
+function removeProfileLink(index: number) {
+  profileForm.value.links.splice(index, 1);
+}
+
 // ===== 外观与个性化（可视化配置中心）=====
 const settings = reactive(getDefaultSettings());
 const settingsLoading = ref(false);
@@ -3228,6 +3488,109 @@ watch(currentTab, (tab) => {
 <style scoped>
 .admin-app {
   min-height: 60vh;
+}
+
+/* ===== 个人名片编辑（关于页面板内） ===== */
+.profile-editor {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.profile-editor-head {
+  margin-bottom: 1rem;
+}
+.profile-editor-head h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 0.25rem;
+}
+.profile-editor-head span,
+.profile-tip {
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+.profile-tip {
+  margin: 0.5rem 0 0;
+}
+.profile-avatar-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.profile-avatar-preview {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  border-radius: 18px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.profile-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.profile-avatar-initial {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.profile-avatar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.profile-upload-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.profile-link-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.profile-link-label {
+  width: 30%;
+  min-width: 100px;
+}
+.profile-link-url {
+  flex: 1;
+  min-width: 160px;
+}
+.profile-link-remove {
+  flex: none;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.7rem;
+}
+.profile-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.profile-editor-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0 0 1.25rem;
+}
+@media (max-width: 640px) {
+  .profile-link-row {
+    flex-wrap: wrap;
+  }
+  .profile-link-label,
+  .profile-link-url {
+    width: 100%;
+  }
 }
 
 .login-page {
