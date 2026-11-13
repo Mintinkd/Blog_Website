@@ -1926,11 +1926,12 @@
           </div>
         </Teleport>
 
-        <!-- 插入链接：普通链接 / 内嵌网页预览两种预览模式 -->
+        <!-- 插入链接：普通链接 / 内嵌网页预览两种预览模式。
+             z-index 高于文章编辑器全屏遮罩（300），否则弹窗被压在编辑器下面不可见。 -->
         <Teleport to="body">
           <div
             v-if="linkDialog.visible"
-            class="modal-overlay"
+            class="modal-overlay link-dialog-overlay"
             @click.self="linkDialog.visible = false"
           >
             <div class="modal link-dialog">
@@ -4436,6 +4437,11 @@ watch(currentTab, (tab) => {
 }
 
 /* ---- 插入链接弹窗：预览模式选项 ---- */
+/* 必须盖在文章编辑器全屏遮罩（z-index 300）之上 */
+.link-dialog-overlay {
+  z-index: 400;
+}
+
 .link-dialog {
   max-width: 440px;
   width: 92vw;
