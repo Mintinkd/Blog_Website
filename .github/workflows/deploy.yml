@@ -103,6 +103,10 @@ jobs:
           # 后台 6 张数据表在手机上卡片化；同时守住统计/抓取/外观页无横向溢出。
           node scripts/verify-admin-responsive.mjs
 
+          # 页面观感友好度：实测对比度 / 文案分行 / 间距 / 选中态 / 溢出 / 焦点环，
+          # 亮暗主题 × 375/1280 视口；失败输出带规则 ID 与源码定位的问题清单。
+          node scripts/verify-visual-friendliness.mjs
+
       - name: Build Astro site
         run: npm run build
 

@@ -13,7 +13,8 @@
     "check": "node scripts/run-astro-check.mjs",
     "test": "vitest run",
     "gen:headers": "node scripts/generate-headers.mjs",
-    "gen:settings": "node scripts/generate-settings-rules.mjs"
+    "gen:settings": "node scripts/generate-settings-rules.mjs",
+    "verify:visual": "node scripts/verify-visual-friendliness.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.0.0",

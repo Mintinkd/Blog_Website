@@ -12,7 +12,7 @@
 
 ## 浏览器回归（Playwright）
 
-`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏、错误态显示失败接口与 code、控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-privacy-page.mjs` 是 #59 隐私页的手动回归：从页脚入口进入 `/privacy`，验证中英切换、HttpOnly / HMAC / 保留期披露文案与控制台无报错；同样拦截 `/api/v1/**`，依赖 dev server。`scripts/verify-admin-history-nav.mjs` 是后台「前进/后退白屏」的手动回归：必须用真实链接点击造同文档 `popstate` 历史项（`page.goto` 造的是跨文档历史，后退会走 bfcache 恢复，测不到 ClientRouter 软导航），断言 forward / back 两个方向回到 `/admin/` 后 `#admin-app-mount` 恰好一个根节点、离开时旧 Vue 实例已卸载、反复往返幂等、控制台无报错；用 `astro:after-swap` 计数证明确实发生软导航，避免 bfcache 假通过。同样先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-profile-card.mjs` 是个人名片的手动回归：用一个内存 mock 服务端状态串起「后台 `PUT /config` → 前台 `GET /config`」，覆盖未配置占位、字段编辑 / 头像上传预览 / 社交链接增删与空行过滤、保存后 `/about` 立即读到最新值、375px 无横向溢出、XSS 文本转义与 `javascript:` 链接丢弃、控制台无报错；同样拦截 `/api/v1/**`，不访问真实 Worker，先起 `npx astro dev --port 4321`。`scripts/verify-admin-responsive.mjs` 是后台移动端回归：注入 admin 登录态并拦截 `/api/v1/**`，在 280px / 375px 触控视口下逐页检查 6 张 `.data-table` 的单元格 ≥120px、单元格带 `data-label`、页面与主区域无横向滚动，另查外观页文案输入框 ≥80px；1280px 确认桌面表格布局未受影响。`scripts/verify-article-ssr.mjs` 与它同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
+`scripts/repro-nav-home.mjs` / `scripts/verify-all-pages-nav.mjs` 走手动 Playwright 回归（依赖真实文章 API；本机 dev server 代理不可达时会超时，属环境前置条件，不是代码回归）。`scripts/verify-admin-analytics.mjs` 是 #58 后台「统计」面板的手动回归：拦截 `/api/v1/**` 返回本地 fixture、注入 admin 登录态，覆盖空库卡片 `—`/`0`、数据积累中、数据不足、PV/UV 双线与 sparkline、Tier 1 隐藏、错误态显示失败接口与 code、控制台无报错；先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-privacy-page.mjs` 是 #59 隐私页的手动回归：从页脚入口进入 `/privacy`，验证中英切换、HttpOnly / HMAC / 保留期披露文案与控制台无报错；同样拦截 `/api/v1/**`，依赖 dev server。`scripts/verify-admin-history-nav.mjs` 是后台「前进/后退白屏」的手动回归：必须用真实链接点击造同文档 `popstate` 历史项（`page.goto` 造的是跨文档历史，后退会走 bfcache 恢复，测不到 ClientRouter 软导航），断言 forward / back 两个方向回到 `/admin/` 后 `#admin-app-mount` 恰好一个根节点、离开时旧 Vue 实例已卸载、反复往返幂等、控制台无报错；用 `astro:after-swap` 计数证明确实发生软导航，避免 bfcache 假通过。同样先起 `npx astro dev --port 4321`，Windows 可设 `PW_CHANNEL=msedge`。`scripts/verify-profile-card.mjs` 是个人名片的手动回归：用一个内存 mock 服务端状态串起「后台 `PUT /config` → 前台 `GET /config`」，覆盖未配置占位、字段编辑 / 头像上传预览 / 社交链接增删与空行过滤、保存后 `/about` 立即读到最新值、375px 无横向溢出、XSS 文本转义与 `javascript:` 链接丢弃、控制台无报错；同样拦截 `/api/v1/**`，不访问真实 Worker，先起 `npx astro dev --port 4321`。`scripts/verify-admin-responsive.mjs` 是后台移动端回归：注入 admin 登录态并拦截 `/api/v1/**`，在 280px / 375px 触控视口下逐页检查 6 张 `.data-table` 的单元格 ≥120px、单元格带 `data-label`、页面与主区域无横向滚动，另查外观页文案输入框 ≥80px；1280px 确认桌面表格布局未受影响。`scripts/verify-visual-friendliness.mjs` 是页面观感友好度检查：在真实渲染结果上量对比度、文案分行、留白、选中态、裁切与焦点环，输出带规则 ID 与源码定位的问题清单，详见下方专节。`scripts/verify-article-ssr.mjs`、`scripts/verify-admin-responsive.mjs` 与它同时是 CI 门禁，在 `.github/workflows/deploy.yml` 的构建前步骤执行；两条导航回归仍手动。Playwright 不在 `package.json` 依赖里。首次手动运行（`--no-save` 保持 `package.json` / lock 不变，不要用 `npm i -D`）：
 
 ```bash
 npm install --no-save playwright
@@ -76,6 +76,48 @@ node scripts/verify-admin-responsive.mjs
 
 脚本在 280px / 375px 下遍历 12 个后台面板，锁定「单元格不被挤成竖排」和
 「页面 / 主区域无横向滚动」；1280px 再确认桌面表格布局未受影响。
+
+### 页面观感友好度（CI + 手动）
+
+`scripts/verify-visual-friendliness.mjs` 不测功能，量「画出来好不好看」：用 Playwright 读取 computed style 与几何盒模型，把常见观感问题转成带规则 ID 的断言。默认目标清单 `TARGETS` 只有「插入链接弹窗 · 预览方式」，规则引擎对同类结构复用；新增页面只需加一条 target（`scope` / `option` / `parts` / `prepare`），不必复制规则。
+
+```powershell
+npx astro dev --port 4321
+npm run verify:visual
+$env:PW_CHANNEL='msedge'                       # 仅用系统 Edge 时
+$env:VISUAL_REPORT_JSON='./visual-report.json' # 可选：输出机器可读报告
+$env:VISUAL_SHOT_DIR='./visual-shots'          # 可选：输出各场景弹窗截图
+```
+
+矩阵固定为 375px / 1280px × light / dark，每组再采「普通链接」「内嵌网页预览」两种选中态。context 用 `reducedMotion: reduce` 让过渡退化为瞬时，采样前把鼠标移出卡片，避免 `:hover` 污染未选中态读数。全部 `/api/v1/**` 走本地 fixture，不依赖真实 Worker 与账号。
+
+13 条规则（阈值集中在脚本头部常量）：
+
+| 规则          | 检查内容                                                                         |
+| ------------- | -------------------------------------------------------------------------------- |
+| VF-01         | 分组标签 / 标题 / 描述的文本对比度 ≥ 4.5:1（WCAG 2.1 AA 正文）                   |
+| VF-02 / VF-03 | 图标描边、未选中指示器边框 ≥ 3:1（AA 非文本图形）；选中态由 VF-07 的状态差异覆盖 |
+| VF-04         | 标题与描述分行，图标 / 文案 / 指示器三栏互不重叠且落在卡片内                     |
+| VF-05 / VF-06 | 卡片四边内边距 ≥ 12px、选项间距 ≥ 8px                                            |
+| VF-07         | 选中态在边框 / 背景 / 圆点 / 强调条四个通道都可辨识                              |
+| VF-08 / VF-09 | 文本不被裁切、触控目标 ≥ 44px                                                    |
+| VF-10         | 真实 Tab 可聚焦 radio，且 `:focus-visible` 焦点环 ≥ 2px                          |
+| VF-11         | 页面 / 弹窗 / 选项组 / 卡片均无横向溢出                                          |
+| VF-12 / VF-13 | 选中态与 `v-model` 同步、控制台无报错                                            |
+
+背景色按「从元素到根」逐层 alpha 合成后再算对比度（`scripts/visual-contrast.mjs`，算法由 `tests/visual-contrast.test.ts` 用手写样本钉住），不会因 `--color-accent-subtle` 这类半透明叠加误判。
+
+失败输出每条都带「规则 ID / 场景 / 元素 / 实测值 / 期望值 / 源码定位」，可直接照着定位改代码：
+
+```text
+  1. [VF-01 文本对比度] link-dialog / 375px / dark / 选中=link
+     元素：.link-mode-option:nth-child(2) .link-mode-desc
+     实测：3.21:1（前景 rgb(110, 110, 115) / 背景 rgb(28, 28, 30)）
+     期望：≥ 4.5:1（WCAG 2.1 AA 正文）
+     定位：src/admin/App.vue → .link-mode-desc 的 color
+```
+
+退出码 `0` 通过 / `1` 存在观感问题 / `2` 环境或脚本异常；CI 在 `deploy.yml` 的同一 Playwright 步骤里调用，失败即阻断部署。`VISUAL_REPORT_JSON` 另写一份含全部断言与问题明细的 JSON，便于归档与 diff；`VISUAL_SHOT_DIR` 按「视口 / 主题 / 选中态」输出弹窗截图，方便人工复核数值之外的观感（两者默认关闭，不影响 CI）。
 
 ### 新增回归检查单
 

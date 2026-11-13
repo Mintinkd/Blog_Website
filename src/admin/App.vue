@@ -1954,7 +1954,11 @@
               </div>
               <div class="form-group">
                 <label>{{ t("admin.link_mode") }}</label>
-                <div class="link-mode-options">
+                <div
+                  class="link-mode-options"
+                  role="radiogroup"
+                  :aria-label="t('admin.link_mode')"
+                >
                   <label
                     :class="[
                       'link-mode-option',
@@ -1962,16 +1966,38 @@
                     ]"
                   >
                     <input
+                      class="link-mode-input"
                       type="radio"
+                      name="link-preview-mode"
                       value="link"
                       v-model="linkDialog.mode"
                     />
-                    <span class="link-mode-name">{{
-                      t("admin.link_mode_plain")
-                    }}</span>
-                    <span class="link-mode-desc">{{
-                      t("admin.link_mode_plain_desc")
-                    }}</span>
+                    <span class="link-mode-icon" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path
+                          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+                        />
+                        <path
+                          d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+                        />
+                      </svg>
+                    </span>
+                    <span class="link-mode-copy">
+                      <span class="link-mode-name">{{
+                        t("admin.link_mode_plain")
+                      }}</span>
+                      <span class="link-mode-desc">{{
+                        t("admin.link_mode_plain_desc")
+                      }}</span>
+                    </span>
+                    <span class="link-mode-indicator" aria-hidden="true"></span>
                   </label>
                   <label
                     :class="[
@@ -1980,16 +2006,35 @@
                     ]"
                   >
                     <input
+                      class="link-mode-input"
                       type="radio"
+                      name="link-preview-mode"
                       value="embed"
                       v-model="linkDialog.mode"
                     />
-                    <span class="link-mode-name">{{
-                      t("admin.link_mode_embed")
-                    }}</span>
-                    <span class="link-mode-desc">{{
-                      t("admin.link_mode_embed_desc")
-                    }}</span>
+                    <span class="link-mode-icon" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <rect x="2.5" y="4" width="19" height="16" rx="2.5" />
+                        <path d="M2.5 9h19" />
+                        <rect x="6" y="12" width="12" height="5" rx="1" />
+                      </svg>
+                    </span>
+                    <span class="link-mode-copy">
+                      <span class="link-mode-name">{{
+                        t("admin.link_mode_embed")
+                      }}</span>
+                      <span class="link-mode-desc">{{
+                        t("admin.link_mode_embed_desc")
+                      }}</span>
+                    </span>
+                    <span class="link-mode-indicator" aria-hidden="true"></span>
                   </label>
                 </div>
               </div>
@@ -4443,59 +4488,192 @@ watch(currentTab, (tab) => {
 }
 
 .link-dialog {
-  max-width: 440px;
+  max-width: 460px;
   width: 92vw;
 }
 
+/* 卡片式单选：图标 / 两行文案 / 独立指示器三栏。
+   原生 radio 只保留语义与键盘行为，视觉由 .link-mode-indicator 承担，
+   避免 radio 圆圈浮在卡片中间、标题与描述挤成一行连读。 */
 .link-mode-options {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.625rem;
 }
 
-.link-mode-option {
+/* 选择器需压过 .form-group label 的 display:block / margin-bottom / 字号：
+   否则三栏 grid 退化成块级堆叠，图标、文案、指示器重新挤成一列。 */
+.link-mode-options .link-mode-option {
+  position: relative;
   display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.55rem 0.75rem;
+  margin-bottom: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  grid-template-columns: 2.25rem minmax(0, 1fr) 1.125rem;
+  align-items: center;
+  column-gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.875rem 1rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
   cursor: pointer;
+  overflow: hidden;
   transition:
-    border-color 0.2s,
-    background 0.2s;
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* 选中态强调条用绝对定位，不占布局，避免选中时卡片尺寸跳变 */
+.link-mode-option::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--color-accent);
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .link-mode-option:hover {
   border-color: var(--color-accent);
+  background: var(--color-bg-primary);
 }
 
 .link-mode-option.active {
   border-color: var(--color-accent);
   background: var(--color-accent-subtle);
+  box-shadow: var(--shadow-sm);
 }
 
-.link-mode-option input {
-  align-self: center;
-  margin: 0;
+.link-mode-option.active::before {
+  opacity: 1;
+}
+
+/* 仅键盘聚焦时画焦点环，鼠标点击不出现外框 */
+.link-mode-option:has(.link-mode-input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* sr-only：仍可 Tab 聚焦、仍与 label 关联，只是不画原生圆圈。
+   选择器带 input 与属性，优先级高于 .form-group input 的通用表单样式。 */
+.link-mode-option input.link-mode-input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.link-mode-icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  transition: background-color var(--motion-duration-fast)
+    var(--motion-ease-standard);
+}
+
+.link-mode-icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.link-mode-option.active .link-mode-icon {
+  background: var(--color-accent-light);
+}
+
+.link-mode-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
 }
 
 .link-mode-name {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--color-text-primary);
 }
 
 .link-mode-desc {
   font-size: 0.75rem;
-  color: var(--color-text-tertiary);
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.link-mode-indicator {
+  position: relative;
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+  /* 用 tertiary 而非 border：圆圈边界对卡片底色需 ≥3:1 才看得清未选中态 */
+  border: 1.5px solid var(--color-text-tertiary);
+  border-radius: 50%;
+  background: transparent;
+  transition: border-color var(--motion-duration-fast)
+    var(--motion-ease-standard);
+}
+
+.link-mode-indicator::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+  transform: scale(0.4);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-emphasized);
+}
+
+.link-mode-option:hover .link-mode-indicator {
+  border-color: var(--color-accent);
+}
+
+.link-mode-option.active .link-mode-indicator {
+  border-color: var(--color-accent);
+}
+
+.link-mode-option.active .link-mode-indicator::after {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .link-dialog-error {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;
-  color: #e5484d;
+  color: var(--color-error);
+}
+
+/* 窄屏收紧留白，但保持两行文案与 >=44px 触控目标 */
+@media (max-width: 480px) {
+  .link-mode-options .link-mode-option {
+    grid-template-columns: 2rem minmax(0, 1fr) 1.125rem;
+    column-gap: 0.625rem;
+    padding: 0.875rem;
+  }
+
+  .link-mode-icon {
+    width: 2rem;
+    height: 2rem;
+  }
 }
 
 .editor-content-area .editor-textarea {

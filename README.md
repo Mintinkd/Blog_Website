@@ -116,6 +116,8 @@
 │   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（CI 构建前执行；服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
 │   ├── verify-admin-analytics.mjs # 后台「统计」面板回归（Playwright；空库 / 有数据 / 错误态三场景，#58）
 │   ├── verify-privacy-page.mjs   # 隐私页回归（Playwright；页脚入口 / 中英切换 / 无 JS 文案，#59）
+│   ├── visual-contrast.mjs       # 观感检查的颜色数学（零依赖；WCAG 对比度 / 半透明背景逐层合成；同目录 .d.mts）
+│   ├── verify-visual-friendliness.mjs # 页面观感友好度检查（CI + 手动；13 条规则 / 亮暗主题 / 多视口 / 带源码定位的报告）
 │   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
@@ -532,7 +534,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归、构建。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；规则与复现命令见 `docs/agents/testing.md`。
 
 ### 初始化数据库
 
