@@ -1,6 +1,7 @@
 @import "./variables.css";
 @import "./motion.css";
 @import "./prose.css";
+@import "./media-embed.css";
 
 *,
 *::before,

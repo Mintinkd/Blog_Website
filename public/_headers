@@ -5,7 +5,7 @@
 # CSP 基线（script-src 含 'unsafe-inline'）仅服务 dev；生产产物由 astro:build:done 钩子（scripts/patch-csp.mjs）收紧为 dist 内联脚本 sha256
 # HTML 路由护栏（cloudflare-guards）：Cache-Control: no-transform 停 Cloudflare JS Detections 注入；Speculation-Rules 指向自有空规则集，覆盖 Speed Brain 预取（Worker 路由预取必 503）
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https://player.bilibili.com https://www.youtube.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

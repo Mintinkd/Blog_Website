@@ -12,9 +12,10 @@
  * CSP 基线（script-src 含 'unsafe-inline'，#9/#10 指令内容原样）只存在于源码与
  * dev，不进入生产产物：构建期由 patch-csp 收紧，静态/SSR 两份产物逐字符一致。
  * style-src 因动态 settings 内联样式与模板 style 属性保留 'unsafe-inline'；
- * img-src/media-src 放行 https: 以兼容外链封面图与文章内音视频；frame-src 仅
- * 放行 B 站/YouTube 播放器域（文章页媒体卡片注入 iframe 所需）。评估与维护说明
- * 见 docs/security/csp-evaluation.md。
+ * img-src/media-src 放行 https: 以兼容外链封面图与文章内音视频；frame-src
+ * 放行 https: —— 文章内嵌网页预览（编辑器「内嵌网页预览」标记的任意链接）
+ * 需要 iframe 任意 https 目标，此前仅 B 站/YouTube 播放器域的白名单已不够用。
+ * 评估与维护说明见 docs/security/csp-evaluation.md。
  *
  * 生成物除 5 头规则块外，还附加 cloudflare-guards 模块的 HTML 路由护栏块
  * （no-transform 关 JavaScript Detections 注入 / Speculation-Rules 覆盖 Speed
@@ -27,7 +28,7 @@ import {
 
 /** CSP 基线：声明态 CSP（script-src 含 'unsafe-inline'），#9/#10 指令内容原样 */
 export const CSP_BASELINE =
-  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https://player.bilibili.com https://www.youtube.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /** 全部 5 个响应头的基线值：CSP 基线 + 其余 4 头（middleware 与 _headers 生成物共用） */
 export const SECURITY_HEADERS = {

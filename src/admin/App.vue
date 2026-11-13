@@ -1878,9 +1878,20 @@
                       </button>
                     </div>
                   </div>
+                  <div v-if="editorMode !== 'preview'" class="editor-toolbar">
+                    <button
+                      type="button"
+                      class="toolbar-btn"
+                      @click="openLinkDialog"
+                    >
+                      {{ t("admin.insert_link") }}
+                    </button>
+                    <span class="toolbar-hint">{{ t("admin.link_hint") }}</span>
+                  </div>
                   <div :class="['editor-content-area', editorMode]">
                     <textarea
                       v-if="editorMode !== 'preview'"
+                      ref="editorTextarea"
                       v-model="articleForm.content"
                       rows="20"
                       class="editor-textarea"
@@ -1914,6 +1925,90 @@
             </div>
           </div>
         </Teleport>
+
+        <!-- 插入链接：普通链接 / 内嵌网页预览两种预览模式 -->
+        <Teleport to="body">
+          <div
+            v-if="linkDialog.visible"
+            class="modal-overlay"
+            @click.self="linkDialog.visible = false"
+          >
+            <div class="modal link-dialog">
+              <h3>{{ t("admin.insert_link") }}</h3>
+              <div class="form-group">
+                <label>{{ t("admin.link_url") }}</label
+                ><input
+                  v-model="linkDialog.url"
+                  :placeholder="t('admin.link_url_placeholder')"
+                  @keydown.enter.prevent="confirmInsertLink"
+                />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.link_text") }}</label
+                ><input
+                  v-model="linkDialog.text"
+                  :placeholder="t('admin.link_text_placeholder')"
+                  @keydown.enter.prevent="confirmInsertLink"
+                />
+              </div>
+              <div class="form-group">
+                <label>{{ t("admin.link_mode") }}</label>
+                <div class="link-mode-options">
+                  <label
+                    :class="[
+                      'link-mode-option',
+                      { active: linkDialog.mode === 'link' },
+                    ]"
+                  >
+                    <input
+                      type="radio"
+                      value="link"
+                      v-model="linkDialog.mode"
+                    />
+                    <span class="link-mode-name">{{
+                      t("admin.link_mode_plain")
+                    }}</span>
+                    <span class="link-mode-desc">{{
+                      t("admin.link_mode_plain_desc")
+                    }}</span>
+                  </label>
+                  <label
+                    :class="[
+                      'link-mode-option',
+                      { active: linkDialog.mode === 'embed' },
+                    ]"
+                  >
+                    <input
+                      type="radio"
+                      value="embed"
+                      v-model="linkDialog.mode"
+                    />
+                    <span class="link-mode-name">{{
+                      t("admin.link_mode_embed")
+                    }}</span>
+                    <span class="link-mode-desc">{{
+                      t("admin.link_mode_embed_desc")
+                    }}</span>
+                  </label>
+                </div>
+              </div>
+              <p v-if="linkDialog.error" class="link-dialog-error">
+                {{ linkDialog.error }}
+              </p>
+              <div class="modal-actions">
+                <button
+                  class="btn-secondary"
+                  @click="linkDialog.visible = false"
+                >
+                  {{ t("admin.cancel") }}
+                </button>
+                <button class="btn-primary" @click="confirmInsertLink">
+                  {{ t("admin.link_insert") }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </main>
     </div>
   </div>
@@ -1927,6 +2022,7 @@ import {
   onMounted,
   onBeforeUnmount,
   watch,
+  nextTick,
   h,
   defineComponent,
 } from "vue";
@@ -1937,9 +2033,8 @@ import {
   broadcastSettingsChange,
 } from "../utils/settings.ts";
 import zh from "../i18n/zh.json";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 import { renderMarkdown } from "../utils/markdown";
+import { enhanceMediaLinks } from "../utils/mediaEmbed.ts";
 import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
 import { safeFriendLinkUrl } from "../utils/friend-link-url";
 import { toConfigPayload } from "../utils/config-payload";
@@ -1959,9 +2054,10 @@ import {
   type TrendDay,
 } from "../utils/analyticsView.ts";
 
-// marked v14 起不再内置/接受 highlight 选项——原处传入的 hljs 回调自升级以来即为死代码
-// （运行时被 marked 忽略，预览输出从未真正高亮），前端类型门禁启用后移除（issue #26；
-// 与 src/utils/markdown.ts 同一套说明，如需恢复高亮应接线 marked-highlight）。
+// 正文预览复用全站 renderMarkdown（marked + DOMPurify + markdownPolicy 白名单），
+// 与服务端渲染口径一致（tests/markdown-preview-parity.test.ts）。
+// marked v14 起不再内置/接受 highlight 选项——如需代码高亮应接线 marked-highlight
+// （issue #26；与 src/utils/markdown.ts 同一套说明）。
 
 function updatePreview() {
   if (!articleForm.value.content) {
@@ -1969,11 +2065,94 @@ function updatePreview() {
     return;
   }
   try {
-    const raw = marked.parse(articleForm.value.content) as string;
-    previewHtml.value = DOMPurify.sanitize(raw);
+    // 复用全站正文渲染管线（marked + DOMPurify，markdownPolicy 白名单），
+    // 保证预览与线上文章页同一套消毒口径（tests/markdown-preview-parity.test.ts）。
+    previewHtml.value = renderMarkdown(articleForm.value.content);
   } catch {
     previewHtml.value = "";
   }
+}
+
+/* ===== 插入链接：普通链接 / 内嵌网页预览 ===== */
+const editorTextarea = ref<HTMLTextAreaElement | null>(null);
+const linkDialog = reactive({
+  visible: false,
+  url: "",
+  text: "",
+  mode: "link" as "link" | "embed",
+  error: "",
+});
+
+function openLinkDialog() {
+  // 选中文字直接带入链接文字；选中内容本身是 URL 则带入地址
+  const ta = editorTextarea.value;
+  const selected = (ta?.value || "")
+    .slice(ta?.selectionStart ?? 0, ta?.selectionEnd ?? 0)
+    .trim();
+  linkDialog.url = /^https?:\/\//i.test(selected) ? selected : "";
+  linkDialog.text = /^https?:\/\//i.test(selected) ? "" : selected;
+  linkDialog.mode = "link";
+  linkDialog.error = "";
+  linkDialog.visible = true;
+}
+
+/** Markdown 链接内的文字 / URL 转义（括号与方括号会破坏解析） */
+function mdEscapeText(text: string): string {
+  return text.replace(/([[\]])/g, "\\$1");
+}
+function mdEscapeUrl(url: string): string {
+  return url.replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\s/g, "%20");
+}
+
+/** 原始 HTML 锚点的属性 / 文本转义（内嵌预览标记走 <a data-embed="1">） */
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function insertAtCursor(snippet: string) {
+  const content = articleForm.value.content || "";
+  const ta = editorTextarea.value;
+  if (!ta) {
+    articleForm.value.content = content + snippet;
+    updatePreview();
+    return;
+  }
+  const start = ta.selectionStart ?? content.length;
+  const end = ta.selectionEnd ?? start;
+  const next = content.slice(0, start) + snippet + content.slice(end);
+  articleForm.value.content = next;
+  const caret = start + snippet.length;
+  void nextTick(() => {
+    ta.focus();
+    ta.setSelectionRange(caret, caret);
+  });
+  updatePreview();
+}
+
+function confirmInsertLink() {
+  const url = linkDialog.url.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    linkDialog.error = t("admin.link_invalid_url");
+    return;
+  }
+  const text =
+    (linkDialog.text || "").trim() || url.replace(/^https?:\/\//i, "");
+  const snippet =
+    linkDialog.mode === "embed"
+      ? `<a href="${escapeAttr(url)}" data-embed="1">${escapeHtmlText(text)}</a>`
+      : `[${mdEscapeText(text)}](${mdEscapeUrl(url)})`;
+  linkDialog.visible = false;
+  insertAtCursor(snippet);
 }
 
 const API = "/api/v1";
@@ -2233,6 +2412,19 @@ const newTagInput = ref("");
 const articleSaving = ref(false);
 const editorMode = ref<"edit" | "split" | "preview">("edit");
 const previewHtml = ref("");
+
+/* 预览面板挂载后跑一遍内嵌媒体/网页增强，与文章页同一渲染载体
+ * （媒体链接自动识别，data-embed="1" 渲染为内嵌网页预览）。
+ * previewHtml 由 v-html 重建 DOM，每次输入后重新增强（幂等，已增强节点跳过）。 */
+watch([previewHtml, editorMode], () => {
+  if (editorMode.value === "edit" || !previewHtml.value) return;
+  void nextTick(() => {
+    const pane = document.querySelector<HTMLElement>(
+      ".article-editor .editor-preview"
+    );
+    if (pane) enhanceMediaLinks(pane, "a[href]", getLocale());
+  });
+});
 
 interface ScrapeSource {
   html: string;
@@ -4204,6 +4396,100 @@ watch(currentTab, (tab) => {
   display: flex;
   gap: 1rem;
   min-height: 400px;
+}
+
+/* ---- 编辑器工具栏（插入链接等） ---- */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    color 0.2s,
+    background 0.2s;
+}
+
+.toolbar-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.toolbar-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+/* ---- 插入链接弹窗：预览模式选项 ---- */
+.link-dialog {
+  max-width: 440px;
+  width: 92vw;
+}
+
+.link-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.link-mode-option {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.link-mode-option:hover {
+  border-color: var(--color-accent);
+}
+
+.link-mode-option.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.link-mode-option input {
+  align-self: center;
+  margin: 0;
+}
+
+.link-mode-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.link-mode-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+.link-dialog-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #e5484d;
 }
 
 .editor-content-area .editor-textarea {

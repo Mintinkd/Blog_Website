@@ -15,7 +15,8 @@ import { guardHtmlResponse } from "../scripts/cloudflare-guards.mjs";
  * 维护说明见 docs/security/csp-evaluation.md。
  * style-src 保留 'unsafe-inline'（动态 settings 内联 <style> 与模板 style 属性）；
  * img-src/media-src 放行 https: 以兼容外链封面图与文章内音视频；
- * frame-src 仅放行 B 站/YouTube 播放器域（文章页媒体卡片注入 iframe 所需）。
+ * frame-src 放行 https:（文章内嵌网页预览需 iframe 任意 https 目标，
+ * 含 B 站/YouTube 播放器域）。
  *
  * HTML 文档响应（SSR 动态路由）另经 cloudflare-guards 追加两个护栏头：
  * Cache-Control: no-transform 停 Cloudflare JavaScript Detections 注入（否则内联

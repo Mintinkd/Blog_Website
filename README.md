@@ -344,13 +344,23 @@ D1 (SQLite) 共 13 张表：
 - **无 JS / 动效失败**：`<noscript>` 兜底保证禁用 JS 时标题 / 摘要 / 正文直接可见；motion chunk 动态 import 失败（或 3s 内未完成初始化）时写入 `<html data-motion-failed>`，`motion.css` 同样强制 `[data-reveal]` 可见，避免 JS 仍开启时首屏停在 `opacity:0`。
 - **回归**：dev 下可用 `ARTICLE_API_ORIGIN` 把文章页取数指向本地 mock；生产始终使用 `WORKER_ORIGIN`。CI 在构建前用同一 mock 跑文章 SSR 浏览器回归；两条导航回归仍手动。脚本启动后会先确认 mock 收到 SSR 取数，防止误连真实 Worker；运行方式见 `docs/agents/testing.md`。
 
+### 文章内嵌链接预览（统一内嵌容器）
+
+文章正文中的媒体 / 网页链接在浏览器端渲染为统一的内嵌容器（`src/utils/mediaEmbed.ts`，样式 `src/styles/media-embed.css`），容器 = 标题栏（类型徽标 + 标题链接 + 域名）+ 渲染主体：
+
+- **自动识别（历史文章零改动自动适配，识别规则与旧版一致）**：音频文件（.mp3/.wav/.ogg/.m4a/.flac/.aac）→ 内嵌容器 + 自定义音频播放器（播放/暂停、进度拖拽、倍速）；视频文件（.mp4/.webm/.mov/.m3u8）→ 封面点击加载原生 `<video>`；B 站视频页 / YouTube → 封面点击加载官方播放器 iframe。
+- **手动内嵌网页预览**：后台编辑器「插入链接」支持两种预览方式——普通链接（Markdown `[文字](url)`）与内嵌网页预览（写入 `<a href="…" data-embed="1">文字</a>`，`data-*` 属性可安全通过正文白名单消毒），前台把任意 https 链接渲染为内嵌 iframe（带加载态遮罩、`referrerpolicy=no-referrer`、懒加载）。
+- **降级与兜底**：非 https 链接与已知拒绝内嵌的头部站点（x/twitter/facebook/instagram/github）直接保留普通链接；iframe 加载失败或 12s 超时、媒体源 404/MIME 不符 → 容器内兜底面板（「在新窗口打开」/「转为普通链接」）。
+- **CSP**：`frame-src https:`（详见 `docs/security/csp-evaluation.md` 的 frame-src 放宽评估）；`media-src 'self' https:` 不变。
+- **后台预览一致**：编辑器分屏/预览模式复用同一增强逻辑与全站 `renderMarkdown` 消毒管线；单测 `tests/media-embed.test.ts`（识别 / 容器 / 幂等 / 降级 / 兜底 / 管线保留 data-embed）。
+
 ## 后台管理
 
 访问 `/admin` 进入管理后台，功能包括：
 
 - **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息和角色；口令长度上限 200（登录 / 建号 / 改密 / 重置同口径，超限 400 且不进入 KDF）；未知用户名只跑固定 1000 次迭代的假验证（不以等代价为目标；剩余账号存在性时序差是为阻断匿名 CPU 放大而接受的取舍）
 - **角色权限** — admin（全部功能）和 editor（文章/分类/标签/评论/图片，受所有权限制）
-- **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式），Slug支持中文
+- **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
   - editor 只能编辑/删除自己的文章
   - 编辑锁：编辑前自动获取锁，冲突时弹窗提示，admin可强制接管
 - **分类管理** — 增改（editor仅自己的），删除仅admin

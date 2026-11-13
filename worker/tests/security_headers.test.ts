@@ -37,11 +37,11 @@ function toNodeFsPath(u: URL): string {
 
 /** #9/#10 基线（独立手写字面量；「指令内容与基线完全一致」的锁定源） */
 const EXPECTED_BASELINE_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https://player.bilibili.com https://www.youtube.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /** 固定 hash 输入下的收紧结果（独立手写字面量；hash 由测试内注释给出推导来源） */
 const EXPECTED_TIGHTENED_CSP =
-  "default-src 'self'; script-src 'self' 'sha256-FtbCoOfHAhkEEZZ8zqmtyaFizkNhGfjMmKl45p19avA=' 'sha256-IiZ9V931LXTU8ucguCP9fqTlLsCVGl1R2+c4hueY06Y='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https://player.bilibili.com https://www.youtube.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'sha256-FtbCoOfHAhkEEZZ8zqmtyaFizkNhGfjMmKl45p19avA=' 'sha256-IiZ9V931LXTU8ucguCP9fqTlLsCVGl1R2+c4hueY06Y='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; connect-src 'self'; frame-src https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 describe("安全头模块单源（issue #28）", () => {
   it("CSP 基线逐字节等于 #9/#10 基线（唯一手工维护点）", () => {
