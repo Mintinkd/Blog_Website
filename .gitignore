@@ -16,3 +16,21 @@ worker/.wrangler/
 
 # Astro dev/build 缓存（data-store、settings、临时类型），不进 git
 .astro/
+
+# 本地密钥 / 环境变量（wrangler .dev.vars、本地 .env）
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+
+# 命令输出与临时产物（build_tmp.log 已被 *.log 覆盖，保留单条仅为兼容旧说明）
+*.log
+*.tmp
+*.bak
+*~
+d1_output.txt
+
+# 本地工具配置 / 设计预览：文件保留在本机，不进版本库
+.arts/
+ui-preview/
