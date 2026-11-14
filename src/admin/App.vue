@@ -1663,6 +1663,7 @@
           v-if="isEditorOpen(editorState)"
           :state="editorState"
           :conflict="editorConflict"
+          :guard="editorGuard"
           :categories="categories"
           :tags="tags"
           :user-role="userRole"
@@ -1674,7 +1675,11 @@
           @discard="onEditorDiscard"
           @continue="onEditorContinue"
           @open-link="onEditorOpenLink"
+          @open-preview="onEditorOpenPreview"
           @close-dialog="onEditorCloseDialog"
+          @change-mode="onEditorChangeMode"
+          @override-guard="onEditorOverrideGuard"
+          @upload-error="onEditorUploadError"
           @add-tag="addEditorTag"
           @keep-draft="onEditorKeepDraft"
         />
@@ -1689,8 +1694,11 @@ import ArticlesPanel from "./articles/ArticlesPanel.vue";
 import ArticleEditorOverlay from "./articles/ArticleEditorOverlay.vue";
 import {
   createArticleEditor,
+  initialGuardState,
   type ArticleEditorCore,
+  type EditorGuardState,
 } from "./editor/useArticleEditor.ts";
+import { roundTripMarkdown } from "./editor/milkdown/milkdownService";
 import { createEditLock, type LockConflict } from "./editor/useEditLock.ts";
 import {
   initialEditorState,
@@ -2406,6 +2414,7 @@ async function loadConfig() {
 
 const editorState = shallowRef<EditorState>(initialEditorState());
 const editorConflict = shallowRef<LockConflict | null>(null);
+const editorGuard = shallowRef<EditorGuardState>(initialGuardState());
 
 const editorLock = createEditLock({
   apiBase: import.meta.env.PUBLIC_API_BASE || "/api/v1",
@@ -2417,11 +2426,16 @@ editorCore = createArticleEditor({
   api: { request: (method, path, body) => api(method, path, body) },
   lock: editorLock,
   storage: window.localStorage,
+  // T4 #65：往返由同装配的隐藏 Milkdown 内核提供（内部动态 import），
+  // 渲染用前台同一 renderMarkdown 管线；守卫判定全在编排器内闭环。
+  guard: { roundTrip: roundTripMarkdown, render: renderMarkdown },
   messages: () => ({
     loadFailed: t("admin.editor_load_failed"),
     saveFailed: t("admin.save_failed"),
     lockFailed: t("admin.lock_failed"),
     lockLost: t("admin.lock_lost_message"),
+    guardLossy: t("admin.editor_guard_lossy"),
+    guardBlocked: t("admin.editor_guard_blocked"),
   }),
   onSaved: () => {
     void loadArticles();
@@ -2433,9 +2447,10 @@ editorCore = createArticleEditor({
     alert(message);
   },
 });
-editorCore.subscribe((next, conflict) => {
+editorCore.subscribe((next, conflict, guard) => {
   editorState.value = next;
   editorConflict.value = conflict;
+  editorGuard.value = guard;
 });
 
 function openNewArticle(): void {
@@ -2473,6 +2488,18 @@ function onEditorContinue(): void {
 }
 function onEditorOpenLink(): void {
   editorCore?.openDialog("link");
+}
+function onEditorOpenPreview(): void {
+  editorCore?.openDialog("preview");
+}
+function onEditorChangeMode(mode: "wysiwyg" | "source"): void {
+  void editorCore?.setEditorMode(mode);
+}
+function onEditorOverrideGuard(): void {
+  void editorCore?.overrideGuard();
+}
+function onEditorUploadError(message: string): void {
+  alert(message || t("admin.upload_failed"));
 }
 function onEditorCloseDialog(): void {
   editorCore?.closeDialog();

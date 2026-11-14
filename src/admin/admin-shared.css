@@ -941,32 +941,22 @@
   }
 }
 
-.editor-content-area .editor-textarea {
+/* T4 #65：single 档只渲染一个编辑面（textarea 或 WYSIWYG），split 档才渲染
+   右侧只读预览；旧的 .edit / .preview 布局类已由 mode 与 guard.mode 取代。 */
+.editor-content-area .editor-textarea,
+.editor-content-area .editor-wysiwyg {
   flex: 1;
+  min-width: 0;
   min-height: 400px;
-  resize: vertical;
 }
 
-.editor-content-area.split .editor-textarea {
-  flex: 1;
-  min-height: 400px;
+.editor-content-area .editor-textarea {
+  resize: vertical;
 }
 
 .editor-content-area.split .editor-preview {
   flex: 1;
-  overflow-y: auto;
-}
-
-.editor-content-area.edit .editor-preview {
-  display: none;
-}
-
-.editor-content-area.preview .editor-textarea {
-  display: none;
-}
-
-.editor-content-area.preview .editor-preview {
-  flex: 1;
+  min-width: 0;
   overflow-y: auto;
 }
 
@@ -1647,4 +1637,134 @@
 .lock-conflict-expires {
   font-size: 0.85rem;
   color: var(--color-text-tertiary);
+}
+
+/* ---- T4 #65：Milkdown WYSIWYG / 回写守卫 / 线上预览 ---- */
+/* Crepe classic.css 的颜色全部走 --crepe-color-*；这里映射到站点设计令牌，
+   [data-theme] 亮暗切换时 computed style 随之变化，不引入第二套主题令牌。
+   tooltip / 浮动工具栏挂在 body 下，因此变量定义在 :root 而非 .milkdown-host。 */
+/* classic.css 在 `.milkdown` 元素上直接定义同名的深色默认值，继承覆盖不了它；
+   用更高优先级写回同一元素，保证 [data-theme] 亮暗切换确实生效。 */
+:root,
+:root .milkdown,
+.milkdown {
+  --crepe-color-primary: var(--color-accent, #3b82f6);
+  --crepe-color-secondary: var(--color-accent, #3b82f6);
+  --crepe-color-on-secondary: #fff;
+  --crepe-color-background: var(--color-bg-primary, #fff);
+  --crepe-color-surface: var(--color-bg-secondary, #f6f8fa);
+  --crepe-color-surface-low: var(--color-bg-primary, #fff);
+  --crepe-color-on-background: var(--color-text-primary, #1f2328);
+  --crepe-color-on-surface: var(--color-text-primary, #1f2328);
+  --crepe-color-on-surface-variant: var(--color-text-secondary, #59636e);
+  --crepe-color-outline: var(--color-border, #d0d7de);
+  --crepe-color-inverse: var(--color-text-primary, #1f2328);
+  --crepe-color-on-inverse: var(--color-bg-primary, #fff);
+  --crepe-color-hover: var(--color-bg-secondary, #f6f8fa);
+  --crepe-color-selected: var(--color-accent, #3b82f6);
+  --crepe-color-inline-area: var(--color-bg-secondary, #f6f8fa);
+  --crepe-color-inline-code: var(--color-text-primary, #1f2328);
+  --crepe-color-error: var(--color-error, #c0392b);
+}
+
+.editor-workspace {
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-guard-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.editor-guard-message {
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.milkdown-host {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  overflow-x: hidden;
+}
+
+.milkdown-host .ProseMirror {
+  min-height: 380px;
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+
+/* 编辑态的内嵌链接：保留链接外观，点击不导航（NodeView 内处理）。 */
+.milkdown-host a[data-editor-embed] {
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: text;
+}
+
+.editor-preview-dialog {
+  width: min(900px, 92vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.editor-preview-header h3 {
+  margin: 0;
+}
+
+.editor-preview-dialog .editor-preview {
+  margin-top: 1rem;
+  max-height: 68vh;
+  overflow-y: auto;
+}
+
+/* 分屏：≥1024 并排 / 768–1023 堆叠 / <768 隐藏分屏入口并降级为单栏。 */
+@media (min-width: 1024px) {
+  .editor-content-area.split {
+    flex-direction: row;
+  }
+
+  .editor-content-area.split > .editor-textarea,
+  .editor-content-area.split > .editor-wysiwyg,
+  .editor-content-area.split > .editor-preview {
+    flex: 1 1 50%;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .editor-content-area.split {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 767px) {
+  .split-toggle {
+    display: none;
+  }
+
+  .editor-content-area.split {
+    flex-direction: column;
+  }
 }

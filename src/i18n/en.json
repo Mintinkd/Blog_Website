@@ -308,5 +308,22 @@
   "privacy.scope_body": "No cross-day or cross-device visitor IDs; no canvas / WebGL / font fingerprinting; no per-visitor views or exports; no raw IP, full UA, or precise coordinates in the database. This batch adds no consent banner because it uses only an essential cookie and aggregate data.",
   "privacy.contact_title": "Contact",
   "privacy.contact_body": "Questions about these metrics or retention? Open an issue in the Mintinkd/Blog_Website repository.",
-  "privacy.note": "This page applies to Reading Analytics Tier 0. If finer-grained metrics are added later, this page will be updated first."
+  "privacy.note": "This page applies to Reading Analytics Tier 0. If finer-grained metrics are added later, this page will be updated first.",
+  "admin.editor_guard_lossy": "This article contains Markdown that WYSIWYG cannot represent losslessly. Opened in source mode.",
+  "admin.editor_guard_blocked": "The pre-save guard still reports a lossy round-trip. Save in source mode instead.",
+  "editor.mode_wysiwyg": "WYSIWYG",
+  "editor.mode_source": "Source",
+  "editor.mode_split": "Split",
+  "editor.online_preview": "Online preview",
+  "editor.guard_override": "Use WYSIWYG anyway",
+  "editor.toolbar_bold": "Bold",
+  "editor.toolbar_italic": "Italic",
+  "editor.toolbar_strikethrough": "Strikethrough",
+  "editor.toolbar_code": "Inline code",
+  "editor.toolbar_link": "Link",
+  "editor.toolbar_heading": "Heading",
+  "editor.toolbar_quote": "Quote",
+  "editor.toolbar_list": "List",
+  "editor.placeholder": "Start writing…",
+  "editor.link_placeholder": "Paste or type a link…"
 }

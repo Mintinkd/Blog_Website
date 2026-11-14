@@ -8,6 +8,7 @@
 
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
+- **Milkdown 7（ProseMirror + remark）/ Crepe** — 后台文章编辑器的所见即所得内核，固定 `@milkdown/*` 7.23.0 一组；`defineAsyncComponent + import()` 懒加载，只在首次打开编辑器时进入增量 chunk（实测 gzip 约 182 KiB，预算 350 KiB），不进后台首屏（issue #65 / ADR 0006）
 - **Element Plus** — 后台管理UI组件库
 - **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览复用同一 `renderMarkdown`；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
 
@@ -40,13 +41,20 @@
 │   │   ├── articles/
 │   │   │   ├── ArticlesPanel.vue         # 文章列表 / 筛选 / 操作列（T3 #64）
 │   │   │   └── ArticleEditorOverlay.vue  # 文章编辑器全屏壳层（T3 #64）
-│   │   └── editor/                       # 编辑器组件、状态机与锁（T3 #64）
+│   │   └── editor/                       # 编辑器组件、状态机与锁（T3 #64 / T4 #65）
 │   │       ├── EditorMetaFields.vue      # 标题 / slug / 分类 / 状态 / 标签 / 摘要 / 封面
-│   │       ├── MarkdownWorkspace.vue     # 编辑 / 分屏 / 预览三档 + textarea（T4 #65 换内核）
+│   │       ├── MarkdownWorkspace.vue     # WYSIWYG / 源码 / 分屏 / 线上预览四档 + 源码工具栏
+│   │       ├── EditorPreviewDialog.vue   # 只读线上预览（同一个 renderMarkdown）
 │   │       ├── LinkDialog.vue            # 普通链接 / 内嵌网页预览
 │   │       ├── UnsavedChangesDialog.vue  # 保存并关闭 / 放弃修改 / 继续编辑
-│   │       ├── useArticleEditor.ts       # 显式状态机 + 副作用编排（消费 T1 reducer）
-│   │       └── useEditLock.ts            # 获取 / 10 分钟心跳 / 保存前校验 / 释放
+│   │       ├── useArticleEditor.ts       # 显式状态机 + 副作用编排 + 回写守卫（消费 T1 reducer）
+│   │       ├── useEditLock.ts            # 获取 / 10 分钟心跳 / 保存前校验 / 释放
+│   │       └── milkdown/                 # T4 编辑内核（懒加载）
+│   │           ├── MilkdownEditor.vue    # 异步组件壳层：打开时不回写正文，只有实际编辑才更新
+│   │           ├── createEditor.ts       # CrepeBuilder 7 项装配 / uploader 覆盖 / 响应式文案
+│   │           ├── embedLink.ts          # data-embed 专用内联节点 + NodeView + remark 合并
+│   │           ├── upload.ts             # POST /media/upload 适配（src / alt）
+│   │           └── milkdownService.ts    # 守卫用同装配隐藏实例做 Markdown 往返
 │   ├── components/
 │   │   ├── article/
 │   │   │   └── ArticleCard.astro
@@ -113,7 +121,8 @@
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 │   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用；dev-only 文章取数覆盖）
 │   │   ├── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
-│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62；由 T3 #64 的 admin/editor/* 消费）
+│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62 / T4 #65）
+│   │       ├── markdownBridge.ts    # 语义等价回写守卫 / 规范化比较 / 模式判定 / 保存前二次守卫
 │   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义
 │   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
 │   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
@@ -188,7 +197,7 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
-├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖 + 编辑器纯函数行为基线 #62）
+├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖 + 编辑器纯函数行为基线 #62 + 回写守卫与守卫编排 #65）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD / shell 导航）
@@ -282,7 +291,7 @@ D1 (SQLite) 共 13 张表：
 
 > `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
 
-> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。编辑器前端切换到该接口由 #64（T3）完成，当前 `src/admin/App.vue` 仍走公开 slug 接口取正文。
+> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。该切换已由 #64（T3）完成：`useArticleEditor` 统一走此接口，`src/admin/App.vue` 不再请求公开 slug 接口取正文。
 
 #### 编辑锁接口
 
@@ -384,13 +393,14 @@ D1 (SQLite) 共 13 张表：
 
 - **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息和角色；口令长度上限 200（登录 / 建号 / 改密 / 重置同口径，超限 400 且不进入 KDF）；未知用户名只跑固定 1000 次迭代的假验证（不以等代价为目标；剩余账号存在性时序差是为阻断匿名 CPU 放大而接受的取舍）
 - **角色权限** — admin（全部功能）和 editor（文章/分类/标签/评论/图片，受所有权限制）
-- **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
+- **文章管理** — 新建/编辑/删除，Markdown编辑器（所见即所得 / 源码 / 分屏 / 线上预览四档，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
   - editor 只能编辑/删除自己的文章
   - 组件化（T3 #64）：文章列表与全屏壳层在 `src/admin/articles/`，元信息 / 工作区 / 弹窗 / composables 在 `src/admin/editor/`；`App.vue` 不再包含文章编辑器主体，后台样式由 `src/admin/admin-shared.css` 单源提供
   - 取数：打开已发布文章走认证接口 `GET /articles/:id/edit`（不经公开 slug 接口、不写阅读统计）；强制接管后重新加载详情并重建未保存基线
   - 编辑锁：打开前获取、每 10 分钟心跳续期、保存前再次校验；取消 / X / Esc / 保存成功 / 放弃均释放，`beforeunload` 只提示，`pagehide`（`persisted === false`）尽力释放；冲突时禁止保存并提供复制正文 / 保留草稿 / 关闭
   - 未保存保护：脏状态下关闭 / 取消 / Esc / 刷新触发三出口（保存并关闭 / 放弃修改 / 继续编辑）；加载正文失败不进入可编辑状态，保存失败保持编辑器打开、保持锁并保留内容
   - 会话失效（`10003`）：先同步落盘本地草稿、尽力释放锁，再退出到登录页，不清除该用户草稿
+  - 所见即所得（T4 #65）：Milkdown 7 内核打开时懒加载；加载 / 模式切换 / 保存前均执行回写守卫，有损时默认进源码模式，作者可显式覆盖但保存前守卫仍失败会阻止保存；打开未编辑不改写正文，源码模式未修改保存保留原始字节
 - **分类管理** — 增改（editor仅自己的），删除仅admin
 - **标签管理** — 增（editor创建的），删除仅admin
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
@@ -398,6 +408,20 @@ D1 (SQLite) 共 13 张表：
 - **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；自动映射标题/摘要/封面/已有标签并追加来源脚注；预览支持 Markdown/渲染切换；「生成草稿并编辑」打开现有文章编辑器并预填标题/slug/summary/封面/正文/分类 1/标签/draft，保存前不创建任何数据
 - **关于页面** — Markdown 编辑 + 个人名片（姓名 / 职位 / 简介 / 头像 / 可增删社交链接）配置，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
+
+#### 文章编辑器（T4 #65 / ADR 0006）
+
+- **正文契约**：`articles.content` 的 Markdown 是唯一正文源；保存只写 Markdown，绝不写 `content_html`（历史遗留列，不读不写，无 D1 迁移）。前台、后台预览、线上预览共用 `src/utils/markdown.ts` 的 `renderMarkdown`（marked + DOMPurify，白名单见 `markdownPolicy.ts`）。
+- **四档形态**：所见即所得（Milkdown 7 / ProseMirror）、源码（textarea + 轻量工具栏，复用 `editorCommands.ts`）、分屏（左侧编辑 + 右侧只读预览）、线上预览弹窗。分屏 ≥1024px 并排、768–1023px 堆叠、<768px 隐藏入口；预览 150ms 防抖、只在可见时渲染，`enhanceMediaLinks` 限定各自容器。
+- **装配**：`CrepeBuilder` 只装 7 项（toolbar / list-item / link-tooltip / table / block-edit / placeholder / cursor）。**不装 `image-block`**：7.23.0 的 `imageBlockSchema` 把图片 `alt` 当宽高比，会静默改写存量正文（T0 实测 15 条语料有 2 条 lossy，去掉后 15/15 语义等价）。也不装 code-mirror / latex / ai / top-bar。
+- **语义等价回写守卫**：`src/utils/editor/markdownBridge.ts` 比较「原文」与「编辑器解析后立即序列化结果」经同一 `renderMarkdown` 渲染、规范化后的 HTML；不要求字节相同（T0 实测 0/15 字节相同）。加载时判定，lossy 默认进源码模式并提示；作者可显式覆盖进 WYSIWYG，但**保存前二次守卫**独立重新判定，仍失败即阻止保存（不发请求、不改状态、保持锁），绝不静默改写。判定结果接入 `useArticleEditor`，不是孤立模块。
+- **内嵌链接**：`<a … data-embed="1">文字</a>` 由 `milkdown/embedLink.ts` 的专用内联节点 + NodeView 承接（编辑器内是真实可编辑 `<a>`，编辑态点击不导航），序列化按原开标签逐字还原；无法安全合并的复杂结构回退到内核原子 html 片段，保持逐字保真。
+- **图片**：保留内置 `upload` 插件但覆盖 `uploadConfig.uploader`，写普通 `image` 节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。不写 `blob:` / base64 图片，不扩大正文白名单。
+- **能力边界**：启用的节点 / 标记不超过 `ARTICLE_BODY_TAGS` / `ARTICLE_BODY_ATTRS`；不做 LaTeX、任务列表、下划线、文字颜色、代码高亮、iframe。
+- **快捷键**（仅编辑器焦点内生效）：Ctrl/Cmd+S 保存、K 插入链接、B/I 粗体/斜体（源码模式）、Shift+P 线上预览、Shift+E 切换源码/所见即所得；Esc 在弹窗打开时由弹窗消费，否则走未保存保护。
+- **i18n / 主题**：编辑器文案进 `zh.json` / `en.json`；工具栏 label 用 Vue `reactive` 配置 + `locale-changed` 事件原地更新，切换语言不重建实例、不丢正文；`classic.css` 的 `--crepe-color-*` 映射到站点设计令牌，亮暗跟随 `[data-theme]`。
+- **包体 / CSP**：内核只在首次打开编辑器时加载（实测增量 gzip 约 182 KiB < 350 KiB 预算）；不使用 eval / CDN，`npm run build` 的 `patch-csp` 通过，静态与 SSR 两份 CSP 逐字符一致。
+- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。浏览器回归、真机中文输入法与真实拖拽上传由 T5 / T7 收口。
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）

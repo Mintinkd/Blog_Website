@@ -8,6 +8,9 @@
  * tests/article-editor-flow.test.ts 在 node 环境全链路测（不挂载 Vue / DOM）。
  *
  * 状态机见 docs/ARTICLE_EDITOR_UPGRADE.md §7；契约见 §5.4 / §5.5 / §5.6。
+ * T4 #65 起，本编排器还持有回写守卫状态（加载判定 / 模式切换 / 保存前二次守卫），
+ * 由 T4 的 markdownBridge 纯函数判定，WYSIWYG 有损保存在此被真正阻止，
+ * 而不是只留一个孤立的守卫模块；guard 未注入时 T3 行为完全不变。
  * `createArticleEditor` 不 import DOM 类型，fetch / storage / 事件目标均可注入；
  * `useArticleEditor` 是给 ArticleEditorOverlay 用的 Vue 薄包装。
  */
@@ -31,6 +34,12 @@ import {
   saveDraft,
   type DraftStorage,
 } from "../../utils/editor/draftStore";
+import {
+  classifyRoundTrip,
+  decideInitialMode,
+  guardWysiwygSave,
+  type EditorMode,
+} from "../../utils/editor/markdownBridge";
 import {
   SESSION_EXPIRED_CODE,
   type EditLock,
@@ -68,6 +77,10 @@ export interface EditorMessages {
   saveFailed: string;
   lockFailed: string;
   lockLost: string;
+  /** T4 #65：lossy 自动进源码模式的提示（i18n 由宿主注入）。 */
+  guardLossy?: string;
+  /** T4 #65：WYSIWYG 保存被守卫阻止时的提示。 */
+  guardBlocked?: string;
 }
 
 const DEFAULT_MESSAGES: EditorMessages = {
@@ -75,7 +88,33 @@ const DEFAULT_MESSAGES: EditorMessages = {
   saveFailed: "保存失败",
   lockFailed: "获取编辑锁失败",
   lockLost: "编辑锁已被接管",
+  guardLossy: "该文章包含所见即所得无法无损表示的语法，已在源码模式打开",
+  guardBlocked: "保存前守卫仍判定有损，请在源码模式保存",
 };
+
+/**
+ * 回写守卫与 WYSIWYG 内核之间的接缝：往返只做「解析 → 立即序列化」，
+ * 不写回正文；render 是同一 `renderMarkdown` 管线。两者都可注入，
+ * 因此 node 环境的编排测试不需要 DOM / Milkdown。
+ */
+export interface EditorGuardAdapter {
+  roundTrip(markdown: string): Promise<string>;
+  render(markdown: string): string;
+}
+
+export type EditorGuardStatus = "unchecked" | "safe" | "lossy";
+
+/** UI 消费的守卫快照：模式、判定、是否显式覆盖、提示文案。 */
+export interface EditorGuardState {
+  mode: EditorMode;
+  status: EditorGuardStatus;
+  override: boolean;
+  message: string;
+}
+
+export function initialGuardState(): EditorGuardState {
+  return { mode: "wysiwyg", status: "unchecked", override: false, message: "" };
+}
 
 export interface ArticleEditorOptions {
   userId: number;
@@ -83,6 +122,8 @@ export interface ArticleEditorOptions {
   lock: EditLock;
   storage?: DraftStorage | null;
   now?: () => number;
+  /** 不传则完全保持 T3 行为（无守卫、模式默认 WYSIWYG 由 UI 决定）。 */
+  guard?: EditorGuardAdapter | null;
   messages?: () => EditorMessages;
   onSaved?: () => void;
   onClosed?: () => void;
@@ -107,8 +148,13 @@ export interface PageHideEventLike {
 export interface ArticleEditorCore {
   getState(): EditorState;
   getConflict(): LockConflict | null;
+  getGuard(): EditorGuardState;
   subscribe(
-    listener: (state: EditorState, conflict: LockConflict | null) => void
+    listener: (
+      state: EditorState,
+      conflict: LockConflict | null,
+      guard: EditorGuardState
+    ) => void
   ): () => void;
   open(
     article: { id: number } | null,
@@ -117,6 +163,12 @@ export interface ArticleEditorCore {
   retryLoad(): Promise<void>;
   takeover(): Promise<void>;
   updateForm(form: EditorFormSnapshot): void;
+  /** 模式切换守卫：切到 WYSIWYG 时重新判定，lossy 且未覆盖则保持源码模式。 */
+  setEditorMode(mode: EditorMode, override?: boolean): Promise<void>;
+  /** 作者显式覆盖 lossy 判定进 WYSIWYG；保存前守卫仍独立执行。 */
+  overrideGuard(): Promise<void>;
+  /** 正文被外部替换（草稿恢复 / 接管重建基线）后重新执行加载判定。 */
+  reevaluateGuard(): Promise<void>;
   save(): Promise<void>;
   close(): void;
   esc(): void;
@@ -157,14 +209,19 @@ export function createArticleEditor(
   const now = options.now ?? (() => Date.now());
   let state = initialEditorState();
   let conflict: LockConflict | null = null;
+  let guard = initialGuardState();
   let currentArticle: { id: number } | null = null;
   const listeners = new Set<
-    (next: EditorState, lockConflict: LockConflict | null) => void
+    (
+      next: EditorState,
+      lockConflict: LockConflict | null,
+      nextGuard: EditorGuardState
+    ) => void
   >();
   let attached = false;
 
   function notify(): void {
-    listeners.forEach((listener) => listener(state, conflict));
+    listeners.forEach((listener) => listener(state, conflict, guard));
   }
 
   function dispatch(event: EditorEvent): EditorState {
@@ -218,6 +275,69 @@ export function createArticleEditor(
     }
   }
 
+  /** 对「当前正文」做一次编辑器往返 + 语义比较，不写回任何状态。 */
+  async function classifyCurrent() {
+    const adapter = options.guard!;
+    return classifyRoundTrip(
+      state.form.content,
+      adapter.roundTrip,
+      adapter.render
+    );
+  }
+
+  /**
+   * 加载判定：lossy 默认进源码模式并提示；此处只改守卫快照，
+   * `form.content` / `baseline` 保持原始字节（打开未编辑不改正文）。
+   */
+  async function runInitialGuard(): Promise<void> {
+    if (!options.guard) return;
+    const classification = await classifyCurrent();
+    guard = {
+      mode: decideInitialMode(classification),
+      status: classification.kind,
+      override: false,
+      message:
+        classification.kind === "lossy"
+          ? (messages().guardLossy ?? DEFAULT_MESSAGES.guardLossy ?? "")
+          : "",
+    };
+    notify();
+  }
+
+  /**
+   * 模式切换守卫：切回 WYSIWYG 时重新判定；显式覆盖只放行「编辑」，
+   * 保存前守卫仍会独立再判定一次，失败必须阻止保存。
+   */
+  async function setEditorMode(
+    mode: EditorMode,
+    override = false
+  ): Promise<void> {
+    if (mode === "source") {
+      guard = { ...guard, mode: "source", override: false, message: "" };
+      notify();
+      return;
+    }
+    if (!options.guard) {
+      guard = { ...guard, mode: "wysiwyg", message: "" };
+      notify();
+      return;
+    }
+    const classification = await classifyCurrent();
+    const nextMode = decideInitialMode(classification, override);
+    guard = {
+      mode: nextMode,
+      status: classification.kind,
+      override: override && nextMode === "wysiwyg",
+      message:
+        classification.kind === "lossy"
+          ? override
+            ? (messages().guardBlocked ?? DEFAULT_MESSAGES.guardBlocked ?? "")
+            : (messages().guardLossy ?? DEFAULT_MESSAGES.guardLossy ?? "")
+          : "",
+    };
+    notify();
+  }
+
   async function loadContent(prefill?: EditorFormSnapshot): Promise<void> {
     if (!currentArticle) {
       dispatch({
@@ -226,6 +346,7 @@ export function createArticleEditor(
           ? { ...prefill, tags: [...prefill.tags] }
           : emptyEditorForm(),
       });
+      await runInitialGuard();
       return;
     }
     let res: ApiEnvelope;
@@ -255,6 +376,8 @@ export function createArticleEditor(
     // T2 的认证详情接口：不经公开 slug 接口、不触发阅读统计；
     // loaded 同时写入 form 与 baseline，强制接管后基线在此重建。
     dispatch({ type: "loaded", form: mapDetailToForm(res.data) });
+    // 打开 / 重试 / 强制接管都重新执行加载判定，草稿恢复由 reevaluateGuard 触发。
+    await runInitialGuard();
   }
 
   async function open(
@@ -264,6 +387,7 @@ export function createArticleEditor(
     await options.lock.release();
     options.lock.stopHeartbeat();
     conflict = null;
+    guard = initialGuardState();
     currentArticle = article;
     dispatch({ type: "open", articleId: article ? article.id : "new" });
     if (article) {
@@ -348,6 +472,32 @@ export function createArticleEditor(
 
   async function save(): Promise<void> {
     if (!canSave(state)) return;
+    // T4 #65 保存前二次守卫：源码模式放行；WYSIWYG 用「当前正文」重新往返判定，
+    // 不复用加载时的结论，显式覆盖过 lossy 也不会放行。阻止时保持编辑器打开、
+    // 保持锁、不发 PUT / POST，也不改 phase（票面「不能静默改写」）。
+    if (options.guard && guard.mode === "wysiwyg") {
+      const classification = await classifyCurrent();
+      const decision = guardWysiwygSave({
+        mode: guard.mode,
+        classification,
+        override: guard.override,
+      });
+      guard = { ...guard, status: classification.kind };
+      if (decision.blocked) {
+        guard = {
+          ...guard,
+          message:
+            messages().guardBlocked ??
+            DEFAULT_MESSAGES.guardBlocked ??
+            decision.reason,
+        };
+        notify();
+        options.onError?.(guard.message);
+        return;
+      }
+      guard = { ...guard, message: "" };
+      notify();
+    }
     const verified = await options.lock.verify();
     if (verified.kind === "conflict") {
       onLockConflict(verified.conflict);
@@ -510,6 +660,7 @@ export function createArticleEditor(
   return {
     getState: () => state,
     getConflict: () => conflict,
+    getGuard: () => guard,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -518,6 +669,9 @@ export function createArticleEditor(
     retryLoad,
     takeover,
     updateForm,
+    setEditorMode,
+    overrideGuard: () => setEditorMode("wysiwyg", true),
+    reevaluateGuard: runInitialGuard,
     save,
     close,
     esc,
@@ -540,11 +694,13 @@ export function useArticleEditor(options: ArticleEditorOptions) {
   const core = createArticleEditor(options);
   const state = shallowRef(core.getState());
   const conflict = shallowRef(core.getConflict());
-  core.subscribe((next, nextConflict) => {
+  const guard = shallowRef(core.getGuard());
+  core.subscribe((next, nextConflict, nextGuard) => {
     state.value = next;
     conflict.value = nextConflict;
+    guard.value = nextGuard;
   });
   onMounted(() => core.attach());
   onBeforeUnmount(() => core.dispose());
-  return { state, conflict, core };
+  return { state, conflict, guard, core };
 }

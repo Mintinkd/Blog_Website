@@ -8,10 +8,13 @@
  * - 保存失败 → 保持编辑器打开、保持锁、保留当前内容（state.error 显示原因）；
  * - 锁丢失 → 禁止保存，给出「复制正文 / 保留草稿 / 关闭」三个可操作出口。
  *
+ * T4 #65：工作区改为 WYSIWYG / 源码 / 分屏 / 线上预览，守卫快照由
+ * useArticleEditor 传入；线上预览弹窗复用同一个 renderMarkdown。
+ *
  * `.article-editor-overlay` / `.editor-toolbar` / `.toolbar-btn` 等类名保持不变，
  * 供 scripts/verify-visual-friendliness.mjs（CI 门禁）定位与量测。
  */
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { t } from "../../utils/i18n.ts";
 import {
   canSave,
@@ -19,16 +22,19 @@ import {
   type EditorState,
 } from "../../utils/editor/editorState";
 import type { LockConflict } from "../editor/useEditLock";
+import type { EditorGuardState } from "../editor/useArticleEditor";
 import EditorMetaFields from "../editor/EditorMetaFields.vue";
 import MarkdownWorkspace, {
   type WorkspaceMode,
 } from "../editor/MarkdownWorkspace.vue";
+import EditorPreviewDialog from "../editor/EditorPreviewDialog.vue";
 import LinkDialog from "../editor/LinkDialog.vue";
 import UnsavedChangesDialog from "../editor/UnsavedChangesDialog.vue";
 
 const props = defineProps<{
   state: EditorState;
   conflict: LockConflict | null;
+  guard: EditorGuardState;
   categories: { id: number; name: string }[];
   tags: { id: number; name: string }[];
   userRole: string;
@@ -43,12 +49,24 @@ const emit = defineEmits<{
   (e: "discard"): void;
   (e: "continue"): void;
   (e: "open-link"): void;
+  (e: "open-preview"): void;
   (e: "close-dialog"): void;
+  (e: "change-mode", mode: "wysiwyg" | "source"): void;
+  (e: "override-guard"): void;
+  (e: "upload-error", message: string): void;
   (e: "add-tag", name: string): void;
   (e: "keep-draft"): void;
 }>();
 
-const mode = ref<WorkspaceMode>("edit");
+const mode = ref<WorkspaceMode>("wysiwyg");
+
+/** 守卫判定为 lossy 时把布局同步回源码，避免按钮高亮与实际编辑形态漂移。 */
+watch(
+  () => props.guard.mode,
+  (next) => {
+    if (next === "source" && mode.value === "wysiwyg") mode.value = "source";
+  }
+);
 const linkSelected = ref("");
 const workspace = ref<InstanceType<typeof MarkdownWorkspace> | null>(null);
 
@@ -161,10 +179,18 @@ async function copyContent(): Promise<void> {
               ref="workspace"
               :content="props.state.form.content"
               :mode="mode"
+              :guard="props.guard"
               :disabled="props.state.phase === 'saving'"
               @update:content="onContent"
               @update:mode="(next: WorkspaceMode) => (mode = next)"
+              @change-mode="
+                (next: 'wysiwyg' | 'source') => emit('change-mode', next)
+              "
+              @override-guard="emit('override-guard')"
               @open-link="onOpenLink"
+              @open-preview="emit('open-preview')"
+              @save="emit('save')"
+              @upload-error="(message: string) => emit('upload-error', message)"
             />
           </template>
         </div>
@@ -225,6 +251,12 @@ async function copyContent(): Promise<void> {
       </div>
     </div>
 
+    <!-- 只读线上预览：与分屏右侧共用 renderMarkdown，Esc 由弹窗自己消费。 -->
+    <EditorPreviewDialog
+      :visible="props.state.dialog === 'preview'"
+      :content="props.state.form.content"
+      @close="emit('close-dialog')"
+    />
     <LinkDialog
       :visible="props.state.dialog === 'link'"
       :selected="linkSelected"

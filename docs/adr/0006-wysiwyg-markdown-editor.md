@@ -40,3 +40,16 @@
 - **拖拽上传待真实回归**：自动化模拟下粘贴可用、拖拽未触发 `onUpload`；T4 需用真实拖拽复核。
 - **回写守卫不变**：0/15 语料字节相同是常态，加载 / 模式切换 / 保存前仍按 `renderMarkdown` 归一化结果比较，语料单源为 `tests/fixtures/editor/markdown-corpus.ts`。
 - **T4 解除阻塞**：#65 接收上述 deferred obligations（已按 `docs/agents/issue-tracker.md` 写入其 body）；`docs/ARTICLE_EDITOR_UPGRADE.md` 8.1 的同步修订一并交由 #65。
+
+## T4 实施修订（2026-11-14，issue #65）
+
+实施报告见 `docs/reviews/2026-11-14-article-editor-t4.md`。本节只记录与 ADR 决策面相关的落地结论，不改变上文任何决策：
+
+- **装配**：`src/admin/editor/milkdown/createEditor.ts` 用 `CrepeBuilder` 只装 7 项（`toolbar` / `list-item` / `link-tooltip` / `table` / `block-edit` / `placeholder` / `cursor`），`image-block` / `code-mirror` / `latex` / `ai` / `top-bar` 全部关闭；`@milkdown/*` 固定 7.23.0 一组（23 包）并提交 `package-lock.json`。
+- **图片**：保留内置 `upload` 插件、覆盖 `uploadConfig.uploader`，写普通 `image` 节点（`src` = `POST /api/v1/media/upload` 返回的相对地址，`alt` = `original_name` 去扩展名）。默认 uploader 的 `blob:` URL 已被替换。
+- **内嵌链接**：`milkdown/embedLink.ts` 用 `$remark` 合并「html 开标签 + 纯文字 + html 闭标签」三元组，注册专用 `embed_link` 内联节点、`$view` NodeView（编辑器内是真实可编辑 `<a>`，点击不导航），序列化按原开标签逐字还原 `<a … data-embed="1">文字</a>`。复杂结构无法合并时回退到内核默认的原子 html 片段，保证逐字保真。上文「专用节点 / NodeView」的缺口由此闭合。
+- **i18n**：Crepe feature 的 label 配置非响应式这一实测结论不变；实现改为 Vue `reactive` 工具栏配置对象 + 监听 `locale-changed` 原地更新，`placeholderConfig` / `linkTooltipConfig` 走 `ctx.update`。语言切换不重建编辑器实例、不丢正文，ADR 原文「语言切换不重建编辑器」的目标达成，但**不是**靠「配置覆盖」直接达成，而是靠响应式适配层——按 `docs/agents/domain.md` 显式记录这一实现偏差。
+- **回写守卫**：`src/utils/editor/markdownBridge.ts` 为纯函数（渲染器注入），判定接入 `useArticleEditor` 的加载 / 模式切换 / 保存前编排；WYSIWYG 有损保存被真正阻止（不发请求、不改 phase、保持锁），显式覆盖也不例外。保存只写 Markdown，不写 `content_html`。
+- **工作区**：`MarkdownWorkspace.vue` 提供 WYSIWYG / 源码 / 分屏 / 线上预览四档，`defineAsyncComponent + import()` 懒加载；分屏预览与 `EditorPreviewDialog.vue` 都消费同一 `renderMarkdown`（150ms 防抖、只在可见时渲染、`enhanceMediaLinks` 限定容器）；分屏 ≥1024 并排 / 768–1023 堆叠 / <768 隐藏入口。
+- **包体与 CSP**：`npm run build` 通过，`patch-csp` 的静态 / SSR 两份 CSP 逐字符一致；Milkdown 增量 chunk `createEditor.*.js` gzip **181,194 B** + `MilkdownEditor.*.js` gzip **848 B**，合计约 **182 KiB**，低于 350 KiB 预算，且经 `__vite__mapDeps` 确认只由动态 `import()` 触发，不进入后台首屏静态 import。`classic.css`（1,088 B 变量定义）被 Astro 内联进首屏 HTML，就此显式说明：CSS 体积可忽略，但「CSS 也完全不进首屏」严格来说未成立，变量覆盖用 `:root .milkdown` 提高优先级以保证亮暗主题跟随。
+- **未闭环**：真机中文输入法组合输入、真实拖拽上传、CDP 级事件监听器计数、编辑器 Playwright 回归与 CI 门禁仍按 `docs/agents/issue-tracker.md` 的 cross-ticket 约定留给 T5 / T7；这些不改变本 ADR 的决策。

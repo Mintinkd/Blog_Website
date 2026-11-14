@@ -308,5 +308,22 @@
   "privacy.scope_body": "不建立跨天或跨设备的访客 ID；不做 canvas / WebGL / 字体等指纹识别；不展示或导出单访客明细；不把原始 IP、完整 UA、精确坐标写入数据库；本批统计不引入同意弹窗，因为只使用必要 Cookie 与聚合数据。",
   "privacy.contact_title": "联系方式",
   "privacy.contact_body": "如对统计口径或数据保留有疑问，请在仓库 Mintinkd/Blog_Website 提交 issue。",
-  "privacy.note": "本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页。"
+  "privacy.note": "本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页。",
+  "admin.editor_guard_lossy": "该文章包含所见即所得无法无损表示的语法，已在源码模式打开",
+  "admin.editor_guard_blocked": "保存前守卫仍判定有损，请在源码模式保存",
+  "editor.mode_wysiwyg": "所见即所得",
+  "editor.mode_source": "源码",
+  "editor.mode_split": "分屏",
+  "editor.online_preview": "线上预览",
+  "editor.guard_override": "仍然使用所见即所得",
+  "editor.toolbar_bold": "粗体",
+  "editor.toolbar_italic": "斜体",
+  "editor.toolbar_strikethrough": "删除线",
+  "editor.toolbar_code": "行内代码",
+  "editor.toolbar_link": "链接",
+  "editor.toolbar_heading": "标题",
+  "editor.toolbar_quote": "引用",
+  "editor.toolbar_list": "列表",
+  "editor.placeholder": "开始写作…",
+  "editor.link_placeholder": "粘贴或输入链接…"
 }
