@@ -101,7 +101,13 @@
 │   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 │   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用；dev-only 文章取数覆盖）
-│   │   └── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
+│   │   ├── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
+│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62；尚未接入 UI，由 T3 #64 起消费）
+│   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义
+│   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
+│   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
+│   │       ├── slug.ts              # 标题生成 slug 与合法性（与 Worker generateSlug 对齐）
+│   │       └── wordCount.ts         # 中英文字数与阅读时长（与 Worker calculateReadingTime 对齐）
 │   └── types/
 │       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 │       └── turndown-plugin-gfm.d.ts  # turndown-plugin-gfm 的类型声明（包内无 .d.ts，#33）
@@ -171,7 +177,7 @@
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
-├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖）
+├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖 + 编辑器纯函数行为基线 #62）
 ├── .node-version
 ├── .npmrc
 ├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD / shell 导航）
