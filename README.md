@@ -262,6 +262,8 @@ D1 (SQLite) 共 13 张表：
 | GET    | `/media`                | 媒体列表（editor仅自己的）                                                                                                                                             |
 | DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                                                                         |
 
+> `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
+
 #### 编辑锁接口
 
 | 方法   | 路径                            | 说明                    |

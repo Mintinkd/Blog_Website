@@ -320,6 +320,11 @@ export async function checkArticleOwnership(
   return article.author_id === userId;
 }
 
+/**
+ * 局部更新：`data` 中值为 `undefined` 的字段不写入、保持原值；
+ * `content` / `summary` / `cover_image` 显式传 `""` 是合法的清空操作（issue #70），
+ * 不得按假值跳过。请求 / 响应形状不变。
+ */
 export async function updateArticle(
   env: Env,
   id: number,

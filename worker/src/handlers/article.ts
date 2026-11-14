@@ -12,6 +12,16 @@ import { validate, isValidSlug } from "../utils/validator";
 import { generateSlug } from "../services/article_service";
 import type { AuthResult } from "../middleware/auth";
 
+/**
+ * 局部更新的可选文本字段（issue #70）：字段「存在」即写入，`""` 表示清空正文 /
+ * 摘要 / 封面；`undefined` / `null` 视为未提供、保持原值（沿用旧行为，避免把
+ * 字面量 "null" 写进正文）。仅用于 content / summary / cover_image；
+ * title 等字段的既有校验与语义不变。
+ */
+function optionalTextField(value: unknown): string | undefined {
+  return value === undefined || value === null ? undefined : String(value);
+}
+
 export async function handleListArticles(
   request: Request,
   env: Env,
@@ -234,7 +244,7 @@ export async function handleUpdateArticle(
   const { updateArticle } = await import("../services/article_service");
   const article = await updateArticle(env, Number(id), {
     title: body.title ? String(body.title) : undefined,
-    content: body.content ? String(body.content) : undefined,
+    content: optionalTextField(body.content),
     slug,
     category_id: body.category_id
       ? Number(body.category_id)
@@ -243,8 +253,8 @@ export async function handleUpdateArticle(
         : undefined,
     tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
     status: body.status ? (body.status as "draft" | "published") : undefined,
-    summary: body.summary ? String(body.summary) : undefined,
-    cover_image: body.cover_image ? String(body.cover_image) : undefined,
+    summary: optionalTextField(body.summary),
+    cover_image: optionalTextField(body.cover_image),
   });
 
   if (!article) {
