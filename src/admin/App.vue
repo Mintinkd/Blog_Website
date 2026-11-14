@@ -89,80 +89,19 @@
       </aside>
 
       <main class="admin-main">
-        <div v-if="currentTab === 'articles'" class="admin-panel">
-          <div class="panel-header">
-            <h2>{{ t("admin.articles") }}</h2>
-            <div style="display: flex; gap: 0.5rem; align-items: center">
-              <select
-                v-if="userRole === 'admin'"
-                v-model="authorFilter"
-                @change="loadArticles()"
-                style="padding: 0.4rem 0.6rem; font-size: 0.85rem"
-              >
-                <option value="">{{ t("admin.all_authors") }}</option>
-                <option v-for="u in users" :key="u.id" :value="u.id">
-                  {{ u.display_name || u.username }}
-                </option>
-              </select>
-              <button class="btn-primary" @click="openNewArticle">
-                {{ t("admin.new_article") }}
-              </button>
-            </div>
-          </div>
-          <div v-if="articlesLoading" class="loading">
-            {{ t("common.loading") }}
-          </div>
-          <table v-else class="data-table">
-            <thead>
-              <tr>
-                <th>{{ t("admin.title") }}</th>
-                <th>{{ t("admin.author") }}</th>
-                <th>{{ t("admin.status") }}</th>
-                <th>{{ t("admin.category") }}</th>
-                <th>{{ t("article.views") }}</th>
-                <th>{{ t("admin.created_at") }}</th>
-                <th>{{ t("admin.actions") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="a in articles" :key="a.id">
-                <td :data-label="t('admin.title')">
-                  <a :href="`/articles/${a.slug}`" target="_blank">{{
-                    a.title
-                  }}</a>
-                </td>
-                <td :data-label="t('admin.author')">
-                  {{ a.author_name || "-" }}
-                </td>
-                <td :data-label="t('admin.status')">
-                  <span :class="['status-badge', a.status]">{{
-                    a.status === "published"
-                      ? t("article.published")
-                      : t("article.draft")
-                  }}</span>
-                </td>
-                <td :data-label="t('admin.category')">
-                  {{ a.category?.name || "-" }}
-                </td>
-                <td :data-label="t('article.views')">{{ a.view_count }}</td>
-                <td :data-label="t('admin.created_at')">
-                  {{ formatDate(a.created_at) }}
-                </td>
-                <td class="actions" :data-label="t('admin.actions')">
-                  <button @click="editArticle(a)">{{ t("admin.edit") }}</button>
-                  <button @click="deleteArticle(a.id)" class="btn-danger">
-                    {{ t("admin.delete") }}
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="articles.length === 0">
-                <td colspan="7" class="empty">
-                  {{ t("article.no_articles") }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <ArticlesPanel
+          v-if="currentTab === 'articles'"
+          :articles="articles"
+          :loading="articlesLoading"
+          :author-filter="authorFilter"
+          :users="users"
+          :user-role="userRole"
+          @new="openNewArticle"
+          @edit="editArticle"
+          @delete="deleteArticle"
+          @update:author-filter="setAuthorFilter"
+          @filter-change="loadArticles()"
+        />
 
         <div v-if="currentTab === 'scrape'" class="admin-panel">
           <div class="panel-header">
@@ -1720,347 +1659,46 @@
           </div>
         </div>
 
-        <div
-          v-if="showLockConflict"
-          class="modal-overlay"
-          @click.self="showLockConflict = false"
-        >
-          <div class="modal">
-            <h3>{{ t("admin.edit_locked") }}</h3>
-            <p>
-              {{
-                t("admin.edit_locked_msg", {
-                  name: lockConflict?.holder_name || "?",
-                })
-              }}
-            </p>
-            <p
-              v-if="lockConflict?.expires_at"
-              style="font-size: 0.85rem; color: #888"
-            >
-              {{ t("admin.lock_expires_at") }}:
-              {{ new Date(lockConflict.expires_at).toLocaleString() }}
-            </p>
-            <div class="modal-actions">
-              <button class="btn-secondary" @click="showLockConflict = false">
-                {{ t("admin.cancel") }}
-              </button>
-              <button
-                v-if="userRole === 'admin'"
-                class="btn-danger"
-                @click="forceTakeover"
-              >
-                {{ t("admin.force_takeover") }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <Teleport to="body">
-          <div v-if="showArticleEditor" class="article-editor-overlay">
-            <div class="article-editor">
-              <div class="editor-header">
-                <h3>
-                  {{
-                    editingArticle
-                      ? t("admin.edit") + t("admin.articles")
-                      : t("admin.new_article")
-                  }}
-                </h3>
-                <button
-                  @click="
-                    releaseEditLock();
-                    showArticleEditor = false;
-                  "
-                  class="close-btn"
-                >
-                  &times;
-                </button>
-              </div>
-              <div class="editor-body">
-                <div class="form-group">
-                  <label>{{ t("admin.title") }}</label
-                  ><input v-model="articleForm.title" />
-                </div>
-                <div class="form-group">
-                  <label>{{ t("admin.slug") }}</label
-                  ><input v-model="articleForm.slug" />
-                </div>
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>{{ t("admin.category") }}</label>
-                    <select v-model="articleForm.category_id">
-                      <option value="">{{ t("admin.no_category") }}</option>
-                      <option v-for="c in categories" :key="c.id" :value="c.id">
-                        {{ c.name }}
-                      </option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>{{ t("admin.status") }}</label>
-                    <select v-model="articleForm.status">
-                      <option value="draft">{{ t("article.draft") }}</option>
-                      <option value="published">
-                        {{ t("article.published") }}
-                      </option>
-                    </select>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label>{{ t("admin.tags_label") }}</label>
-                  <div class="tag-selector">
-                    <div class="tag-chips">
-                      <button
-                        v-for="tag in tags"
-                        :key="tag.id"
-                        type="button"
-                        :class="[
-                          'tag-chip',
-                          {
-                            active: (articleForm.tags || []).includes(tag.name),
-                          },
-                        ]"
-                        @click="toggleTag(tag.name)"
-                      >
-                        {{ tag.name }}
-                      </button>
-                    </div>
-                    <div class="tag-input-row">
-                      <input
-                        v-model="newTagInput"
-                        @keydown.enter.prevent="addNewTag"
-                        :placeholder="t('admin.add_tag_placeholder')"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label>{{ t("admin.summary") }}</label
-                  ><textarea v-model="articleForm.summary" rows="2"></textarea>
-                </div>
-                <div class="form-group">
-                  <label>{{ t("admin.cover") }}</label
-                  ><input
-                    v-model="articleForm.cover_image"
-                    :placeholder="t('admin.cover_placeholder')"
-                  />
-                </div>
-                <div class="form-group">
-                  <div class="content-label-row">
-                    <label>{{ t("admin.content") }} (Markdown)</label>
-                    <div class="preview-toggle">
-                      <button
-                        :class="[
-                          'toggle-btn',
-                          { active: editorMode === 'edit' },
-                        ]"
-                        @click="editorMode = 'edit'"
-                      >
-                        {{ t("admin.edit_mode") }}
-                      </button>
-                      <button
-                        :class="[
-                          'toggle-btn',
-                          { active: editorMode === 'split' },
-                        ]"
-                        @click="editorMode = 'split'"
-                      >
-                        {{ t("admin.split_mode") }}
-                      </button>
-                      <button
-                        :class="[
-                          'toggle-btn',
-                          { active: editorMode === 'preview' },
-                        ]"
-                        @click="editorMode = 'preview'"
-                      >
-                        {{ t("admin.preview_mode") }}
-                      </button>
-                    </div>
-                  </div>
-                  <div v-if="editorMode !== 'preview'" class="editor-toolbar">
-                    <button
-                      type="button"
-                      class="toolbar-btn"
-                      @click="openLinkDialog"
-                    >
-                      {{ t("admin.insert_link") }}
-                    </button>
-                    <span class="toolbar-hint">{{ t("admin.link_hint") }}</span>
-                  </div>
-                  <div :class="['editor-content-area', editorMode]">
-                    <textarea
-                      v-if="editorMode !== 'preview'"
-                      ref="editorTextarea"
-                      v-model="articleForm.content"
-                      rows="20"
-                      class="editor-textarea"
-                      @input="updatePreview"
-                    ></textarea>
-                    <div
-                      v-if="editorMode !== 'edit'"
-                      class="editor-preview prose"
-                      v-html="previewHtml"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-              <div class="editor-footer">
-                <button
-                  class="btn-secondary"
-                  @click="showArticleEditor = false"
-                >
-                  {{ t("admin.cancel") }}
-                </button>
-                <button
-                  class="btn-primary"
-                  @click="saveArticle"
-                  :disabled="articleSaving"
-                >
-                  {{
-                    articleSaving ? t("admin.save_loading") : t("admin.save")
-                  }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </Teleport>
-
-        <!-- 插入链接：普通链接 / 内嵌网页预览两种预览模式。
-             z-index 高于文章编辑器全屏遮罩（300），否则弹窗被压在编辑器下面不可见。 -->
-        <Teleport to="body">
-          <div
-            v-if="linkDialog.visible"
-            class="modal-overlay link-dialog-overlay"
-            @click.self="linkDialog.visible = false"
-          >
-            <div class="modal link-dialog">
-              <h3>{{ t("admin.insert_link") }}</h3>
-              <div class="form-group">
-                <label>{{ t("admin.link_url") }}</label
-                ><input
-                  v-model="linkDialog.url"
-                  :placeholder="t('admin.link_url_placeholder')"
-                  @keydown.enter.prevent="confirmInsertLink"
-                />
-              </div>
-              <div class="form-group">
-                <label>{{ t("admin.link_text") }}</label
-                ><input
-                  v-model="linkDialog.text"
-                  :placeholder="t('admin.link_text_placeholder')"
-                  @keydown.enter.prevent="confirmInsertLink"
-                />
-              </div>
-              <div class="form-group">
-                <label>{{ t("admin.link_mode") }}</label>
-                <div
-                  class="link-mode-options"
-                  role="radiogroup"
-                  :aria-label="t('admin.link_mode')"
-                >
-                  <label
-                    :class="[
-                      'link-mode-option',
-                      { active: linkDialog.mode === 'link' },
-                    ]"
-                  >
-                    <input
-                      class="link-mode-input"
-                      type="radio"
-                      name="link-preview-mode"
-                      value="link"
-                      v-model="linkDialog.mode"
-                    />
-                    <span class="link-mode-icon" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path
-                          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
-                        />
-                        <path
-                          d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-                        />
-                      </svg>
-                    </span>
-                    <span class="link-mode-copy">
-                      <span class="link-mode-name">{{
-                        t("admin.link_mode_plain")
-                      }}</span>
-                      <span class="link-mode-desc">{{
-                        t("admin.link_mode_plain_desc")
-                      }}</span>
-                    </span>
-                    <span class="link-mode-indicator" aria-hidden="true"></span>
-                  </label>
-                  <label
-                    :class="[
-                      'link-mode-option',
-                      { active: linkDialog.mode === 'embed' },
-                    ]"
-                  >
-                    <input
-                      class="link-mode-input"
-                      type="radio"
-                      name="link-preview-mode"
-                      value="embed"
-                      v-model="linkDialog.mode"
-                    />
-                    <span class="link-mode-icon" aria-hidden="true">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <rect x="2.5" y="4" width="19" height="16" rx="2.5" />
-                        <path d="M2.5 9h19" />
-                        <rect x="6" y="12" width="12" height="5" rx="1" />
-                      </svg>
-                    </span>
-                    <span class="link-mode-copy">
-                      <span class="link-mode-name">{{
-                        t("admin.link_mode_embed")
-                      }}</span>
-                      <span class="link-mode-desc">{{
-                        t("admin.link_mode_embed_desc")
-                      }}</span>
-                    </span>
-                    <span class="link-mode-indicator" aria-hidden="true"></span>
-                  </label>
-                </div>
-              </div>
-              <p v-if="linkDialog.error" class="link-dialog-error">
-                {{ linkDialog.error }}
-              </p>
-              <div class="modal-actions">
-                <button
-                  class="btn-secondary"
-                  @click="linkDialog.visible = false"
-                >
-                  {{ t("admin.cancel") }}
-                </button>
-                <button class="btn-primary" @click="confirmInsertLink">
-                  {{ t("admin.link_insert") }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </Teleport>
+        <ArticleEditorOverlay
+          v-if="isEditorOpen(editorState)"
+          :state="editorState"
+          :conflict="editorConflict"
+          :categories="categories"
+          :tags="tags"
+          :user-role="userRole"
+          @update-form="onEditorForm"
+          @save="onEditorSave"
+          @close="onEditorClose"
+          @retry="onEditorRetry"
+          @takeover="onEditorTakeover"
+          @discard="onEditorDiscard"
+          @continue="onEditorContinue"
+          @open-link="onEditorOpenLink"
+          @close-dialog="onEditorCloseDialog"
+          @add-tag="addEditorTag"
+          @keep-draft="onEditorKeepDraft"
+        />
       </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import "./admin-shared.css";
+import ArticlesPanel from "./articles/ArticlesPanel.vue";
+import ArticleEditorOverlay from "./articles/ArticleEditorOverlay.vue";
+import {
+  createArticleEditor,
+  type ArticleEditorCore,
+} from "./editor/useArticleEditor.ts";
+import { createEditLock, type LockConflict } from "./editor/useEditLock.ts";
+import {
+  initialEditorState,
+  isEditorOpen,
+  type EditorFormSnapshot,
+  type EditorState,
+} from "../utils/editor/editorState";
+import { clearUserDrafts } from "../utils/editor/draftStore";
 import {
   ref,
   reactive,
@@ -2068,6 +1706,7 @@ import {
   onMounted,
   onBeforeUnmount,
   watch,
+  shallowRef,
   nextTick,
   h,
   defineComponent,
@@ -2080,7 +1719,6 @@ import {
 } from "../utils/settings.ts";
 import zh from "../i18n/zh.json";
 import { renderMarkdown } from "../utils/markdown";
-import { enhanceMediaLinks } from "../utils/mediaEmbed.ts";
 import type { ScrapeDraft, ScrapeWarning } from "../utils/scrape";
 import { safeFriendLinkUrl } from "../utils/friend-link-url";
 import { toConfigPayload } from "../utils/config-payload";
@@ -2100,108 +1738,10 @@ import {
   type TrendDay,
 } from "../utils/analyticsView.ts";
 
-// 正文预览复用全站 renderMarkdown（marked + DOMPurify + markdownPolicy 白名单），
-// 与服务端渲染口径一致（tests/markdown-preview-parity.test.ts）。
-// marked v14 起不再内置/接受 highlight 选项——如需代码高亮应接线 marked-highlight
-// （issue #26；与 src/utils/markdown.ts 同一套说明）。
-
-function updatePreview() {
-  if (!articleForm.value.content) {
-    previewHtml.value = "";
-    return;
-  }
-  try {
-    // 复用全站正文渲染管线（marked + DOMPurify，markdownPolicy 白名单），
-    // 保证预览与线上文章页同一套消毒口径（tests/markdown-preview-parity.test.ts）。
-    previewHtml.value = renderMarkdown(articleForm.value.content);
-  } catch {
-    previewHtml.value = "";
-  }
-}
-
-/* ===== 插入链接：普通链接 / 内嵌网页预览 ===== */
-const editorTextarea = ref<HTMLTextAreaElement | null>(null);
-const linkDialog = reactive({
-  visible: false,
-  url: "",
-  text: "",
-  mode: "link" as "link" | "embed",
-  error: "",
-});
-
-function openLinkDialog() {
-  // 选中文字直接带入链接文字；选中内容本身是 URL 则带入地址
-  const ta = editorTextarea.value;
-  const selected = (ta?.value || "")
-    .slice(ta?.selectionStart ?? 0, ta?.selectionEnd ?? 0)
-    .trim();
-  linkDialog.url = /^https?:\/\//i.test(selected) ? selected : "";
-  linkDialog.text = /^https?:\/\//i.test(selected) ? "" : selected;
-  linkDialog.mode = "link";
-  linkDialog.error = "";
-  linkDialog.visible = true;
-}
-
-/** Markdown 链接内的文字 / URL 转义（括号与方括号会破坏解析） */
-function mdEscapeText(text: string): string {
-  return text.replace(/([[\]])/g, "\\$1");
-}
-function mdEscapeUrl(url: string): string {
-  return url.replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\s/g, "%20");
-}
-
-/** 原始 HTML 锚点的属性 / 文本转义（内嵌预览标记走 <a data-embed="1">） */
-function escapeAttr(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-function escapeHtmlText(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function insertAtCursor(snippet: string) {
-  const content = articleForm.value.content || "";
-  const ta = editorTextarea.value;
-  if (!ta) {
-    articleForm.value.content = content + snippet;
-    updatePreview();
-    return;
-  }
-  const start = ta.selectionStart ?? content.length;
-  const end = ta.selectionEnd ?? start;
-  const next = content.slice(0, start) + snippet + content.slice(end);
-  articleForm.value.content = next;
-  const caret = start + snippet.length;
-  void nextTick(() => {
-    ta.focus();
-    ta.setSelectionRange(caret, caret);
-  });
-  updatePreview();
-}
-
-function confirmInsertLink() {
-  const url = linkDialog.url.trim();
-  if (!/^https?:\/\//i.test(url)) {
-    linkDialog.error = t("admin.link_invalid_url");
-    return;
-  }
-  const text =
-    (linkDialog.text || "").trim() || url.replace(/^https?:\/\//i, "");
-  const snippet =
-    linkDialog.mode === "embed"
-      ? `<a href="${escapeAttr(url)}" data-embed="1">${escapeHtmlText(text)}</a>`
-      : `[${mdEscapeText(text)}](${mdEscapeUrl(url)})`;
-  linkDialog.visible = false;
-  insertAtCursor(snippet);
-}
-
 const API = "/api/v1";
+
+// 编辑器编排器延迟赋值：api() 的 10003 分支需要先落盘草稿再退出登录。
+let editorCore: ArticleEditorCore | null = null;
 const currentLocale = ref(initLocale());
 
 const token = ref(localStorage.getItem("admin_token") || "");
@@ -2436,42 +1976,6 @@ const loginLoading = ref(false);
 const articles = ref<any[]>([]);
 const articlesLoading = ref(false);
 const authorFilter = ref("");
-const showArticleEditor = ref(false);
-const editingArticle = ref<any>(null);
-
-/** 空白文章表单：新建文章与「生成草稿并编辑」共用的唯一初值来源 */
-function emptyArticleForm() {
-  return {
-    title: "",
-    slug: "",
-    summary: "",
-    content: "",
-    cover_image: "",
-    category_id: "",
-    status: "draft",
-    tags: [] as string[],
-  };
-}
-
-const articleForm = ref(emptyArticleForm());
-const newTagInput = ref("");
-const articleSaving = ref(false);
-const editorMode = ref<"edit" | "split" | "preview">("edit");
-const previewHtml = ref("");
-
-/* 预览面板挂载后跑一遍内嵌媒体/网页增强，与文章页同一渲染载体
- * （媒体链接自动识别，data-embed="1" 渲染为内嵌网页预览）。
- * previewHtml 由 v-html 重建 DOM，每次输入后重新增强（幂等，已增强节点跳过）。 */
-watch([previewHtml, editorMode], () => {
-  if (editorMode.value === "edit" || !previewHtml.value) return;
-  void nextTick(() => {
-    const pane = document.querySelector<HTMLElement>(
-      ".article-editor .editor-preview"
-    );
-    if (pane) enhanceMediaLinks(pane, "a[href]", getLocale());
-  });
-});
-
 interface ScrapeSource {
   html: string;
   finalUrl: string;
@@ -2795,6 +2299,8 @@ async function api(method: string, path: string, body?: any) {
   const res = await fetch(`${API}${path}`, opts);
   const data = await res.json();
   if (data.code === 10003) {
+    // 会话失效：先同步落盘本地草稿 + 尽力释放锁，再退出到登录页；不清该用户草稿。
+    void editorCore?.sessionExpired();
     token.value = "";
     userRole.value = "editor";
     localStorage.removeItem("admin_token");
@@ -2836,8 +2342,9 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
-  // 退出前释放当前编辑锁
-  await releaseEditLock();
+  // 主动退出：释放编辑锁并清理该用户全部本地草稿（10003 会话失效不走这里）。
+  editorCore?.dispose();
+  clearUserDrafts(window.localStorage, currentUserId.value);
   token.value = "";
   userRole.value = "editor";
   currentUserId.value = 0;
@@ -2897,95 +2404,109 @@ async function loadConfig() {
   }
 }
 
-const lockConflict = ref<any>(null);
-const showLockConflict = ref(false);
-const lockConflictArticleId = ref<number | null>(null);
+const editorState = shallowRef<EditorState>(initialEditorState());
+const editorConflict = shallowRef<LockConflict | null>(null);
 
-async function editArticle(a: any) {
-  const lockRes = await api("POST", `/articles/${a.id}/edit-lock`);
-  if (lockRes.code !== 0 && lockRes.code !== 10006) {
-    alert(lockRes.message || t("admin.save_failed"));
-    return;
-  }
-  if (lockRes.code === 10006) {
-    lockConflict.value = lockRes.data;
-    lockConflictArticleId.value = a.id;
-    showLockConflict.value = true;
-    return;
-  }
+const editorLock = createEditLock({
+  apiBase: import.meta.env.PUBLIC_API_BASE || "/api/v1",
+  getToken: () => token.value,
+});
 
-  editingArticle.value = a;
-  articleForm.value = {
-    title: a.title,
-    slug: a.slug,
-    summary: a.summary || "",
-    content: "",
-    cover_image: a.cover_image || "",
-    category_id: a.category?.id?.toString() || "",
-    status: a.status || "draft",
-    tags: (a.tags || []).map((t: any) => t.name),
-  };
-  showArticleEditor.value = true;
+editorCore = createArticleEditor({
+  userId: currentUserId.value,
+  api: { request: (method, path, body) => api(method, path, body) },
+  lock: editorLock,
+  storage: window.localStorage,
+  messages: () => ({
+    loadFailed: t("admin.editor_load_failed"),
+    saveFailed: t("admin.save_failed"),
+    lockFailed: t("admin.lock_failed"),
+    lockLost: t("admin.lock_lost_message"),
+  }),
+  onSaved: () => {
+    void loadArticles();
+  },
+  onSessionExpired: () => {
+    isLoggedIn.value = false;
+  },
+  onError: (message: string) => {
+    alert(message);
+  },
+});
+editorCore.subscribe((next, conflict) => {
+  editorState.value = next;
+  editorConflict.value = conflict;
+});
+
+function openNewArticle(): void {
+  void editorCore?.open(null);
+}
+
+function editArticle(a: { id: number }): void {
+  void editorCore?.open({ id: a.id });
+}
+
+function setAuthorFilter(value: string): void {
+  authorFilter.value = value;
+}
+
+function onEditorForm(form: EditorFormSnapshot): void {
+  editorCore?.updateForm(form);
+}
+function onEditorSave(): void {
+  void editorCore?.save();
+}
+function onEditorClose(): void {
+  editorCore?.close();
+}
+function onEditorRetry(): void {
+  void editorCore?.retryLoad();
+}
+function onEditorTakeover(): void {
+  void editorCore?.takeover();
+}
+function onEditorDiscard(): void {
+  editorCore?.discard();
+}
+function onEditorContinue(): void {
+  editorCore?.continueEditing();
+}
+function onEditorOpenLink(): void {
+  editorCore?.openDialog("link");
+}
+function onEditorCloseDialog(): void {
+  editorCore?.closeDialog();
+}
+function onEditorKeepDraft(): void {
+  editorCore?.keepDraftAndClose();
+}
+
+/** 新建标签沿用原有 POST /tags → loadTags → 加进表单的路径，行为等价。 */
+async function addEditorTag(name: string): Promise<void> {
+  const current = editorCore?.getState();
+  if (!current || current.form.tags.includes(name)) return;
+  let slug = name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9\-]/g, "");
+  if (!slug) slug = "tag-" + Date.now().toString(36);
   try {
-    const detail = await api("GET", `/articles/${a.slug}`);
-    if (detail.code === 0 && detail.data) {
-      articleForm.value.content = detail.data.content || "";
-      updatePreview();
+    const res = await api("POST", "/tags", { name, slug });
+    if (res.code === 0 || res.code === 10006) {
+      await loadTags();
+      const latest = editorCore?.getState();
+      if (latest && !latest.form.tags.includes(name)) {
+        editorCore?.updateForm({
+          ...latest.form,
+          tags: [...latest.form.tags, name],
+        });
+      }
+    } else {
+      alert(res.message || t("admin.save_failed"));
     }
-  } catch {}
-}
-
-async function forceTakeover() {
-  if (!lockConflictArticleId.value) return;
-  if (!confirm(t("admin.force_takeover_confirm"))) return;
-  const res = await api(
-    "POST",
-    `/articles/${lockConflictArticleId.value}/edit-lock/force`
-  );
-  if (res.code === 0) {
-    showLockConflict.value = false;
-    // 接管成功后锁已在当前用户名下，直接打开编辑器，不再重复抢锁
-    const a = articles.value.find(
-      (x: any) => x.id === lockConflictArticleId.value
-    );
-    if (a) {
-      editingArticle.value = a;
-      articleForm.value = {
-        title: a.title,
-        slug: a.slug,
-        summary: a.summary || "",
-        content: "",
-        cover_image: a.cover_image || "",
-        category_id: a.category?.id?.toString() || "",
-        status: a.status || "draft",
-        tags: (a.tags || []).map((t: any) => t.name),
-      };
-      showArticleEditor.value = true;
-      try {
-        const detail = await api("GET", `/articles/${a.slug}`);
-        if (detail.code === 0 && detail.data) {
-          articleForm.value.content = detail.data.content || "";
-          updatePreview();
-        }
-      } catch {}
-    }
-    lockConflictArticleId.value = null;
-  } else {
-    alert(res.message || t("admin.save_failed"));
+  } catch {
+    alert(t("admin.save_failed"));
   }
-}
-
-async function releaseEditLock() {
-  if (editingArticle.value?.id) {
-    await api("DELETE", `/articles/${editingArticle.value.id}/edit-lock`);
-  }
-}
-
-function openNewArticle() {
-  editingArticle.value = null;
-  articleForm.value = emptyArticleForm();
-  newTagInput.value = "";
-  showArticleEditor.value = true;
 }
 
 const SCRAPE_WARNING_KEYS: Record<ScrapeWarning, string> = {
@@ -3148,9 +2669,7 @@ async function reextractScrape() {
 function editScrapedDraft() {
   const draft = scrapePreview.value;
   if (!draft) return;
-  editingArticle.value = null;
-  articleForm.value = {
-    ...emptyArticleForm(),
+  void editorCore?.open(null, {
     title: draft.title,
     slug: draft.slug,
     summary: draft.summary,
@@ -3159,72 +2678,7 @@ function editScrapedDraft() {
     category_id: String(draft.categoryId),
     status: draft.status,
     tags: [...draft.tags],
-  };
-  newTagInput.value = "";
-  editorMode.value = "edit";
-  updatePreview();
-  showArticleEditor.value = true;
-}
-
-function toggleTag(name: string) {
-  const tags = articleForm.value.tags || (articleForm.value.tags = []);
-  const i = tags.indexOf(name);
-  if (i >= 0) tags.splice(i, 1);
-  else tags.push(name);
-}
-
-async function addNewTag() {
-  const name = (newTagInput.value || "").trim();
-  if (!name) return;
-  const tags = articleForm.value.tags || (articleForm.value.tags = []);
-  if (tags.includes(name)) {
-    newTagInput.value = "";
-    return;
-  }
-
-  let slug = name
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9\-]/g, "");
-  if (!slug) slug = "tag-" + Date.now().toString(36);
-
-  try {
-    const res = await api("POST", "/tags", { name, slug });
-    if (res.code === 0 || res.code === 10006) {
-      await loadTags();
-      if (!articleForm.value.tags.includes(name))
-        articleForm.value.tags.push(name);
-    } else {
-      alert(res.message || t("admin.save_failed"));
-    }
-  } catch {
-    alert(t("admin.save_failed"));
-  }
-  newTagInput.value = "";
-}
-
-async function saveArticle() {
-  articleSaving.value = true;
-  try {
-    const body: any = { ...articleForm.value };
-    body.tags = articleForm.value.tags || [];
-    if (!body.category_id) body.category_id = null;
-    let data;
-    if (editingArticle.value) {
-      data = await api("PUT", `/articles/${editingArticle.value.id}`, body);
-    } else {
-      data = await api("POST", "/articles", body);
-    }
-    if (data.code === 0) {
-      if (editingArticle.value) await releaseEditLock();
-      showArticleEditor.value = false;
-      await loadArticles();
-    } else {
-      alert(data.message || t("admin.save_failed"));
-    }
-  } finally {
-    articleSaving.value = false;
-  }
+  });
 }
 
 async function deleteArticle(id: number) {
@@ -3697,30 +3151,14 @@ watch(isLoggedIn, (v) => {
 
 onMounted(() => {
   if (isLoggedIn.value) loadInitialData();
-  window.addEventListener("beforeunload", handleBeforeUnload);
+  editorCore?.attach();
   document.addEventListener("locale-changed", handleLocaleChanged);
 });
 
 onBeforeUnmount(() => {
-  releaseEditLock();
-  window.removeEventListener("beforeunload", handleBeforeUnload);
+  editorCore?.dispose();
   document.removeEventListener("locale-changed", handleLocaleChanged);
 });
-
-function handleBeforeUnload(_e: BeforeUnloadEvent) {
-  // 页面关闭/刷新时尽力释放编辑锁（keepalive 确保请求发出）
-  if (editingArticle.value?.id) {
-    const token = localStorage.getItem("admin_token");
-    const apiBase = import.meta.env.PUBLIC_API_BASE || "/api/v1";
-    if (token) {
-      fetch(`${apiBase}/articles/${editingArticle.value.id}/edit-lock`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-        keepalive: true,
-      }).catch(() => {});
-    }
-  }
-}
 
 watch(currentTab, (tab) => {
   if (tab === "config" || tab === "about") loadConfig();
@@ -3731,1606 +3169,3 @@ watch(currentTab, (tab) => {
   if (tab === "friend_links") loadFriendLinks();
 });
 </script>
-
-<style scoped>
-.admin-app {
-  min-height: 60vh;
-}
-
-/* ===== 个人名片编辑（关于页面板内） ===== */
-.profile-editor {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
-}
-.profile-editor-head {
-  margin-bottom: 1rem;
-}
-.profile-editor-head h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0 0 0.25rem;
-}
-.profile-editor-head span,
-.profile-tip {
-  font-size: 0.78rem;
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
-}
-.profile-tip {
-  margin: 0.5rem 0 0;
-}
-.profile-avatar-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-.profile-avatar-preview {
-  width: 72px;
-  height: 72px;
-  flex: none;
-  border-radius: 18px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary);
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-}
-.profile-avatar-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.profile-avatar-initial {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--color-accent);
-}
-.profile-avatar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.profile-upload-btn {
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.profile-link-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-.profile-link-label {
-  width: 30%;
-  min-width: 100px;
-}
-.profile-link-url {
-  flex: 1;
-  min-width: 160px;
-}
-.profile-link-remove {
-  flex: none;
-  font-size: 0.78rem;
-  padding: 0.3rem 0.7rem;
-}
-.profile-editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.profile-editor-divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 0 0 1.25rem;
-}
-@media (max-width: 640px) {
-  .profile-link-row {
-    flex-wrap: wrap;
-  }
-  .profile-link-label,
-  .profile-link-url {
-    width: 100%;
-  }
-}
-
-.login-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 60vh;
-}
-
-.login-card {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: 2.5rem;
-  width: 100%;
-  max-width: 380px;
-}
-
-.login-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-  color: var(--color-accent);
-}
-
-.login-header h1 {
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.login-form .form-group {
-  margin-bottom: 1rem;
-}
-
-.login-btn {
-  width: 100%;
-  padding: 0.65rem;
-  background: var(--color-accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.login-btn:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.login-btn:disabled {
-  opacity: 0.6;
-}
-
-.error-msg {
-  color: var(--color-error);
-  font-size: 0.85rem;
-  margin-bottom: 0.75rem;
-}
-
-.admin-layout {
-  display: flex;
-  gap: 1.5rem;
-  min-height: 60vh;
-}
-
-.admin-sidebar {
-  width: 200px;
-  flex-shrink: 0;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: 1rem 0;
-  display: flex;
-  flex-direction: column;
-  height: fit-content;
-  position: sticky;
-  top: calc(var(--header-height) + 2rem);
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  color: var(--color-accent);
-  font-weight: 700;
-  font-size: 0.95rem;
-  border-bottom: 1px solid var(--color-border-light);
-  margin-bottom: 0.5rem;
-}
-
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0 0.5rem;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border: none;
-  background: none;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  width: 100%;
-  text-align: left;
-  transition: all 0.15s;
-}
-
-.nav-item:hover {
-  background: var(--color-accent-subtle);
-  color: var(--color-text-primary);
-}
-
-.nav-item.active {
-  background: var(--color-accent-light);
-  color: var(--color-accent);
-  font-weight: 500;
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: 0.75rem 0.5rem 0;
-  border-top: 1px solid var(--color-border-light);
-}
-
-.admin-main {
-  flex: 1;
-  min-width: 0;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  height: fit-content;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-
-.panel-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.scrape-form {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-
-.scrape-form input,
-.scrape-selector input {
-  flex: 1;
-  min-width: 240px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-size: 0.85rem;
-  font-family: inherit;
-}
-
-.scrape-form input:focus,
-.scrape-selector input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.scrape-selector {
-  display: flex;
-  gap: 0.5rem;
-  margin: 0.75rem 0 0.4rem;
-  flex-wrap: wrap;
-}
-
-.scrape-selector-error {
-  font-size: 0.8rem;
-  color: var(--color-error);
-  margin-bottom: 0.5rem;
-}
-
-.scrape-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--color-error);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 59, 48, 0.08);
-  color: var(--color-error);
-  font-size: 0.85rem;
-}
-
-.scrape-preview h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
-}
-
-.scrape-summary {
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-  margin-bottom: 0.75rem;
-}
-
-.scrape-cover {
-  margin-bottom: 0.75rem;
-}
-
-.scrape-cover img {
-  display: block;
-  max-width: 100%;
-  max-height: 220px;
-  object-fit: cover;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-.scrape-meta {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  overflow-wrap: anywhere;
-  margin-bottom: 0.5rem;
-}
-
-.scrape-meta a {
-  color: var(--color-accent);
-}
-
-.scrape-warning {
-  font-size: 0.8rem;
-  color: var(--color-warning);
-  margin-bottom: 0.4rem;
-}
-
-.scrape-hint {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  margin-bottom: 0.4rem;
-}
-
-.scrape-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin: 1rem 0;
-}
-
-.scrape-markdown {
-  margin: 0;
-  padding: 1rem;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.scrape-rendered {
-  padding: 1rem;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.btn-primary {
-  padding: 0.45rem 1rem;
-  background: var(--color-accent);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-}
-
-.btn-secondary {
-  padding: 0.45rem 1rem;
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.btn-danger {
-  color: var(--color-error);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.data-table th {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 2px solid var(--color-border);
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.data-table td {
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--color-border-light);
-  color: var(--color-text-primary);
-}
-
-.data-table td a {
-  color: var(--color-accent);
-  overflow-wrap: anywhere;
-}
-
-/* 评论内容在桌面端保持单行省略，移动端卡片模式再放开换行 */
-.data-table .cell-clip {
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-badge {
-  padding: 0.1rem 0.5rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-badge.published {
-  background: rgba(52, 199, 89, 0.1);
-  color: var(--color-success);
-}
-
-.status-badge.draft {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-tertiary);
-}
-
-.status-badge.admin {
-  background: rgba(73, 177, 245, 0.1);
-  color: var(--color-accent);
-}
-
-.status-badge.editor {
-  background: rgba(255, 159, 10, 0.1);
-  color: var(--color-warning);
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.actions button {
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-secondary);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.actions button:hover {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.form-group {
-  margin-bottom: 0.75rem;
-}
-
-.form-group label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  margin-bottom: 0.3rem;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-size: 0.85rem;
-  font-family: inherit;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-/* checkbox 不受通用 input 样式（width:100%/padding/border）影响，紧贴文字显示 */
-.form-group input[type="checkbox"] {
-  width: auto;
-  height: auto;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  accent-color: var(--color-accent);
-  margin: 0 0.4rem 0 0;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.3rem;
-  cursor: pointer;
-}
-
-.checkbox-label:hover {
-  color: var(--color-text-primary);
-}
-
-.form-row {
-  display: flex;
-  gap: 1rem;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.modal {
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  width: 90%;
-  max-width: 440px;
-}
-
-.modal h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.article-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--color-bg-primary);
-  z-index: 300;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.article-editor {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--color-border-light);
-  background: var(--color-bg-secondary);
-}
-
-.editor-header h3 {
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.close-btn {
-  font-size: 1.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  line-height: 1;
-}
-
-.editor-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  max-width: 800px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.editor-textarea {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  line-height: 1.6;
-  min-height: 400px;
-}
-
-.content-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.3rem;
-}
-
-.content-label-row label {
-  margin-bottom: 0;
-}
-
-.preview-toggle {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.toggle-btn {
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-tertiary);
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.toggle-btn:hover {
-  color: var(--color-text-secondary);
-  border-color: var(--color-accent);
-}
-
-.toggle-btn.active {
-  background: var(--color-accent);
-  color: #fff;
-  border-color: var(--color-accent);
-}
-
-.editor-content-area {
-  display: flex;
-  gap: 1rem;
-  min-height: 400px;
-}
-
-/* ---- 编辑器工具栏（插入链接等） ---- */
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-
-.toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.9rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-  font-size: 0.82rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition:
-    border-color 0.2s,
-    color 0.2s,
-    background 0.2s;
-}
-
-.toolbar-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
-.toolbar-hint {
-  font-size: 0.75rem;
-  color: var(--color-text-tertiary);
-}
-
-/* ---- 插入链接弹窗：预览模式选项 ---- */
-/* 必须盖在文章编辑器全屏遮罩（z-index 300）之上 */
-.link-dialog-overlay {
-  z-index: 400;
-}
-
-.link-dialog {
-  max-width: 460px;
-  width: 92vw;
-}
-
-/* 卡片式单选：图标 / 两行文案 / 独立指示器三栏。
-   原生 radio 只保留语义与键盘行为，视觉由 .link-mode-indicator 承担，
-   避免 radio 圆圈浮在卡片中间、标题与描述挤成一行连读。 */
-.link-mode-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-}
-
-/* 选择器需压过 .form-group label 的 display:block / margin-bottom / 字号：
-   否则三栏 grid 退化成块级堆叠，图标、文案、指示器重新挤成一列。 */
-.link-mode-options .link-mode-option {
-  position: relative;
-  display: grid;
-  margin-bottom: 0;
-  font-size: inherit;
-  font-weight: inherit;
-  color: inherit;
-  grid-template-columns: 2.25rem minmax(0, 1fr) 1.125rem;
-  align-items: center;
-  column-gap: 0.75rem;
-  min-height: 44px;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-secondary);
-  cursor: pointer;
-  overflow: hidden;
-  transition:
-    border-color var(--motion-duration-fast) var(--motion-ease-standard),
-    background-color var(--motion-duration-fast) var(--motion-ease-standard),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-/* 选中态强调条用绝对定位，不占布局，避免选中时卡片尺寸跳变 */
-.link-mode-option::before {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: 3px;
-  background: var(--color-accent);
-  opacity: 0;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.link-mode-option:hover {
-  border-color: var(--color-accent);
-  background: var(--color-bg-primary);
-}
-
-.link-mode-option.active {
-  border-color: var(--color-accent);
-  background: var(--color-accent-subtle);
-  box-shadow: var(--shadow-sm);
-}
-
-.link-mode-option.active::before {
-  opacity: 1;
-}
-
-/* 仅键盘聚焦时画焦点环，鼠标点击不出现外框 */
-.link-mode-option:has(.link-mode-input:focus-visible) {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-/* sr-only：仍可 Tab 聚焦、仍与 label 关联，只是不画原生圆圈。
-   选择器带 input 与属性，优先级高于 .form-group input 的通用表单样式。 */
-.link-mode-option input.link-mode-input[type="radio"] {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.link-mode-icon {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
-  transition: background-color var(--motion-duration-fast)
-    var(--motion-ease-standard);
-}
-
-.link-mode-icon svg {
-  width: 1.125rem;
-  height: 1.125rem;
-}
-
-.link-mode-option.active .link-mode-icon {
-  background: var(--color-accent-light);
-}
-
-.link-mode-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1875rem;
-  min-width: 0;
-}
-
-.link-mode-name {
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--color-text-primary);
-}
-
-.link-mode-desc {
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-}
-
-.link-mode-indicator {
-  position: relative;
-  display: block;
-  width: 1.125rem;
-  height: 1.125rem;
-  /* 用 tertiary 而非 border：圆圈边界对卡片底色需 ≥3:1 才看得清未选中态 */
-  border: 1.5px solid var(--color-text-tertiary);
-  border-radius: 50%;
-  background: transparent;
-  transition: border-color var(--motion-duration-fast)
-    var(--motion-ease-standard);
-}
-
-.link-mode-indicator::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--color-accent);
-  opacity: 0;
-  transform: scale(0.4);
-  transition:
-    opacity var(--motion-duration-fast) var(--motion-ease-standard),
-    transform var(--motion-duration-fast) var(--motion-ease-emphasized);
-}
-
-.link-mode-option:hover .link-mode-indicator {
-  border-color: var(--color-accent);
-}
-
-.link-mode-option.active .link-mode-indicator {
-  border-color: var(--color-accent);
-}
-
-.link-mode-option.active .link-mode-indicator::after {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.link-dialog-error {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  color: var(--color-error);
-}
-
-/* 窄屏收紧留白，但保持两行文案与 >=44px 触控目标 */
-@media (max-width: 480px) {
-  .link-mode-options .link-mode-option {
-    grid-template-columns: 2rem minmax(0, 1fr) 1.125rem;
-    column-gap: 0.625rem;
-    padding: 0.875rem;
-  }
-
-  .link-mode-icon {
-    width: 2rem;
-    height: 2rem;
-  }
-}
-
-.editor-content-area .editor-textarea {
-  flex: 1;
-  min-height: 400px;
-  resize: vertical;
-}
-
-.editor-content-area.split .editor-textarea {
-  flex: 1;
-  min-height: 400px;
-}
-
-.editor-content-area.split .editor-preview {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.editor-content-area.edit .editor-preview {
-  display: none;
-}
-
-.editor-content-area.preview .editor-textarea {
-  display: none;
-}
-
-.editor-content-area.preview .editor-preview {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.editor-preview {
-  padding: 1rem;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  font-size: 0.9rem;
-  line-height: 1.7;
-}
-
-.editor-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--color-border-light);
-  background: var(--color-bg-secondary);
-}
-
-.config-form {
-  max-width: 600px;
-}
-
-.loading {
-  text-align: center;
-  padding: 2rem;
-  color: var(--color-text-tertiary);
-}
-
-.empty {
-  text-align: center;
-  color: var(--color-text-tertiary);
-  padding: 1rem;
-}
-
-.msg {
-  margin-top: 0.75rem;
-  font-size: 0.85rem;
-  color: var(--color-success);
-}
-
-.media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
-}
-
-.media-item {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.media-thumb {
-  width: 100%;
-  height: 140px;
-  object-fit: cover;
-  display: block;
-}
-
-.tag-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-.tag-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.tag-chip {
-  padding: 0.3rem 0.7rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-secondary);
-  border-radius: 999px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.tag-chip:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-.tag-chip.active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: #fff;
-}
-.tag-input-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-.tag-input-row input {
-  flex: 1 1 200px;
-  min-width: 0;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  font-size: 0.85rem;
-}
-
-.media-info {
-  padding: 0.5rem;
-}
-
-.media-name {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: 0.35rem;
-}
-
-.media-actions-row {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.status-badge.pending {
-  background: rgba(255, 159, 10, 0.1);
-  color: var(--color-warning);
-}
-
-.status-badge.approved {
-  background: rgba(52, 199, 89, 0.1);
-  color: var(--color-success);
-}
-
-.status-badge.rejected {
-  background: rgba(255, 59, 48, 0.1);
-  color: var(--color-error);
-}
-
-.appearance-form {
-  max-width: 820px;
-}
-
-.setting-section {
-  margin-bottom: 1.5rem;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  background: var(--color-bg-primary);
-}
-
-.setting-section h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 0.9rem;
-}
-
-.setting-section h4 {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  margin: 0.75rem 0 0.5rem;
-}
-
-.theme-group {
-  margin-bottom: 0.5rem;
-}
-
-.color-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 0.6rem;
-}
-
-.color-field label {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--color-text-secondary);
-  margin-bottom: 0.25rem;
-}
-
-.color-input-row {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-}
-
-.color-input-row input[type="color"] {
-  width: 40px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: none;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.color-hex {
-  flex: 1;
-  min-width: 0;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-size: 0.8rem;
-  font-family: var(--font-mono);
-}
-
-.toggle-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.5rem;
-}
-
-.toggle-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.copy-row {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 36px;
-  gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.4rem;
-}
-
-.copy-row.head {
-  font-size: 0.75rem;
-  color: var(--color-text-tertiary);
-  font-weight: 500;
-}
-
-.copy-row.head span {
-  padding: 0 0.25rem;
-}
-
-.copy-row input {
-  width: 100%;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-size: 0.8rem;
-}
-
-.hint {
-  font-size: 0.8rem;
-  color: var(--color-text-tertiary);
-  margin-bottom: 0.75rem;
-}
-
-@media (max-width: 767px) {
-  .admin-layout {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .admin-sidebar {
-    width: 100%;
-    position: static;
-  }
-  .sidebar-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-  .nav-item {
-    flex: none;
-    width: auto;
-    min-height: 44px;
-    white-space: nowrap;
-  }
-  .sidebar-footer {
-    border-top: none;
-    padding-top: 0;
-  }
-  .admin-main {
-    padding: 1rem;
-  }
-  .panel-header {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .login-card {
-    padding: 1.5rem;
-  }
-  .scrape-form input,
-  .scrape-selector input {
-    min-width: 0;
-    width: 100%;
-  }
-  .analytics-table {
-    display: block;
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-  }
-
-  /* 数据表在手机上改成卡片：每行一张卡，字段名在左、值在右。
-     7 列表格硬塞进 375px 时每列只有约 40px，中文会逐字竖排。 */
-  .data-table,
-  .data-table tbody,
-  .data-table tr,
-  .data-table td {
-    display: block;
-    width: 100%;
-  }
-
-  .data-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .data-table tr {
-    margin-bottom: 0.75rem;
-    padding: 0.45rem 0.9rem;
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-  }
-
-  .data-table tr:last-child {
-    margin-bottom: 0;
-  }
-
-  .data-table tr:has(td.empty) {
-    padding: 0;
-    background: none;
-    border: 0;
-  }
-
-  .data-table td {
-    display: grid;
-    grid-template-columns: 4.75rem minmax(0, 1fr);
-    gap: 0.75rem;
-    align-items: start;
-    padding: 0.45rem 0;
-    border-bottom: 1px dashed var(--color-border-light);
-    overflow-wrap: anywhere;
-  }
-
-  .data-table td:last-child {
-    padding-bottom: 0.1rem;
-    border-bottom: 0;
-  }
-
-  .data-table td[data-label]::before {
-    content: attr(data-label);
-    color: var(--color-text-tertiary);
-    font-size: 0.75rem;
-    line-height: 1.6;
-  }
-
-  .data-table td.empty {
-    display: block;
-    padding: 1.5rem 0.5rem;
-    border-bottom: 0;
-    color: var(--color-text-tertiary);
-    text-align: center;
-  }
-
-  .data-table td.cell-clip {
-    max-width: none;
-    overflow: visible;
-    white-space: normal;
-    text-overflow: clip;
-  }
-
-  .data-table td.actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    padding-top: 0.6rem;
-  }
-
-  .data-table td.actions::before {
-    margin-right: auto;
-  }
-
-  .data-table td.actions button {
-    min-height: 40px;
-    padding: 0.45rem 0.9rem;
-  }
-
-  /* 文案覆盖：桌面端四列并排，手机端键名独占一行、中英各半行 */
-  .copy-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .copy-row.head {
-    display: none;
-  }
-
-  .copy-row > :first-child,
-  .copy-row > :last-child {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 359px) {
-  /* 280px 下两列各只剩 78px，中英文都看不清，直接单列堆叠 */
-  .copy-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .copy-row > :first-child,
-  .copy-row > :last-child {
-    grid-column: auto;
-  }
-}
-/* ── 阅读统计面板（issue #58 / §7） ── */
-.analytics-header {
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.analytics-error-detail {
-  display: block;
-  margin-top: 0.35rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  opacity: 0.85;
-  word-break: break-all;
-}
-.analytics-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  font-size: 0.8rem;
-}
-.analytics-filters label {
-  display: flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-.analytics-updated {
-  color: var(--color-text-tertiary);
-}
-.analytics-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.analytics-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.75rem;
-}
-.analytics-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 1rem;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-.analytics-card-label {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-.analytics-card-value {
-  font-size: 1.6rem;
-  font-variant-numeric: tabular-nums;
-}
-.analytics-section {
-  padding: 1rem;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-.analytics-section h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-}
-.analytics-section h3 small {
-  margin-left: 0.5rem;
-  font-weight: normal;
-  color: var(--color-text-tertiary);
-}
-.analytics-trend {
-  display: block;
-  width: 100%;
-  height: 160px;
-}
-.analytics-legend {
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.4rem;
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-}
-.analytics-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 0.3rem;
-  border-radius: 50%;
-}
-.analytics-dot-pv {
-  background: #d64545;
-}
-.analytics-dot-uv {
-  background: #3b7ddd;
-}
-.analytics-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
-.analytics-table th,
-.analytics-table td {
-  padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid var(--color-border-light);
-  text-align: left;
-}
-.analytics-table th {
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-.analytics-spark {
-  display: block;
-  width: 80px;
-  height: 24px;
-  color: var(--color-accent);
-}
-.analytics-pager {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 0.75rem;
-  font-size: 0.8rem;
-}
-.analytics-dims {
-  display: grid;
-  /* 280px 视口下内容区只有约 206px，固定 240px 下限会把卡片顶出面板 */
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
-  gap: 1rem;
-}
-.analytics-dim h4 {
-  margin: 0 0 0.5rem;
-  font-size: 0.88rem;
-}
-.analytics-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-.analytics-bar-row {
-  display: grid;
-  grid-template-columns: 90px 1fr 100px;
-  gap: 0.5rem;
-  align-items: center;
-  font-size: 0.75rem;
-}
-.analytics-bar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.analytics-bar-track {
-  height: 8px;
-  overflow: hidden;
-  background: var(--color-bg-tertiary);
-  border-radius: 4px;
-}
-.analytics-bar-fill {
-  height: 100%;
-  background: var(--color-accent);
-}
-.analytics-quality {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.6rem;
-}
-.analytics-quality-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-.analytics-quality-row.alert {
-  border-color: var(--color-warning);
-  background: rgba(255, 159, 10, 0.08);
-}
-.analytics-quality-row.critical {
-  border-color: var(--color-error);
-  background: rgba(255, 59, 48, 0.08);
-}
-.analytics-bot-hint {
-  margin: 0.75rem 0 0;
-  font-size: 0.75rem;
-  color: var(--color-text-tertiary);
-}
-.analytics-alert-tag {
-  font-size: 0.7rem;
-  color: var(--color-warning);
-}
-@media (max-width: 720px) {
-  .analytics-bar-row {
-    grid-template-columns: 70px 1fr 80px;
-  }
-}
-</style>

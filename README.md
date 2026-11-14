@@ -9,7 +9,7 @@
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
 - **Element Plus** — 后台管理UI组件库
-- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览仍走既有的 `marked.parse` + 默认 DOMPurify；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
+- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览复用同一 `renderMarkdown`；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
 
 ### 后端
 
@@ -35,7 +35,18 @@
 │   └── robots.txt
 ├── src/
 │   ├── admin/
-│   │   └── App.vue             # 后台管理SPA（含阅读统计「统计」面板，#58）
+│   │   ├── App.vue             # 后台管理 SPA：登录 / 侧栏 / 标签页编排 + 11 个待拆面板（#69 T8 收口）
+│   │   ├── admin-shared.css    # 后台共享样式单源（由 App.vue 的 <style scoped> 整块抽出，T3 #64）
+│   │   ├── articles/
+│   │   │   ├── ArticlesPanel.vue         # 文章列表 / 筛选 / 操作列（T3 #64）
+│   │   │   └── ArticleEditorOverlay.vue  # 文章编辑器全屏壳层（T3 #64）
+│   │   └── editor/                       # 编辑器组件、状态机与锁（T3 #64）
+│   │       ├── EditorMetaFields.vue      # 标题 / slug / 分类 / 状态 / 标签 / 摘要 / 封面
+│   │       ├── MarkdownWorkspace.vue     # 编辑 / 分屏 / 预览三档 + textarea（T4 #65 换内核）
+│   │       ├── LinkDialog.vue            # 普通链接 / 内嵌网页预览
+│   │       ├── UnsavedChangesDialog.vue  # 保存并关闭 / 放弃修改 / 继续编辑
+│   │       ├── useArticleEditor.ts       # 显式状态机 + 副作用编排（消费 T1 reducer）
+│   │       └── useEditLock.ts            # 获取 / 10 分钟心跳 / 保存前校验 / 释放
 │   ├── components/
 │   │   ├── article/
 │   │   │   └── ArticleCard.astro
@@ -102,7 +113,7 @@
 │   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
 │   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用；dev-only 文章取数覆盖）
 │   │   ├── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
-│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62；尚未接入 UI，由 T3 #64 起消费）
+│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62；由 T3 #64 的 admin/editor/* 消费）
 │   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义
 │   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
 │   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
@@ -375,7 +386,11 @@ D1 (SQLite) 共 13 张表：
 - **角色权限** — admin（全部功能）和 editor（文章/分类/标签/评论/图片，受所有权限制）
 - **文章管理** — 新建/编辑/删除，Markdown编辑器（编辑/分屏/预览三种模式，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
   - editor 只能编辑/删除自己的文章
-  - 编辑锁：编辑前自动获取锁，冲突时弹窗提示，admin可强制接管
+  - 组件化（T3 #64）：文章列表与全屏壳层在 `src/admin/articles/`，元信息 / 工作区 / 弹窗 / composables 在 `src/admin/editor/`；`App.vue` 不再包含文章编辑器主体，后台样式由 `src/admin/admin-shared.css` 单源提供
+  - 取数：打开已发布文章走认证接口 `GET /articles/:id/edit`（不经公开 slug 接口、不写阅读统计）；强制接管后重新加载详情并重建未保存基线
+  - 编辑锁：打开前获取、每 10 分钟心跳续期、保存前再次校验；取消 / X / Esc / 保存成功 / 放弃均释放，`beforeunload` 只提示，`pagehide`（`persisted === false`）尽力释放；冲突时禁止保存并提供复制正文 / 保留草稿 / 关闭
+  - 未保存保护：脏状态下关闭 / 取消 / Esc / 刷新触发三出口（保存并关闭 / 放弃修改 / 继续编辑）；加载正文失败不进入可编辑状态，保存失败保持编辑器打开、保持锁并保留内容
+  - 会话失效（`10003`）：先同步落盘本地草稿、尽力释放锁，再退出到登录页，不清除该用户草稿
 - **分类管理** — 增改（editor仅自己的），删除仅admin
 - **标签管理** — 增（editor创建的），删除仅admin
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
