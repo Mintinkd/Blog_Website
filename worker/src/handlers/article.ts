@@ -140,6 +140,46 @@ export async function handleGetArticle(
   return response;
 }
 
+/**
+ * issue #63 / ADR 0006 取数接缝：编辑器按稳定 id 取完整正文。
+ *
+ * 与公开 `GET /articles/:slug` 完全分开：需 Bearer 鉴权（路由 requireAuth）、
+ * admin 可读全部 / editor 仅可读自己的文章；不进入阅读统计、不下发
+ * `view_<id>` Cookie、不写 `requests`；响应为 ArticleEditDetail，不含
+ * `content_html`。`PUT /articles/:id` 的写入语义不受影响（空字符串清空由 #70 处理）。
+ */
+export async function handleGetArticleForEdit(
+  _request: Request,
+  env: Env,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
+  // handler 级兜底：即使被绕过 requireAuth 直接调用，也不向匿名请求暴露正文
+  if (!authResult) return unauthorized("需要登录才能读取文章编辑详情");
+
+  const { id } = params;
+  // 只接受十进制正整数，且必须落在安全整数范围内；拒绝 0 / 负数 / 小数 /
+  // 前导零 / 非数字 / 溢出值，避免 Number() 把脏 id 静默转成 NaN 或 0
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) {
+    return error(ErrorCodes.PARAM_ERROR, "无效的文章 id", 400);
+  }
+  const articleId = Number(id);
+
+  const { getArticleForEdit } = await import("../services/article_service");
+  const article = await getArticleForEdit(env, articleId);
+  if (!article) return notFound("Article not found");
+
+  // 先取详情确认文章存在 → 404；再判所有权 → 403，两者语义不混淆
+  if (authResult.role !== "admin") {
+    const { checkArticleOwnership } =
+      await import("../services/article_service");
+    const owned = await checkArticleOwnership(env, articleId, authResult);
+    if (!owned) return forbidden("您没有权限编辑此文章");
+  }
+
+  return successResponse(article);
+}
+
 export async function handleCreateArticle(
   request: Request,
   env: Env,

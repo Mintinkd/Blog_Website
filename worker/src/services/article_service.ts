@@ -2,6 +2,8 @@ import { Env } from "../index";
 import {
   ArticleListItem,
   ArticleDetail,
+  ArticleEditDetail,
+  TagBrief,
   CreateArticleRequest,
   UpdateArticleRequest,
 } from "../models/article";
@@ -175,35 +177,41 @@ export async function listArticles(
   return { items, total };
 }
 
-export async function getArticleBySlug(
-  env: Env,
-  slug: string
-): Promise<ArticleDetail | null> {
-  const row = await env.DB.prepare(
-    `
+/**
+ * 详情与编辑器取数共用的 SELECT / 标签查询 / 行映射（issue #63）。
+ * 公开 `GET /articles/:slug` 与编辑器 `GET /articles/:id/edit` 同源，
+ * 只差 WHERE 条件与最终投影，避免两处字段各自漂移。
+ */
+const ARTICLE_DETAIL_SELECT = `
     SELECT a.*, c.id as category_id, c.name as category_name, c.slug as category_slug,
            u.display_name as author_name
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
     LEFT JOIN users u ON a.author_id = u.id
-    WHERE a.slug = ?
-  `
-  )
-    .bind(slug)
-    .first();
+  `;
 
-  if (!row) return null;
-
-  const tags = await env.DB.prepare(
-    `
+const ARTICLE_TAGS_SQL = `
     SELECT t.id, t.name, t.slug FROM tags t
     JOIN article_tags at ON t.id = at.tag_id
     WHERE at.article_id = ?
-  `
-  )
-    .bind(row.id)
-    .all();
+  `;
 
+async function loadArticleTags(
+  env: Env,
+  articleId: unknown
+): Promise<TagBrief[]> {
+  const tags = await env.DB.prepare(ARTICLE_TAGS_SQL).bind(articleId).all();
+  return tags.results.map((t: Record<string, unknown>) => ({
+    id: t.id as number,
+    name: t.name as string,
+    slug: t.slug as string,
+  }));
+}
+
+function mapArticleDetail(
+  row: Record<string, unknown>,
+  tags: TagBrief[]
+): ArticleDetail {
   return {
     id: row.id as number,
     title: row.title as string,
@@ -219,11 +227,7 @@ export async function getArticleBySlug(
           slug: row.category_slug as string,
         }
       : { id: 1, name: "未分类", slug: "uncategorized" },
-    tags: tags.results.map((t: Record<string, unknown>) => ({
-      id: t.id as number,
-      name: t.name as string,
-      slug: t.slug as string,
-    })),
+    tags,
     status: row.status as "draft" | "published",
     view_count: row.view_count as number,
     like_count: row.like_count as number,
@@ -233,6 +237,61 @@ export async function getArticleBySlug(
     published_at: row.published_at as string | null,
     created_at: row.created_at as string,
     reading_time: calculateReadingTime((row.content as string) || ""),
+  };
+}
+
+export async function getArticleBySlug(
+  env: Env,
+  slug: string
+): Promise<ArticleDetail | null> {
+  const row = await env.DB.prepare(
+    `${ARTICLE_DETAIL_SELECT}
+    WHERE a.slug = ?
+  `
+  )
+    .bind(slug)
+    .first();
+
+  if (!row) return null;
+
+  return mapArticleDetail(row, await loadArticleTags(env, row.id));
+}
+
+/**
+ * 编辑器按稳定 id 取正文（issue #63 / ADR 0006 取数接缝）。
+ * 复用上面的 SELECT / 标签查询 / 映射，再投影成 ArticleEditDetail：
+ * 不展开 `content_html`，也不带阅读统计字段。本函数只做读取——
+ * 不调用 recordArticleView、不下发 `view_<id>` Cookie、不写 `requests`。
+ */
+export async function getArticleForEdit(
+  env: Env,
+  id: number
+): Promise<ArticleEditDetail | null> {
+  const row = await env.DB.prepare(
+    `${ARTICLE_DETAIL_SELECT}
+    WHERE a.id = ?
+  `
+  )
+    .bind(id)
+    .first();
+
+  if (!row) return null;
+
+  const detail = mapArticleDetail(row, await loadArticleTags(env, row.id));
+  return {
+    id: detail.id,
+    title: detail.title,
+    slug: detail.slug,
+    content: detail.content,
+    summary: detail.summary,
+    cover_image: detail.cover_image,
+    category_id: detail.category?.id ?? null,
+    category: detail.category,
+    tags: detail.tags,
+    status: detail.status,
+    author_id: detail.author_id,
+    created_at: detail.created_at,
+    updated_at: (row.updated_at as string) ?? "",
   };
 }
 

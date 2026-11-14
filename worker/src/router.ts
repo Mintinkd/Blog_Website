@@ -16,6 +16,7 @@ import {
 import {
   handleListArticles,
   handleGetArticle,
+  handleGetArticleForEdit,
   handleCreateArticle,
   handleUpdateArticle,
   handleDeleteArticle,
@@ -233,6 +234,16 @@ addRoute(
 
 addRoute("GET", "/articles", async (req, env, _ctx, params, auth) =>
   handleListArticles(req, env, params, auth)
+);
+// issue #63 / ADR 0006：编辑器按稳定 id 取正文（需 Bearer 鉴权）。
+// 两段路径 /articles/:id/edit 不会命中单段 /articles/:slug 的正则；
+// 独立 handler 也不经过公开详情的阅读统计 / view_<id> Cookie 链路。
+addRoute(
+  "GET",
+  "/articles/:id/edit",
+  async (req, env, _ctx, params, auth) =>
+    handleGetArticleForEdit(req, env, params, auth),
+  true
 );
 addRoute("GET", "/articles/:slug", async (req, env, _ctx, params, auth) =>
   handleGetArticle(req, env, params, auth)

@@ -249,6 +249,7 @@ D1 (SQLite) 共 13 张表：
 | POST   | `/auth/refresh`         | 刷新Token（须改密状态下仍可调用，用于令牌续期）                                                                                                                        |
 | POST   | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验：≥ 12 位、非弱口令名单、非站点名/用户名变体；两端口令长度上限均为 200；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
 | POST   | `/articles`             | 创建文章（自动设置author_id）                                                                                                                                          |
+| GET    | `/articles/:id/edit`    | 编辑器按稳定 id 取正文（认证；`ArticleEditDetail` 不含 `content_html`、无阅读统计副作用）                                                                              |
 | PUT    | `/articles/:id`         | 更新文章（editor仅自己的）                                                                                                                                             |
 | DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                                                                                             |
 | POST   | `/categories`           | 创建分类（自动设置created_by）                                                                                                                                         |
@@ -263,6 +264,8 @@ D1 (SQLite) 共 13 张表：
 | DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                                                                         |
 
 > `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
+
+> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。编辑器前端切换到该接口由 #64（T3）完成，当前 `src/admin/App.vue` 仍走公开 slug 接口取正文。
 
 #### 编辑锁接口
 
