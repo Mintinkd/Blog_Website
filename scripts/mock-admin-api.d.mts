@@ -9,12 +9,6 @@ export declare const BASE_MARKER: string;
 export declare const FOOTER_MARKER: string;
 export declare const MOCK_UPLOAD_URL: string;
 
-export declare const MOCK_CONTROL_PATHS: {
-  readonly control: "/__control";
-  readonly reset: "/__reset";
-  readonly stats: "/__stats";
-};
-
 /** 打开后应进入 WYSIWYG 的安全语料（手写字面量）。 */
 export declare const SAFE_MARKDOWN: string;
 /** 应触发回写守卫进入源码模式的有损语料。 */
@@ -41,7 +35,7 @@ export interface AdminApiStats {
 
 export interface AdminApiResponse {
   status: number;
-  /** fixture 的 data 是任意 JSON 读模型，与 createAdminApi 的 Promise<any> 一致。 */
+  /** fixture 的 data 是任意 JSON 读模型，与 src/admin/composables/useAdminApi.ts 的 createAdminApi 一致。 */
   body: {
     code: number;
     message: string;

@@ -20,6 +20,10 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 // T7 #68：编辑详情字面量只在共享 fixture 定义一份，避免两处各写一份后漂移。
 import { EDITOR_EDIT_DETAIL } from "./editor-meta-fixture.mjs";
+import {
+  PLACEHOLDER_IMAGE_ROUTE,
+  PLACEHOLDER_PNG,
+} from "./article-ssr-fixture.mjs";
 
 const BASE = process.env.BASE || "http://localhost:4321";
 const CHANNEL = process.env.PW_CHANNEL;
@@ -273,13 +277,13 @@ async function openAdmin(browser, viewport) {
       body: JSON.stringify(fixtureFor(url.pathname, url.searchParams)),
     });
   });
-  // T7 #68：EDITOR_EDIT_DETAIL.content 含相对路径图片，WYSIWYG 渲染会请求它；
-  // 本地 SVG 兜底，避免 /media/cover.png 404 触发 console.error 污染断言。
-  await page.route("**/media/cover.png", (route) =>
+  // T7 #68：EDITOR_EDIT_DETAIL.content 含相对路径图片，WYSIWYG 渲染会请求它。
+  // 与 mock / 编辑器回归共用同一份占位图常量，避免 404 污染控制台断言。
+  await page.route(PLACEHOLDER_IMAGE_ROUTE, (route) =>
     route.fulfill({
       status: 200,
-      contentType: "image/svg+xml",
-      body: '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"></svg>',
+      contentType: "image/png",
+      body: PLACEHOLDER_PNG,
     })
   );
   await page.goto(`${BASE}/admin`, { waitUntil: "load" });

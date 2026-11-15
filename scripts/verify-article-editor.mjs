@@ -20,7 +20,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_MOCK_PORT } from "./article-ssr-fixture.mjs";
+import {
+  DEFAULT_MOCK_PORT,
+  MOCK_PATHS,
+  PLACEHOLDER_IMAGE_ROUTE,
+  PLACEHOLDER_PNG,
+} from "./article-ssr-fixture.mjs";
 import {
   BASE_MARKER,
   EDITOR_ARTICLE_ID,
@@ -57,12 +62,6 @@ const CHANNEL = process.env.PW_CHANNEL;
 const TOKEN = "regression-token";
 const DRAFT_PREFIX = "blog:article-draft:v1:u1:";
 const ARTICLE_PATH = `/articles/${EDITOR_ARTICLE_SLUG}`;
-/** 语料里的封面图是本地 dev server 上没有的静态资源；补一个 1×1 PNG，
- *  而不是把 404 加进忽略白名单——检查单第 9 条要求控制台真的干净。 */
-const PLACEHOLDER_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
-  "base64"
-);
 
 /** 控制台报错白名单：按 URL + 错误文本精确匹配，不做笼统忽略。 */
 const IGNORABLE_ERRORS = [
@@ -135,7 +134,7 @@ async function startMock() {
 }
 
 async function control(patch) {
-  const res = await fetch(`${MOCK_ORIGIN}/__control`, {
+  const res = await fetch(`${MOCK_ORIGIN}${MOCK_PATHS.control}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
@@ -144,7 +143,7 @@ async function control(patch) {
 }
 
 async function resetMock() {
-  const res = await fetch(`${MOCK_ORIGIN}/__reset`, {
+  const res = await fetch(`${MOCK_ORIGIN}${MOCK_PATHS.reset}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -153,7 +152,7 @@ async function resetMock() {
 }
 
 async function stats() {
-  const res = await fetch(`${MOCK_ORIGIN}/__stats`);
+  const res = await fetch(`${MOCK_ORIGIN}${MOCK_PATHS.stats}`);
   assert.equal(res.status, 200);
   return res.json();
 }
@@ -237,7 +236,7 @@ async function withScenario(name, browser, run, { allow = [] } = {}) {
     await dialog.dismiss();
   });
 
-  await page.route("**/media/cover.png", async (route) => {
+  await page.route(PLACEHOLDER_IMAGE_ROUTE, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "image/png",
@@ -479,6 +478,11 @@ async function scenarioSaveAndSsr(browser) {
         text: "普通链接",
         mode: "link",
       });
+      // 已知缺口（超出 #68 范围）：LinkDialog 的 embed 片段是
+      // `<a data-embed="1">`，但 WYSIWYG 的 insertMarkdown 会把它当 Markdown
+      // 解析成普通链接，属性不进入请求体。这里仍走一遍真实插入链路，
+      // 断言只锁「链接确实进了正文」，不把这个降级固化成期望；
+      // data-embed 的保真断言针对 mock 语料里的存量 anchor（见下）。
       await insertLink(page, {
         url: "https://example.com/embed",
         text: "内嵌网页预览",
@@ -528,7 +532,11 @@ async function scenarioSaveAndSsr(browser) {
       );
       assert.ok(
         payload.content.includes('data-embed="1"'),
-        "存量内嵌链接的 data-embed 属性必须保留"
+        "语料里的存量内嵌链接必须无损保留 data-embed 属性"
+      );
+      assert.ok(
+        payload.content.includes("内嵌网页预览"),
+        "embed 模式插入的链接文本应进入请求体（当前内核降级为普通链接）"
       );
       assert.ok(
         payload.content.includes("![photo](" + MOCK_UPLOAD_URL),

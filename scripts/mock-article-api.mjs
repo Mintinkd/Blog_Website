@@ -28,10 +28,11 @@ import {
   ERROR_SLUG,
   MISSING_SLUG,
   MOCK_PATHS,
+  PLACEHOLDER_PNG,
   SITE_TITLE,
   VIEW_COOKIE,
 } from "./article-ssr-fixture.mjs";
-import { createAdminApiState, MOCK_CONTROL_PATHS } from "./mock-admin-api.mjs";
+import { createAdminApiState } from "./mock-admin-api.mjs";
 
 function readPort() {
   const flagIndex = process.argv.indexOf("--port");
@@ -110,11 +111,10 @@ export function createMockServer() {
 
     if (
       method === "POST" &&
-      (pathname === MOCK_CONTROL_PATHS.control ||
-        pathname === MOCK_CONTROL_PATHS.reset)
+      (pathname === MOCK_PATHS.control || pathname === MOCK_PATHS.reset)
     ) {
       const { json } = await readBody(req);
-      if (pathname === MOCK_CONTROL_PATHS.reset) admin.reset();
+      if (pathname === MOCK_PATHS.reset) admin.reset();
       else admin.control(json);
       sendJson(res, 200, { ok: true, flags: admin.stats().flags });
       return;
@@ -136,16 +136,12 @@ export function createMockServer() {
 
     // 上传接口返回的图片地址：编辑器会真的去加载它，缺响应会污染控制台。
     if (method === "GET" && pathname.startsWith("/api/v1/media/serve/")) {
-      const png = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
-        "base64"
-      );
       res.writeHead(200, {
         "Content-Type": "image/png",
-        "Content-Length": png.length,
+        "Content-Length": PLACEHOLDER_PNG.length,
         "Access-Control-Allow-Origin": "*",
       });
-      res.end(png);
+      res.end(PLACEHOLDER_PNG);
       return;
     }
 

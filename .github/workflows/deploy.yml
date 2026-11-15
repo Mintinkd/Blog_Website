@@ -102,7 +102,8 @@ jobs:
             exit 1
           fi
 
-          # T7 #68：编辑器 9 条端到端回归（安全 / lossy 语料、保存只含 Markdown、
+          # T7 #68：编辑器端到端回归（§10.3 九条检查单拆成 12 个独立场景：
+          # 安全 / lossy 语料、保存只含 Markdown、
           # 保存后回读 SSR、未保存保护、失败态、草稿、锁冲突、响应式、控制台）。
           # 脚本自己拉起 / 关闭有状态 mock；失败时打印 dev server 日志便于定位。
           if ! node scripts/verify-article-editor.mjs; then

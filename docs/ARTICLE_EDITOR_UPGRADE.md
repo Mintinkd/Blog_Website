@@ -337,7 +337,7 @@ closed
 
 **T4 #65 已落地**：`tests/editor-markdown-bridge.test.ts`（34 项，node 环境用 `renderMarkdownServer` 作等价渲染器，安全 / lossy 两组按「不装配 image-block」前提重新判定）、`tests/editor-guard-integration.test.ts`（9 项，守卫接入加载 / 模式切换 / 保存前二次守卫 / 显式覆盖仍阻止保存）、`tests/markdown-preview-parity.test.ts` 扩展至 15 项（真实 `renderMarkdown` 管线下的守卫判定）。浏览器回归与 CI 门禁已由 T7 #68 落地，见 §10.3。
 
-**T5 #66 已落地**：`tests/editor-upload.test.ts` 覆盖类型 / 10MB 预检、Bearer + FormData 请求、`original_name` → alt 映射、服务端 message / network 错误映射、失败保留原正文与选区；`tests/editor-draft.test.ts` 扩展 `loadDraftWithStatus`（none / found / expired）与基线哈希；`tests/article-editor-flow.test.ts` 增加打开只提示、恢复后重跑守卫、丢弃、1.5s 防抖 + `pagehide` 同步、保存 / 新建清理、超 1MB 只提示一次、过期提示。浏览器骨架已由 T7 #68 重写为 §10.3 的 9 条完整回归。
+**T5 #66 已落地**：`tests/editor-upload.test.ts` 覆盖类型 / 10MB 预检、Bearer + FormData 请求、`original_name` → alt 映射、服务端 message / network 错误映射、失败保留原正文与选区；`tests/editor-draft.test.ts` 扩展 `loadDraftWithStatus`（none / found / expired）与基线哈希；`tests/article-editor-flow.test.ts` 增加打开只提示、恢复后重跑守卫、丢弃、1.5s 防抖 + `pagehide` 同步、保存 / 新建清理、超 1MB 只提示一次、过期提示。浏览器骨架已由 T7 #68 重写为覆盖 §10.3 九条检查单的 12 场景完整回归。
 
 ### 10.2 Worker vitest
 

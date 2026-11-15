@@ -17,11 +17,24 @@ export const API_PATHS = {
   articles: "/api/v1/articles/",
 };
 
-/** mock 自身的运维端点（不属于 Worker API）。 */
+/** mock 自身的运维端点（不属于 Worker API）；SSR 与编辑器回归共用一份。 */
 export const MOCK_PATHS = {
   health: "/health",
   stats: "/__stats",
+  control: "/__control",
+  reset: "/__reset",
 };
+
+/**
+ * 语料里的封面图 `/media/cover.png` 在 dev server 上并不存在，各回归脚本
+ * 都要为它兜底一个 1×1 PNG，否则 404 会污染「控制台无报错」断言。
+ * 常量放这里，避免 mock 与多个脚本各写一份 base64 / URL 匹配器。
+ */
+export const PLACEHOLDER_IMAGE_ROUTE = "**/media/cover.png";
+export const PLACEHOLDER_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+  "base64"
+);
 
 /**
  * motion chunk 匹配：dev 是 `/src/utils/motion.ts`，构建产物是

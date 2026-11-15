@@ -18,13 +18,6 @@ export const BASE_MARKER = "EDITOR_BASE_MARKER_68";
 export const FOOTER_MARKER = "EDITOR_SAVED_MARKER_68";
 export const MOCK_UPLOAD_URL = "/api/v1/media/serve/media/2026/11/mock.png";
 
-/** mock 自有运维端点（不属于 Worker API，也不计入 articleRequests）。 */
-export const MOCK_CONTROL_PATHS = {
-  control: "/__control",
-  reset: "/__reset",
-  stats: "/__stats",
-};
-
 /**
  * 安全语料：GFM 表格 / 围栏代码 / 引用 / 图片 / 普通链接 / data-embed。
  * 手写字面量，与 tests/fixtures/editor/markdown-corpus.ts 的类别对齐；
@@ -307,9 +300,9 @@ export function createAdminApiState() {
       }
       if (method === "POST") {
         counters.lockAcquireRequests += 1;
-        const once = flags.verifyConflict;
-        if (once) flags.verifyConflict = false;
-        if (flags.lockConflict || once) {
+        const consumeVerifyConflict = flags.verifyConflict;
+        if (consumeVerifyConflict) flags.verifyConflict = false;
+        if (flags.lockConflict || consumeVerifyConflict) {
           return {
             status: 409,
             body: fail(10006, "文章正在被另一位编辑编辑", {
