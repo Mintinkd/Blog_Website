@@ -22,6 +22,12 @@
  * （280 / 375 / 1280 × light / dark 的文本对比度、裁切、触控目标、焦点环、
  * 横向溢出与控制台），因为元信息面板没有卡片式 radio 结构，不能复用
  * TARGETS 那套 parts 引擎；两者共用 RULES 编号与对比度工具。
+ * T7 #68：核对票面四类编辑器目标——工具栏（.editor-toolbar / .preview-toggle
+ * button）、元信息（.editor-meta-panel）、弹窗（.article-editor-overlay 全屏壳
+ * 与 TARGETS[0] 的 .link-dialog）、选中态（.toggle-btn.active 与
+ * .link-mode-option.active）——已由 TARGETS[0] + EDITOR_TARGETS[0] 的现有采集
+ * 与 RULES 编号覆盖；仅把模式切换按钮补进 EDITOR 采集并加一条 VF-07 断言，
+ * 不新增 target 条目、不复制规则引擎。api fixture 走共享 editor-meta-fixture。
  * 所有 /api/v1/** 由本地 fixture 返回，不依赖真实 Worker 与账号。
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -749,6 +755,8 @@ const EDITOR_RULE_SOURCE = {
   "VF-01":
     "src/admin/admin-shared.css → .meta-hint / .form-group label / .tag-chip 的 color",
   "VF-04": "src/admin/admin-shared.css → .editor-meta-panel",
+  "VF-07":
+    "src/admin/admin-shared.css → .preview-toggle .toggle-btn.active 的 background",
   "VF-08":
     "src/admin/admin-shared.css → .meta-inline-row / .meta-cover-placeholder 宽度",
   "VF-09": "src/admin/admin-shared.css → 触控目标 ≥44px 规则块",
@@ -888,8 +896,22 @@ async function collectEditorSnapshot(page) {
         ".editor-meta-panel button, .meta-drawer-toggle, " +
           ".article-editor-overlay .editor-header button, " +
           ".article-editor-overlay .editor-footer button, " +
-          ".article-editor-overlay .editor-toolbar button"
+          ".article-editor-overlay .editor-toolbar button, " +
+          // T7 #68：模式切换按钮同属工具栏，纳入触控目标（VF-09）量测。
+          ".article-editor-overlay .preview-toggle .toggle-btn"
       ),
+      // T7 #68「选中态」目标：采集模式切换按钮的 active / 未选中态，
+      // 由 VF-07 在 Node 侧比对底色差异，复用现有采集函数与规则编号。
+      toggles: [
+        ...document.querySelectorAll(".preview-toggle .toggle-btn"),
+      ].map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          active: el.classList.contains("active"),
+          visible: r.width > 0 && r.height > 0,
+          layers: layersOf(el),
+        };
+      }),
       overflowTargets,
     };
   });
@@ -933,6 +955,34 @@ function runEditorRules(snap, target, scene, ctx) {
 
   for (const box of snap.overflowTargets) {
     checkHorizontalOverflow(check, box.selector, box.overflow);
+  }
+
+  // T7 #68「选中态」目标：复用 VF-07 编号与 colorDistance / backgroundOf 工具，
+  // 确认模式切换（WYSIWYG / 源码 / 分屏）的选中态能从底色上辨认。
+  const activeToggle = snap.toggles.find((item) => item.visible && item.active);
+  const inactiveToggle = snap.toggles.find(
+    (item) => item.visible && !item.active
+  );
+  if (!activeToggle || !inactiveToggle) {
+    check(
+      "VF-07",
+      ".preview-toggle .toggle-btn",
+      false,
+      `active=${snap.toggles.filter((i) => i.visible && i.active).length} / inactive=${snap.toggles.filter((i) => i.visible && !i.active).length}`,
+      "至少一个可见选中项 + 一个未选中项"
+    );
+  } else {
+    const bgDelta = colorDistance(
+      backgroundOf(activeToggle.layers),
+      backgroundOf(inactiveToggle.layers)
+    );
+    check(
+      "VF-07",
+      ".preview-toggle .toggle-btn background",
+      bgDelta >= MIN_BG_DELTA,
+      `${bgDelta.toFixed(1)}（${formatRgb(backgroundOf(inactiveToggle.layers))} → ${formatRgb(backgroundOf(activeToggle.layers))}）`,
+      `色距 ≥ ${MIN_BG_DELTA}`
+    );
   }
 }
 

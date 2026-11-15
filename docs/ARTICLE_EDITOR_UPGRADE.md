@@ -254,7 +254,7 @@ closed
 ### 8.4 图片上传
 
 - `uploadImage(file)` 统一适配：校验类型 / 大小 → `POST /media/upload` → 返回 `{ url, alt }`。
-- **T0/T4 修订**：不装配 `image-block`，因此没有它的 `onUpload` 可配。改为保留 Crepe 内置 `upload` 插件、覆盖 `uploadConfig.uploader`，用 `schema.nodes.image.createAndFill({ src, alt })` 写普通图片节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。默认 uploader 会写 `blob:` URL，必须覆盖。粘贴链路 T0 已实测可用；T5 骨架用合成 `DragEvent` 覆盖 uploader 调用，真实用户拖拽仍由 T7 复核。
+- **T0/T4 修订**：不装配 `image-block`，因此没有它的 `onUpload` 可配。改为保留 Crepe 内置 `upload` 插件、覆盖 `uploadConfig.uploader`，用 `schema.nodes.image.createAndFill({ src, alt })` 写普通图片节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。默认 uploader 会写 `blob:` URL，必须覆盖。粘贴链路 T0 已实测可用；T5 骨架用合成 `DragEvent` 覆盖 uploader 调用，真实用户拖拽 T7 未自动化复现，保留为 §10.4 手工检查项（T7 回归用 `setInputFiles` 覆盖上传链路）。
 - 源码模式插入 `![alt](url)`，光标落在 alt 文本内。
 - 上传中显示进度 / 禁用重复提交；失败按服务端 `message` 映射为可读文案，保留原内容。
 
@@ -320,23 +320,24 @@ closed
 
 ### 10.1 vitest（根目录）
 
-| 文件                                     | 覆盖                                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------------- |
-| `tests/editor-markdown-bridge.test.ts`   | 回写语料、规范化比较、lossy 判定、embed 锚点                                 |
-| `tests/editor-guard-integration.test.ts` | 加载判定、模式切换、保存前守卫、显式覆盖后仍阻止保存                         |
-| `tests/editor-commands.test.ts`          | 源码模式包裹 / 行前缀 / 列表续行 / 链接与图片插入 / Markdown 文本与 URL 转义 |
-| `tests/editor-draft.test.ts`             | 键结构、用户隔离、7 天过期、配额、清理                                       |
-| `tests/editor-state.test.ts`             | 脏状态、关闭决策、保存失败、锁丢失 reducer                                   |
-| `tests/editor-slug.test.ts`              | slug 建议与服务端 `generateSlug` 同组样例、中文 / 空格 / 非法字符            |
-| `tests/editor-word-count.test.ts`        | 中英文字数、阅读时长（与服务端 `calculateReadingTime` 同组样例）             |
-| `tests/editor-upload.test.ts`            | 类型 / 大小预检、上传成功映射、服务端错误映射、失败不清空正文                |
-| `tests/markdown-preview-parity.test.ts`  | 保留并扩展，确保线上预览仍走同一白名单                                       |
+| 文件                                     | 覆盖                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `tests/editor-markdown-bridge.test.ts`   | 回写语料、规范化比较、lossy 判定、embed 锚点                                  |
+| `tests/editor-guard-integration.test.ts` | 加载判定、模式切换、保存前守卫、显式覆盖后仍阻止保存                          |
+| `tests/editor-commands.test.ts`          | 源码模式包裹 / 行前缀 / 列表续行 / 链接与图片插入 / Markdown 文本与 URL 转义  |
+| `tests/editor-draft.test.ts`             | 键结构、用户隔离、7 天过期、配额、清理                                        |
+| `tests/editor-state.test.ts`             | 脏状态、关闭决策、保存失败、锁丢失 reducer                                    |
+| `tests/editor-slug.test.ts`              | slug 建议与服务端 `generateSlug` 同组样例、中文 / 空格 / 非法字符             |
+| `tests/editor-word-count.test.ts`        | 中英文字数、阅读时长（与服务端 `calculateReadingTime` 同组样例）              |
+| `tests/editor-upload.test.ts`            | 类型 / 大小预检、上传成功映射、服务端错误映射、失败不清空正文                 |
+| `tests/markdown-preview-parity.test.ts`  | 保留并扩展，确保线上预览仍走同一白名单                                        |
+| `tests/mock-admin-api.test.ts`           | T7 有状态 mock：PUT 与公开 GET 共用内存数据、故障注入不改状态、锁冲突码、统计 |
 
 期望值必须独立来源：语料用手写字面量钉住，不从被测函数反推。
 
-**T4 #65 已落地**：`tests/editor-markdown-bridge.test.ts`（34 项，node 环境用 `renderMarkdownServer` 作等价渲染器，安全 / lossy 两组按「不装配 image-block」前提重新判定）、`tests/editor-guard-integration.test.ts`（9 项，守卫接入加载 / 模式切换 / 保存前二次守卫 / 显式覆盖仍阻止保存）、`tests/markdown-preview-parity.test.ts` 扩展至 15 项（真实 `renderMarkdown` 管线下的守卫判定）。浏览器回归与 CI 门禁扩展仍由 T7 #68 承接。
+**T4 #65 已落地**：`tests/editor-markdown-bridge.test.ts`（34 项，node 环境用 `renderMarkdownServer` 作等价渲染器，安全 / lossy 两组按「不装配 image-block」前提重新判定）、`tests/editor-guard-integration.test.ts`（9 项，守卫接入加载 / 模式切换 / 保存前二次守卫 / 显式覆盖仍阻止保存）、`tests/markdown-preview-parity.test.ts` 扩展至 15 项（真实 `renderMarkdown` 管线下的守卫判定）。浏览器回归与 CI 门禁已由 T7 #68 落地，见 §10.3。
 
-**T5 #66 已落地**：`tests/editor-upload.test.ts` 覆盖类型 / 10MB 预检、Bearer + FormData 请求、`original_name` → alt 映射、服务端 message / network 错误映射、失败保留原正文与选区；`tests/editor-draft.test.ts` 扩展 `loadDraftWithStatus`（none / found / expired）与基线哈希；`tests/article-editor-flow.test.ts` 增加打开只提示、恢复后重跑守卫、丢弃、1.5s 防抖 + `pagehide` 同步、保存 / 新建清理、超 1MB 只提示一次、过期提示。浏览器骨架见 §10.3。
+**T5 #66 已落地**：`tests/editor-upload.test.ts` 覆盖类型 / 10MB 预检、Bearer + FormData 请求、`original_name` → alt 映射、服务端 message / network 错误映射、失败保留原正文与选区；`tests/editor-draft.test.ts` 扩展 `loadDraftWithStatus`（none / found / expired）与基线哈希；`tests/article-editor-flow.test.ts` 增加打开只提示、恢复后重跑守卫、丢弃、1.5s 防抖 + `pagehide` 同步、保存 / 新建清理、超 1MB 只提示一次、过期提示。浏览器骨架已由 T7 #68 重写为 §10.3 的 9 条完整回归。
 
 ### 10.2 Worker vitest
 
@@ -350,13 +351,17 @@ closed
 
 新增 `scripts/verify-article-editor.mjs`，复用本地 mock，不访问真实 Worker。mock 必须是有状态的本地 HTTP API：编辑器的 `PUT` 与 SSR 的 `GET` 共用同一份内存数据；只用浏览器 `page.route` 拦截无法覆盖 Astro SSR 的服务端取数。
 
-**T5 #66 已落地脚本骨架**：当前版本用 `page.route` 覆盖后台编辑器自身请求，已串起「工具栏上传（断言 Bearer / multipart）→ WYSIWYG 粘贴 / 拖拽 → 1.5s 草稿落盘 → 刷新恢复 / 丢弃 → 保存清理」；安全 / lossy 语料、`PUT` + SSR 有状态 mock、锁冲突与 CI 接线仍由 T7 #68 补齐。运行方式：
+**T7 #68 已落地**：脚本重写为 12 个独立 browser context 的场景，覆盖下面 9 条；`scripts/mock-admin-api.mjs`（纯状态机）+ `scripts/mock-article-api.mjs`（HTTP 适配，同一进程）提供有状态 API，`PUT /articles/:id` 与 SSR 的 `GET /articles/:slug` 共用内存文章数据。`POST /__control` 注入加载 / 保存 / 锁故障，`POST /__reset` 恢复初始状态，`GET /__stats` 提供请求体与计数断言；未匹配的 slug 仍交回 #41 的 SSR 三态分支。部署前由 `.github/workflows/deploy.yml` 的 Playwright 步骤调用，失败阻断部署。状态机本身由 `tests/mock-admin-api.test.ts` 单测钉住（9 项）。
+
+运行方式（脚本自己拉起 / 关闭 mock，端口 4322；`MOCK_PORT` 可覆盖，须与 `ARTICLE_API_ORIGIN` 一致）：
 
 ```powershell
-npx astro dev --port 4321
+$env:ARTICLE_API_ORIGIN='http://127.0.0.1:4322'; npx astro dev --port 4321
 $env:PW_CHANNEL='msedge'   # 仅用系统 Edge 时
 node scripts/verify-article-editor.mjs
 ```
+
+真实用户从桌面拖文件进编辑器未自动化复现（浏览器合成 `DragEvent` 由 T5 单测与骨架覆盖），保留在 §10.4 手工检查。
 
 1. 安全语料（GFM 表格 / 围栏代码 / 引用 / `data-embed` / 原始 HTML）→ 断言进入 WYSIWYG；lossy 语料 → 断言进入源码模式并显示提示。
 2. 在 WYSIWYG 中编辑文字、插入普通链接与内嵌链接、上传图片（`setInputFiles` + mock 上传）→ 保存 → 断言 `PUT` 请求体是 Markdown、含 `data-embed="1"`、不含预览 HTML。
@@ -381,6 +386,7 @@ node scripts/verify-article-editor.mjs
 - 长文（≥5,000 字）滚动、输入、保存性能。
 - 亮 / 暗主题、系统 `prefers-reduced-motion`。
 - 编辑锁 30 分钟边界：心跳续期后仍持有；强制接管后原编辑者不能保存。
+- 真实用户从桌面拖图片文件进编辑器（T5 只覆盖合成 `DragEvent`，T7 未自动化复现）。
 
 ## 11. 分阶段与工单
 
@@ -418,6 +424,15 @@ GitHub 跟踪：母票 [#60](https://github.com/Mintinkd/Blog_Website/issues/60)
 | 全量拆分与编辑器改造同时改 `App.vue`    | 合并冲突、回归范围失控         | T8 在 T3 后启动；每阶段独立 PR；T7 清理 `App.vue` 前先与 T8 合流 |
 
 ## 13. 验收标准
+
+> 下表是 Epic #60 的整体验收，逐条映射与关闭证据在 #68 / #69 关票留言。
+> T7 #68 已为下列行为补上端到端证据：§10.3 场景 1（安全 / lossy 模式判定）、
+> 场景 2/3（`PUT` 只含 Markdown + 保存后 SSR 语义等价）、场景 4（未保存保护与
+> 锁 `DELETE`）、场景 5（加载 / 保存失败态）、场景 6（草稿恢复 / 丢弃）、
+> 场景 7（锁冲突与保存前校验失锁）、场景 8（280 / 375 / 1280 响应式）、
+> 场景 9（控制台无报错）；全部由 `deploy.yml` 的 Playwright 步骤阻断式执行。
+> 10 分钟真实心跳与 `beforeunload` 分层仍由 `tests/edit-lock.test.ts` /
+> `tests/article-editor-flow.test.ts` 的 fake timers 单测锁定，不在浏览器重复。
 
 - [ ] 存量语料在 WYSIWYG 中打开 / 保存后，前台渲染结果语义等价；不等价时自动进入源码模式并明确提示。
 - [ ] 保存请求体只含 Markdown，`content_html` 不被写入；`data-embed="1"`、表格、代码块、引用、图片均保留。

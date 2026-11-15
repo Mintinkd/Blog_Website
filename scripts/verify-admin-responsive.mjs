@@ -18,6 +18,8 @@
  */
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+// T7 #68：编辑详情字面量只在共享 fixture 定义一份，避免两处各写一份后漂移。
+import { EDITOR_EDIT_DETAIL } from "./editor-meta-fixture.mjs";
 
 const BASE = process.env.BASE || "http://localhost:4321";
 const CHANNEL = process.env.PW_CHANNEL;
@@ -62,6 +64,12 @@ const FIXTURES = {
       page_size: 100,
       total_pages: 1,
     }),
+  // T7 #68：从列表「编辑」按钮进入编辑器时请求 GET /articles/:id/edit，
+  // 复用共享 fixture 的详情字面量（含完整 Markdown 正文）。
+  articleEditDetail: () => ok(EDITOR_EDIT_DETAIL),
+  // 编辑锁三端点（POST|DELETE /edit-lock、POST /edit-lock/force）都只要
+  // code:0 即通过；本地无并发编辑者，一律 ok(null)。
+  editLock: () => ok(null),
   categories: () =>
     ok([
       { id: 1, name: "前端", slug: "frontend", article_count: 12 },
@@ -179,6 +187,17 @@ const FIXTURES = {
 };
 
 function fixtureFor(pathname, searchParams) {
+  // T7 #68：这两组端点也含 "/articles"，必须放在通用列表分支之前，
+  // 否则会被 FIXTURES.articles() 吞掉返回列表 envelope。
+  if (/\/articles\/\d+\/edit$/.test(pathname)) {
+    return FIXTURES.articleEditDetail();
+  }
+  if (
+    pathname.endsWith("/edit-lock") ||
+    pathname.endsWith("/edit-lock/force")
+  ) {
+    return FIXTURES.editLock();
+  }
   if (pathname.includes("/admin/analytics/overview")) {
     return FIXTURES.analyticsOverview();
   }
@@ -254,6 +273,15 @@ async function openAdmin(browser, viewport) {
       body: JSON.stringify(fixtureFor(url.pathname, url.searchParams)),
     });
   });
+  // T7 #68：EDITOR_EDIT_DETAIL.content 含相对路径图片，WYSIWYG 渲染会请求它；
+  // 本地 SVG 兜底，避免 /media/cover.png 404 触发 console.error 污染断言。
+  await page.route("**/media/cover.png", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"></svg>',
+    })
+  );
   await page.goto(`${BASE}/admin`, { waitUntil: "load" });
   await page.waitForSelector(".admin-layout");
   return { context, page, errors };
@@ -377,6 +405,65 @@ async function assertCopyRowReadable(page, viewport) {
   );
 }
 
+/**
+ * T7 #68：280 / 375px 下从文章列表第一行「编辑」按钮打开编辑器全屏壳，
+ * 确认页面 / 全屏壳 / 编辑器主体无横向滚动、工具栏与元信息抽屉开关可见，
+ * 关闭后回到列表。对比度 / 焦点陷阱 / 文案裁切由
+ * verify-editor-responsive.mjs 覆盖，这里不重复。
+ */
+async function assertEditorOverlayReadable(page, viewport) {
+  const label = `${viewport.name} / 编辑器遮罩`;
+  await clickTab(page, "文章管理");
+  // td.actions 里第一个 button 是「编辑」，第二个是「删除」。
+  await page
+    .locator(".data-table tbody tr")
+    .first()
+    .locator("td.actions button")
+    .first()
+    .click();
+  await page.waitForSelector(".article-editor-overlay", { timeout: 10000 });
+  await page.waitForSelector(".editor-toolbar", { timeout: 10000 });
+
+  const boxes = await page.evaluate(() => {
+    const pick = (name, el) =>
+      el ? { name, sw: el.scrollWidth, cw: el.clientWidth } : null;
+    return [
+      pick("html", document.documentElement),
+      pick(
+        ".article-editor-overlay",
+        document.querySelector(".article-editor-overlay")
+      ),
+      pick(".editor-body", document.querySelector(".editor-body")),
+    ].filter(Boolean);
+  });
+  for (const box of boxes) {
+    assert.ok(
+      box.sw <= box.cw + 1,
+      `${label}：${box.name} 横向滚动（scrollWidth=${box.sw} > clientWidth=${box.cw}）`
+    );
+  }
+
+  assert.equal(
+    await page.locator(".editor-toolbar").isVisible(),
+    true,
+    `${label}：工具栏 .editor-toolbar 应存在且可见`
+  );
+  assert.equal(
+    await page.locator(".meta-drawer-toggle").isVisible(),
+    true,
+    `${label}：元信息抽屉切换按钮应可见`
+  );
+
+  await page
+    .locator(".article-editor-overlay .editor-header .close-btn")
+    .click();
+  await page.waitForSelector(".article-editor-overlay", {
+    state: "detached",
+    timeout: 5000,
+  });
+  await page.waitForSelector(".data-table tbody tr", { timeout: 5000 });
+}
+
 async function run() {
   const browser = await chromium.launch(CHANNEL ? { channel: CHANNEL } : {});
   try {
@@ -410,13 +497,15 @@ async function run() {
             });
           }
         }
+        // T7 #68：编辑器遮罩纳入 280 / 375px 检查。
+        await assertEditorOverlayReadable(page, viewport);
         assert.deepEqual(
           errors,
           [],
           `${viewport.name}：后台移动端不应有控制台报错：${errors.join(" | ")}`
         );
         console.log(
-          `OK ${viewport.name}：6 张数据表均可读，其他面板无横向溢出`
+          `OK ${viewport.name}：6 张数据表均可读，其他面板无横向溢出，编辑器遮罩无横向滚动`
         );
       } finally {
         await context.close();

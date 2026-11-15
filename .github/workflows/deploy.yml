@@ -61,9 +61,11 @@ jobs:
           npm install --no-save "playwright@${PLAYWRIGHT_VERSION}"
           npx playwright install --with-deps chromium
 
-      # P3：文章 SSR 回归在部署前跑；两条导航回归仍手动，避免首版 CI 过重。
-      - name: Test Article SSR + Admin Responsive (Playwright)
-        timeout-minutes: 10
+      # 文章 SSR / 编辑器端到端 / 后台响应式 / 观感，失败即阻断部署。
+      # 两条导航回归仍手动。编辑器脚本自己拉起有状态 mock（端口 4322），
+      # 与 ARTICLE_API_ORIGIN 指向同一进程，PUT 与 SSR GET 共用内存数据。
+      - name: Test Article SSR + Editor + Admin (Playwright)
+        timeout-minutes: 15
         env:
           ARTICLE_API_ORIGIN: http://127.0.0.1:4322
           # 避免 dev 启动时为 sitemap 访问真实 API；失败会回退为空列表。
@@ -100,8 +102,21 @@ jobs:
             exit 1
           fi
 
+          # T7 #68：编辑器 9 条端到端回归（安全 / lossy 语料、保存只含 Markdown、
+          # 保存后回读 SSR、未保存保护、失败态、草稿、锁冲突、响应式、控制台）。
+          # 脚本自己拉起 / 关闭有状态 mock；失败时打印 dev server 日志便于定位。
+          if ! node scripts/verify-article-editor.mjs; then
+            echo "Article editor regression failed; Astro dev log:" >&2
+            tail -n 200 "$LOG" >&2
+            exit 1
+          fi
+
           # 后台 6 张数据表在手机上卡片化；同时守住统计/抓取/外观页无横向溢出。
+          # T7 起编辑器遮罩也纳入 280 / 375px 检查。
           node scripts/verify-admin-responsive.mjs
+
+          # T6 #67 的编辑器响应式 / 交互回归此前仅手动，T7 一并纳入门禁。
+          node scripts/verify-editor-responsive.mjs
 
           # 页面观感友好度：实测对比度 / 文案分行 / 间距 / 选中态 / 溢出 / 焦点环，
           # 亮暗主题 × 375/1280 视口；失败输出带规则 ID 与源码定位的问题清单。

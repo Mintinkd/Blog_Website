@@ -161,8 +161,14 @@
 │   ├── verify-privacy-page.mjs   # 隐私页回归（Playwright；页脚入口 / 中英切换 / 无 JS 文案，#59）
 │   ├── visual-contrast.mjs       # 观感检查的颜色数学（零依赖；WCAG 对比度 / 半透明背景逐层合成；同目录 .d.mts）
 │   ├── verify-visual-friendliness.mjs # 页面观感友好度检查（CI + 手动；13 条规则 / 亮暗主题 / 多视口 / 带源码定位的报告）
-│   ├── mock-article-api.mjs      # 文章 SSR 回归的本地 Worker mock（不访问真实 API）
+│   ├── verify-admin-responsive.mjs # 后台移动端回归（CI + 手动；T7 #68 补编辑器遮罩 / fixture）
+│   ├── verify-editor-responsive.mjs # 编辑器元信息 / 响应式 / 可访问性回归（T6 #67；CI 门禁）
+│   ├── verify-article-editor.mjs # 文章编辑器端到端回归（T7 #68；§10.3 九场景 / 每场景独立 context / 有状态 mock 双通道 / CI 门禁）
+│   ├── mock-admin-api.mjs        # 有状态 admin mock 纯状态机（T7 #68；登录 / 列表 / edit 详情 / PUT / 编辑锁 / 上传 / 公开读取）
+│   ├── mock-admin-api.d.mts      # 上述 mock 的类型声明
+│   ├── mock-article-api.mjs      # 同一进程同时服务文章 SSR 回归（#41）与 admin 回归（#68）；/__stats / /__control / /__reset
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
+│   ├── editor-meta-fixture.mjs   # 编辑器两脚本共用的入口选择器 / 视口矩阵 / /api/v1/** fixture（T6 #67）
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
@@ -442,8 +448,8 @@ D1 (SQLite) 共 13 张表：
 - **快捷键**（仅编辑器焦点内生效）：Ctrl/Cmd+S 保存、K 插入链接、B/I 粗体/斜体（源码模式）、Shift+P 线上预览、Shift+E 切换源码/所见即所得；Esc 在弹窗打开时由弹窗消费，否则走未保存保护。
 - **i18n / 主题**：编辑器文案进 `zh.json` / `en.json`；工具栏 label 用 Vue `reactive` 配置 + `locale-changed` 事件原地更新，切换语言不重建实例、不丢正文；`classic.css` 的 `--crepe-color-*` 映射到站点设计令牌，亮暗跟随 `[data-theme]`。
 - **包体 / CSP**：内核只在首次打开编辑器时加载（实测增量 gzip 约 182 KiB < 350 KiB 预算）；不使用 eval / CDN，`npm run build` 的 `patch-csp` 通过，静态与 SSR 两份 CSP 逐字符一致。
-- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/editor-upload.test.ts`（预检 / 上传映射 / 服务端错误 / 失败保留正文）、`tests/editor-draft.test.ts`（键 / 隔离 / 7 天过期 / 1MB 配额 / 基线哈希）、`tests/article-editor-flow.test.ts`（草稿恢复 / 丢弃 / 防抖 / pagehide / 保存清理）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。`scripts/verify-article-editor.mjs` 是上传 mock、粘贴 / 合成拖拽、刷新恢复 / 丢弃、保存清理的浏览器脚本骨架；CI 接线、真实拖拽与真机中文输入法由 T7 #68 收口。
-- **元信息 / 响应式 / 可访问性测试（T6 #67）**：`tests/editor-meta-fields.test.ts`（node，25 项）钉住发布前校验、封面 http(s) 白名单、slug 锁定状态机、标签筛选、字数与阅读时长同服务端样例；`tests/editor-focus-trap.test.ts`（jsdom，12 项）钉住 Tab 循环、焦点归还与幂等。`scripts/verify-visual-friendliness.mjs` 的 `EDITOR_TARGETS` 独立量测元信息面板（280/375/1280 × 亮暗的对比度 / 裁切 / 触控目标 / 焦点环 / 溢出）；`scripts/verify-editor-responsive.mjs` 手动回归抽屉、焦点陷阱与归还、封面失败占位、发布前校验、slug 冲突原样展示、工具栏换行与中英最长标签不裁切。两脚本的入口选择器 / 视口矩阵 / `/api/v1/**` fixture 共用 `scripts/editor-meta-fixture.mjs`（单一事实源），CI 门禁接线仍由 T7 #68 收口。
+- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/editor-upload.test.ts`（预检 / 上传映射 / 服务端错误 / 失败保留正文）、`tests/editor-draft.test.ts`（键 / 隔离 / 7 天过期 / 1MB 配额 / 基线哈希）、`tests/article-editor-flow.test.ts`（草稿恢复 / 丢弃 / 防抖 / pagehide / 保存清理）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。`scripts/verify-article-editor.mjs` 已由 T7 #68 按 `docs/ARTICLE_EDITOR_UPGRADE.md` §10.3 重写为 9 条端到端场景（每个场景独立 browser context），用 `scripts/mock-admin-api.mjs` 的有状态 mock 串起后台 `PUT` 与文章 SSR `GET` 并接入 CI 部署门禁；真机中文输入法组合输入按 §10.4 仍属手工检查。
+- **元信息 / 响应式 / 可访问性测试（T6 #67）**：`tests/editor-meta-fields.test.ts`（node，25 项）钉住发布前校验、封面 http(s) 白名单、slug 锁定状态机、标签筛选、字数与阅读时长同服务端样例；`tests/editor-focus-trap.test.ts`（jsdom，12 项）钉住 Tab 循环、焦点归还与幂等。`scripts/verify-visual-friendliness.mjs` 的 `EDITOR_TARGETS` 独立量测元信息面板（280/375/1280 × 亮暗的对比度 / 裁切 / 触控目标 / 焦点环 / 溢出）；`scripts/verify-editor-responsive.mjs` 手动回归抽屉、焦点陷阱与归还、封面失败占位、发布前校验、slug 冲突原样展示、工具栏换行与中英最长标签不裁切。两脚本的入口选择器 / 视口矩阵 / `/api/v1/**` fixture 共用 `scripts/editor-meta-fixture.mjs`（单一事实源）；`scripts/verify-editor-responsive.mjs` 已由 T7 #68 接入 CI 门禁。
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
@@ -594,7 +600,7 @@ npm run dev
 npm test
 ```
 
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 逐字回传（含 `HttpOnly`）与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。文章 SSR 的浏览器回归（服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）也已在构建前接入 CI，使用 Playwright + 本地 mock；两条导航回归仍是手动 Playwright 脚本，安装、启动与设计检查单见 `docs/agents/testing.md`。
+根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 逐字回传（含 `HttpOnly`）与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。文章 SSR 的浏览器回归（服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）也已在构建前接入 CI，使用 Playwright + 本地 mock；T7 #68 又在同一 Playwright 步骤接入文章编辑器端到端回归 `scripts/verify-article-editor.mjs`（`docs/ARTICLE_EDITOR_UPGRADE.md` §10.3 的 9 条场景、每场景独立 browser context、有状态 mock 双通道、`POST /__control` 故障注入）与 `scripts/verify-editor-responsive.mjs`，失败即阻断部署；两条导航回归仍是手动 Playwright 脚本，安装、启动与设计检查单见 `docs/agents/testing.md`。
 
 ### Worker 后端开发
 
@@ -606,7 +612,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；规则与复现命令见 `docs/agents/testing.md`。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
 
 ### 初始化数据库
 
@@ -680,7 +686,7 @@ npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
+1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
 2. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
 4. 等待 120 秒待 Git 集成自动部署落定，再对 Pages 与 Worker 各执行一次覆盖部署——即使 Cloudflare 侧 Git 自动部署未关闭，最终生效的也始终是本次构建产物
