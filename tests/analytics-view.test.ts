@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import zh from "../src/i18n/zh.json";
@@ -281,10 +281,17 @@ describe("issue #58：中英文案同步（验收 4）", () => {
   });
 
   it("面板模板里用到的 analytics.* key 全部在词条清单中", () => {
-    const source = readFileSync(
-      join(import.meta.dirname, "..", "src", "admin", "App.vue"),
-      "utf8"
-    );
+    // issue #69 / T8：11 个面板模板已从 App.vue 拆到 panels/*.vue。
+    // 扫描整个后台组件目录，避免章节搬移后静态词条检查静默失效
+    // （used.length > 0 是防呆断言，不能靠放宽它来「修好」这条测试）。
+    const adminDir = join(import.meta.dirname, "..", "src", "admin");
+    const panelDir = join(adminDir, "panels");
+    const source = [
+      readFileSync(join(adminDir, "App.vue"), "utf8"),
+      ...readdirSync(panelDir)
+        .filter((file) => file.endsWith(".vue"))
+        .map((file) => readFileSync(join(panelDir, file), "utf8")),
+    ].join("\n");
     const used = Array.from(
       source.matchAll(/t\("(analytics\.[a-z0-9_]+)"\)/g),
       (match) => match[1]
