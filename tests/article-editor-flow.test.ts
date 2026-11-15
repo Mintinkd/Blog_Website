@@ -11,10 +11,22 @@
  * 不挂载 Vue / DOM，也不访问真实 Worker。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createArticleEditor } from "../src/admin/editor/useArticleEditor";
+import {
+  createArticleEditor,
+  type EditorGuardAdapter,
+} from "../src/admin/editor/useArticleEditor";
 import { createEditLock } from "../src/admin/editor/useEditLock";
-import { emptyEditorForm } from "../src/utils/editor/editorState";
-import type { DraftStorage } from "../src/utils/editor/draftStore";
+import {
+  emptyEditorForm,
+  isEditorDirty,
+} from "../src/utils/editor/editorState";
+import {
+  draftKey,
+  loadDraft,
+  saveDraft,
+  type DraftForm,
+  type DraftStorage,
+} from "../src/utils/editor/draftStore";
 
 const DETAIL = {
   title: "已发布文章",
@@ -44,7 +56,11 @@ interface SetupOptions {
   saveCode?: number;
   acquireConflictFirst?: boolean;
   verifyConflict?: boolean;
+  guard?: EditorGuardAdapter;
+  createId?: number;
 }
+const SAVED_AT = 1700000000000;
+const DRAFT_SCOPE = { userId: 7, articleId: 42 } as const;
 
 function jsonResponse(payload: unknown): Response {
   return { json: async () => payload } as unknown as Response;
@@ -117,6 +133,7 @@ function setup(opts: SetupOptions = {}) {
     lock,
     storage,
     now: () => 1700000000000,
+    guard: opts.guard,
     api: {
       request: async (method, path, body) => {
         apiCalls.push({ method, path, body });
@@ -137,7 +154,10 @@ function setup(opts: SetupOptions = {}) {
           return {
             code,
             message: code === 0 ? "ok" : "save boom",
-            data: null,
+            data:
+              code === 0 && method === "POST"
+                ? { id: opts.createId ?? 99 }
+                : null,
           };
         }
         return { code: 0, message: "ok", data: null };
@@ -148,6 +168,8 @@ function setup(opts: SetupOptions = {}) {
       saveFailed: "save failed",
       lockFailed: "lock failed",
       lockLost: "lock lost",
+      draftOversize: "draft too big",
+      draftStorageError: "draft storage blocked",
     }),
     onSaved,
     onClosed,
@@ -358,5 +380,177 @@ describe("createArticleEditor 流程", () => {
     });
     expect(s.core.getState().phase).toBe("saved");
     expect(s.onSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+function draftForm(overrides: Partial<DraftForm> = {}): DraftForm {
+  return {
+    title: "草稿标题",
+    slug: "draft-slug",
+    summary: "草稿摘要",
+    content: "# 草稿标题\n\n草稿正文",
+    cover_image: "",
+    category_id: "3",
+    status: "draft",
+    tags: ["标签A"],
+    ...overrides,
+  };
+}
+
+function seedDraft(
+  storage: DraftStorage,
+  form: DraftForm = draftForm(),
+  savedAt = SAVED_AT
+): void {
+  expect(
+    saveDraft(storage, DRAFT_SCOPE, form, {
+      savedAt,
+      baselineHash: "baseline:seed",
+    })
+  ).toEqual({ ok: true, key: "blog:article-draft:v1:u7:a42" });
+}
+
+describe("本地草稿恢复编排", () => {
+  it("打开有草稿的文章只提示恢复，不覆盖服务端内容", async () => {
+    const s = setup();
+    seedDraft(s.storage);
+
+    await s.core.open({ id: 42 });
+
+    expect(s.core.getState().form.content).toBe("# 正文");
+    expect(s.core.getState().baseline.content).toBe("# 正文");
+    expect(s.core.getDraftPrompt()).toEqual({
+      status: "found",
+      savedAt: SAVED_AT,
+      form: draftForm(),
+    });
+    expect(loadDraft(s.storage, DRAFT_SCOPE, { now: SAVED_AT })).not.toBeNull();
+  });
+
+  it("恢复草稿写入表单、保留服务端基线，并重新执行回写守卫", async () => {
+    let lossy = false;
+    const guard: EditorGuardAdapter = {
+      roundTrip: async (markdown) =>
+        lossy ? markdown.replace(/^# /gm, "") : markdown,
+      render: (markdown) => markdown,
+    };
+    const s = setup({ guard });
+    seedDraft(s.storage);
+    await s.core.open({ id: 42 });
+    expect(s.core.getGuard().mode).toBe("wysiwyg");
+
+    lossy = true;
+    await s.core.restoreDraft();
+
+    const state = s.core.getState();
+    expect(state.form).toEqual(draftForm());
+    expect(state.baseline).toEqual({
+      title: "已发布文章",
+      slug: "published-post",
+      summary: "摘要",
+      content: "# 正文",
+      cover_image: "",
+      category_id: "3",
+      status: "published",
+      tags: ["标签A"],
+    });
+    expect(isEditorDirty(state)).toBe(true);
+    expect(s.core.getGuard().status).toBe("lossy");
+    expect(s.core.getGuard().mode).toBe("source");
+    expect(s.core.getDraftPrompt()).toBeNull();
+  });
+
+  it("丢弃草稿清除存储且不改动当前表单", async () => {
+    const s = setup();
+    seedDraft(s.storage);
+    await s.core.open({ id: 42 });
+
+    s.core.discardDraft();
+
+    expect(s.core.getDraftPrompt()).toBeNull();
+    expect(s.core.getState().form.content).toBe("# 正文");
+    expect(loadDraft(s.storage, DRAFT_SCOPE, { now: SAVED_AT })).toBeNull();
+  });
+
+  it("编辑后 1.5s 防抖写入；pagehide 立即同步落盘", async () => {
+    const s = setup();
+    await s.core.open({ id: 42 });
+
+    s.core.updateForm({
+      ...s.core.getState().form,
+      content: "防抖前的正文",
+    });
+    vi.advanceTimersByTime(1499);
+    expect(s.storage.map.size).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(
+      loadDraft(s.storage, DRAFT_SCOPE, { now: SAVED_AT })?.form.content
+    ).toBe("防抖前的正文");
+
+    s.core.updateForm({
+      ...s.core.getState().form,
+      content: "页面隐藏前的正文",
+    });
+    s.core.handlePageHide({ persisted: false });
+    expect(
+      loadDraft(s.storage, DRAFT_SCOPE, { now: SAVED_AT })?.form.content
+    ).toBe("页面隐藏前的正文");
+  });
+
+  it("保存成功清理草稿；新建文章保存后记录实际 id", async () => {
+    const s = setup({ createId: 99 });
+    await s.core.open(null);
+    s.core.updateForm({
+      ...emptyEditorForm(),
+      title: "新文章",
+      content: "正文",
+    });
+    vi.advanceTimersByTime(1500);
+    expect(s.storage.map.has(draftKey({ userId: 7, articleId: "new" }))).toBe(
+      true
+    );
+
+    await s.core.save();
+
+    expect(s.storage.map.size).toBe(0);
+    expect(s.core.getState().articleId).toBe(99);
+  });
+
+  it("草稿超过 1MB 跳过并只提示一次", async () => {
+    const s = setup();
+    await s.core.open({ id: 42 });
+    const huge = "x".repeat(1024 * 1024 + 1);
+
+    s.core.updateForm({ ...s.core.getState().form, content: huge });
+    vi.advanceTimersByTime(1500);
+    expect(s.storage.map.size).toBe(0);
+    expect(s.onError).toHaveBeenCalledTimes(1);
+    expect(s.onError).toHaveBeenLastCalledWith("draft too big");
+
+    s.core.updateForm({ ...s.core.getState().form, content: huge + "y" });
+    vi.advanceTimersByTime(1500);
+    expect(s.onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("过期草稿只提示过期并清除，不提供恢复内容", async () => {
+    const s = setup();
+    seedDraft(s.storage, draftForm(), SAVED_AT - 7 * 24 * 60 * 60 * 1000 - 1);
+
+    await s.core.open({ id: 42 });
+
+    expect(s.core.getDraftPrompt()).toEqual({ status: "expired" });
+    expect(s.core.getState().form.content).toBe("# 正文");
+    expect(loadDraft(s.storage, DRAFT_SCOPE, { now: SAVED_AT })).toBeNull();
+  });
+
+  it("关闭并放弃修改会取消尚未落盘的防抖写入", async () => {
+    const s = setup();
+    await s.core.open({ id: 42 });
+    s.core.updateForm({ ...s.core.getState().form, content: "未保存正文" });
+    s.core.close();
+    s.core.discard();
+    vi.advanceTimersByTime(2000);
+
+    expect(s.storage.map.size).toBe(0);
   });
 });

@@ -746,6 +746,11 @@
   color: var(--color-text-tertiary);
 }
 
+/* 隐藏原生 file input；触发入口是工具栏按钮，禁用态随上传状态同步。 */
+.editor-image-input {
+  display: none;
+}
+
 /* ---- 插入链接弹窗：预览模式选项 ---- */
 /* 必须盖在文章编辑器全屏遮罩（z-index 300）之上 */
 .link-dialog-overlay {
@@ -1691,6 +1696,35 @@
   font-size: 0.82rem;
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
+}
+
+/* 本地草稿恢复条：提示但不自动应用，恢复 / 丢弃都需作者显式点击。 */
+.editor-draft-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning, #d97706);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+}
+
+.editor-draft-message {
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.editor-draft-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .milkdown-host {

@@ -8,8 +8,10 @@ import {
   DRAFT_TTL_MS,
   DRAFT_VERSION,
   draftKey,
+  hashDraftBaseline,
   isValidScope,
   loadDraft,
+  loadDraftWithStatus,
   parseDraft,
   saveDraft,
   serializeDraft,
@@ -273,6 +275,75 @@ describe("7 天过期与 1MB 配额", () => {
       ok: false,
       reason: "storage-error",
     });
+  });
+});
+
+describe("读取状态与基线哈希", () => {
+  it("loadDraftWithStatus 区分 none / found / expired，并懒清理过期键", () => {
+    const storage = memoryStorage();
+    expect(loadDraftWithStatus(storage, SCOPE, { now: SAVED_AT })).toEqual({
+      status: "none",
+    });
+
+    saveDraft(storage, SCOPE, sampleForm(), options());
+    expect(loadDraftWithStatus(storage, SCOPE, { now: SAVED_AT })).toEqual({
+      status: "found",
+      draft: {
+        version: 1,
+        userId: 7,
+        articleId: 42,
+        savedAt: SAVED_AT,
+        baselineHash: "base-1",
+        form: sampleForm(),
+      },
+    });
+
+    expect(
+      loadDraftWithStatus(storage, SCOPE, {
+        now: SAVED_AT + SEVEN_DAYS_MS + 1,
+      })
+    ).toEqual({ status: "expired" });
+    expect(storage.data.has(draftKey(SCOPE))).toBe(false);
+  });
+
+  it("坏数据 / 串到别的 scope 返回 none 并清理，不伪装成过期", () => {
+    const storage = memoryStorage();
+    const key = draftKey(SCOPE);
+    storage.setItem(key, "{");
+    expect(loadDraftWithStatus(storage, SCOPE, { now: SAVED_AT })).toEqual({
+      status: "none",
+    });
+    expect(storage.data.has(key)).toBe(false);
+
+    const foreignKey = draftKey({ userId: 8, articleId: 42 });
+    storage.setItem(
+      foreignKey,
+      serializeDraft(createDraft(SCOPE, sampleForm(), options()))
+    );
+    expect(
+      loadDraftWithStatus(
+        storage,
+        { userId: 8, articleId: 42 },
+        { now: SAVED_AT }
+      )
+    ).toEqual({ status: "none" });
+    expect(storage.data.has(foreignKey)).toBe(false);
+  });
+
+  it("基线哈希稳定、随基线变化、不把 token 算进来", () => {
+    const hash = hashDraftBaseline(sampleForm());
+    expect(hash).toMatch(/^fnv1a:[0-9a-f]{8}$/);
+    expect(hashDraftBaseline(sampleForm())).toBe(hash);
+    expect(
+      hashDraftBaseline({
+        ...sampleForm(),
+        tags: ["A", "B"],
+        token: "secret",
+      } as DraftForm & { token: string })
+    ).toBe(hash);
+    expect(hashDraftBaseline(sampleForm({ content: "别的正文" }))).not.toBe(
+      hash
+    );
   });
 });
 

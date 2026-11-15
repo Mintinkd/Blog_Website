@@ -45,7 +45,7 @@ export type EditorEvent =
   | { type: "retry-load" }
   | { type: "edit"; form: EditorFormSnapshot }
   | { type: "save" }
-  | { type: "save-ok" }
+  | { type: "save-ok"; articleId?: number }
   | { type: "save-failed"; message: string }
   | { type: "lock-lost" }
   | { type: "open-dialog"; dialog: Exclude<EditorDialog, "none"> }
@@ -223,6 +223,13 @@ export function reduceEditorState(
       return {
         ...state,
         phase: "saved",
+        // 新建文章保存后记录服务端 id；旧调用不传时保持原值。
+        articleId:
+          typeof event.articleId === "number" &&
+          Number.isFinite(event.articleId) &&
+          event.articleId > 0
+            ? event.articleId
+            : state.articleId,
         lockHeld: false,
         dialog: "none",
         error: null,

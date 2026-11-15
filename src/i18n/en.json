@@ -311,6 +311,8 @@
   "privacy.note": "This page applies to Reading Analytics Tier 0. If finer-grained metrics are added later, this page will be updated first.",
   "admin.editor_guard_lossy": "This article contains Markdown that WYSIWYG cannot represent losslessly. Opened in source mode.",
   "admin.editor_guard_blocked": "The pre-save guard still reports a lossy round-trip. Save in source mode instead.",
+  "admin.draft_oversize": "The local draft is larger than 1MB and was not saved.",
+  "admin.draft_storage_error": "The browser refused to store the local draft. Check private mode or available storage.",
   "editor.mode_wysiwyg": "WYSIWYG",
   "editor.mode_source": "Source",
   "editor.mode_split": "Split",
@@ -325,5 +327,15 @@
   "editor.toolbar_quote": "Quote",
   "editor.toolbar_list": "List",
   "editor.placeholder": "Start writing…",
-  "editor.link_placeholder": "Paste or type a link…"
+  "editor.link_placeholder": "Paste or type a link…",
+  "editor.upload_image": "Insert image",
+  "editor.uploading": "Uploading…",
+  "editor.upload_invalid_type": "Only image files can be uploaded",
+  "editor.upload_too_large": "Images must be 10MB or smaller",
+  "editor.upload_failed": "Image upload failed",
+  "editor.draft_found": "Local draft from {time} found",
+  "editor.draft_expired": "The local draft expired after 7 days and was cleared",
+  "editor.draft_restore": "Restore draft",
+  "editor.draft_discard": "Discard draft",
+  "editor.draft_dismiss": "Dismiss"
 }

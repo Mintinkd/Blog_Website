@@ -29,11 +29,12 @@ import {
   type EditorFormSnapshot,
   type EditorState,
 } from "../../utils/editor/editorState";
+import type { DraftStorage } from "../../utils/editor/draftStore";
 import {
-  clearDraft,
-  saveDraft,
-  type DraftStorage,
-} from "../../utils/editor/draftStore";
+  createLocalDraftController,
+  type DraftNoticeReason,
+  type DraftPrompt,
+} from "./useLocalDraft";
 import {
   classifyRoundTrip,
   decideInitialMode,
@@ -48,6 +49,7 @@ import {
 
 /** 与 Worker 的 ArticleEditDetail 对齐的手写投影；不跨包 import Worker 类型。 */
 export interface ArticleEditDetailLike {
+  id?: number;
   title?: string;
   slug?: string;
   content?: string;
@@ -81,6 +83,10 @@ export interface EditorMessages {
   guardLossy?: string;
   /** T4 #65：WYSIWYG 保存被守卫阻止时的提示。 */
   guardBlocked?: string;
+  /** T5 #66：本地草稿超过 1MB 被跳过（同一草稿只提示一次）。 */
+  draftOversize?: string;
+  /** T5 #66：localStorage 拒绝写入（配额 / 隐私模式）。 */
+  draftStorageError?: string;
 }
 
 const DEFAULT_MESSAGES: EditorMessages = {
@@ -90,6 +96,8 @@ const DEFAULT_MESSAGES: EditorMessages = {
   lockLost: "编辑锁已被接管",
   guardLossy: "该文章包含所见即所得无法无损表示的语法，已在源码模式打开",
   guardBlocked: "保存前守卫仍判定有损，请在源码模式保存",
+  draftOversize: "本地草稿超过 1MB，已跳过保存",
+  draftStorageError: "浏览器拒绝写入本地草稿，请检查隐私模式或存储空间",
 };
 
 /**
@@ -117,7 +125,8 @@ export function initialGuardState(): EditorGuardState {
 }
 
 export interface ArticleEditorOptions {
-  userId: number;
+  /** 数字用于固定会话；函数形式支持登录后 userId 才就绪（后台首屏无 token）。 */
+  userId: number | (() => number);
   api: EditorApi;
   lock: EditLock;
   storage?: DraftStorage | null;
@@ -149,11 +158,13 @@ export interface ArticleEditorCore {
   getState(): EditorState;
   getConflict(): LockConflict | null;
   getGuard(): EditorGuardState;
+  getDraftPrompt(): DraftPrompt | null;
   subscribe(
     listener: (
       state: EditorState,
       conflict: LockConflict | null,
-      guard: EditorGuardState
+      guard: EditorGuardState,
+      draft: DraftPrompt | null
     ) => void
   ): () => void;
   open(
@@ -169,6 +180,10 @@ export interface ArticleEditorCore {
   overrideGuard(): Promise<void>;
   /** 正文被外部替换（草稿恢复 / 接管重建基线）后重新执行加载判定。 */
   reevaluateGuard(): Promise<void>;
+  /** T5：把提示中的草稿写入表单（保留服务端基线），并重新执行回写守卫。 */
+  restoreDraft(): Promise<void>;
+  /** T5：丢弃提示中的草稿 / 关闭过期提示。 */
+  discardDraft(): void;
   save(): Promise<void>;
   close(): void;
   esc(): void;
@@ -210,18 +225,42 @@ export function createArticleEditor(
   let state = initialEditorState();
   let conflict: LockConflict | null = null;
   let guard = initialGuardState();
+  let draftPrompt: DraftPrompt | null = null;
   let currentArticle: { id: number } | null = null;
   const listeners = new Set<
     (
       next: EditorState,
       lockConflict: LockConflict | null,
-      nextGuard: EditorGuardState
+      nextGuard: EditorGuardState,
+      nextDraft: DraftPrompt | null
     ) => void
   >();
   let attached = false;
 
+  function resolveUserId(): number {
+    return typeof options.userId === "function"
+      ? options.userId()
+      : options.userId;
+  }
+
+  function draftNoticeMessage(reason: DraftNoticeReason): string {
+    return reason === "oversize"
+      ? (messages().draftOversize ?? DEFAULT_MESSAGES.draftOversize ?? "")
+      : (messages().draftStorageError ??
+          DEFAULT_MESSAGES.draftStorageError ??
+          "");
+  }
+
+  const drafts = createLocalDraftController({
+    storage: options.storage ?? null,
+    now,
+    onNotice: (reason) => options.onError?.(draftNoticeMessage(reason)),
+  });
+
   function notify(): void {
-    listeners.forEach((listener) => listener(state, conflict, guard));
+    listeners.forEach((listener) =>
+      listener(state, conflict, guard, draftPrompt)
+    );
   }
 
   function dispatch(event: EditorEvent): EditorState {
@@ -235,23 +274,42 @@ export function createArticleEditor(
 
   function draftScope() {
     return {
-      userId: options.userId,
+      userId: resolveUserId(),
       articleId: state.articleId ?? "new",
     };
+  }
+
+  function setDraftPrompt(next: DraftPrompt | null): void {
+    if (next === draftPrompt) return;
+    draftPrompt = next;
+    notify();
   }
 
   /** 同步落盘：会话失效 / pagehide / 锁丢失都必须在退出前写完，不能用防抖。 */
   function persistDraftSync(): void {
     if (!options.storage || !isEditorOpen(state)) return;
-    saveDraft(options.storage, draftScope(), state.form, {
-      savedAt: now(),
-      baselineHash: `baseline:${state.baseline.content.length}`,
-    });
+    drafts.flush(draftScope(), state.form, state.baseline);
   }
 
   function clearDraftSync(): void {
     if (!options.storage) return;
-    clearDraft(options.storage, draftScope());
+    drafts.clear(draftScope());
+  }
+
+  /** 只在打开且有未保存修改时安排 1.5s 防抖写入；改回基线则取消。 */
+  function scheduleDraft(): void {
+    if (!options.storage) return;
+    if (!isEditorOpen(state) || !isEditorDirty(state)) {
+      drafts.cancel();
+      return;
+    }
+    drafts.schedule(draftScope(), state.form, state.baseline);
+  }
+
+  /** 打开 / 重试 / 接管加载完正文后读取草稿，只提示，不自动应用。 */
+  function readDraftPrompt(): void {
+    if (!options.storage || !isEditorOpen(state)) return;
+    setDraftPrompt(drafts.read(draftScope()));
   }
 
   function onLockConflict(next: LockConflict): void {
@@ -347,6 +405,7 @@ export function createArticleEditor(
           : emptyEditorForm(),
       });
       await runInitialGuard();
+      readDraftPrompt();
       return;
     }
     let res: ApiEnvelope;
@@ -378,12 +437,15 @@ export function createArticleEditor(
     dispatch({ type: "loaded", form: mapDetailToForm(res.data) });
     // 打开 / 重试 / 强制接管都重新执行加载判定，草稿恢复由 reevaluateGuard 触发。
     await runInitialGuard();
+    readDraftPrompt();
   }
 
   async function open(
     article: { id: number } | null,
     prefill?: EditorFormSnapshot
   ): Promise<void> {
+    drafts.cancel();
+    draftPrompt = null;
     await options.lock.release();
     options.lock.stopHeartbeat();
     conflict = null;
@@ -449,6 +511,34 @@ export function createArticleEditor(
 
   function updateForm(form: EditorFormSnapshot): void {
     dispatch({ type: "edit", form });
+    scheduleDraft();
+  }
+
+  /**
+   * T5 #66 草稿恢复：只替换表单，基线保持服务端加载值（因此立即变脏、关闭需保护）。
+   * 恢复的正文来自旧版本，必须重新跑回写守卫；lossy 时由守卫切到源码模式。
+   */
+  async function restoreDraft(): Promise<void> {
+    const prompt = draftPrompt;
+    if (!prompt || prompt.status !== "found") return;
+    if (state.phase !== "ready" && state.phase !== "lock-lost") return;
+    // 先取消可能仍挂着旧表单的防抖任务，避免它晚到覆盖恢复后的正文。
+    drafts.cancel();
+    dispatch({
+      type: "edit",
+      form: { ...prompt.form, tags: [...prompt.form.tags] },
+    });
+    setDraftPrompt(null);
+    await runInitialGuard();
+    scheduleDraft();
+  }
+
+  /** T5 #66 丢弃草稿 / 关闭过期提示；不改动服务端加载出的表单。 */
+  function discardDraft(): void {
+    if (!draftPrompt) return;
+    if (draftPrompt.status === "found") clearDraftSync();
+    else drafts.cancel();
+    setDraftPrompt(null);
   }
 
   function toPayload(form: EditorFormSnapshot): Record<string, unknown> {
@@ -529,8 +619,18 @@ export function createArticleEditor(
       return;
     }
     if (res.code === 0) {
-      dispatch({ type: "save-ok" });
+      // 新建文章成功后记录服务端 id；草稿键在 dispatch 前按旧 scope（new）清除，
+      // 避免下次新建误恢复旧内容。迁移或清除都满足 §5.5，这里选择清除。
+      const savedId =
+        isNew &&
+        typeof res.data?.id === "number" &&
+        Number.isFinite(res.data.id) &&
+        res.data.id > 0
+          ? res.data.id
+          : undefined;
+      drafts.cancel();
       clearDraftSync();
+      dispatch({ type: "save-ok", articleId: savedId });
       void options.lock.release();
       options.lock.stopHeartbeat();
       options.onSaved?.();
@@ -617,7 +717,10 @@ export function createArticleEditor(
 
   function handlePageHide(event: PageHideEventLike): void {
     if (event.persisted === true) return;
-    if (!isEditorOpen(state)) return;
+    if (!isEditorOpen(state)) {
+      drafts.cancel();
+      return;
+    }
     if (isEditorDirty(state)) persistDraftSync();
     void options.lock.release({ keepalive: true });
   }
@@ -637,6 +740,7 @@ export function createArticleEditor(
   }
 
   function dispose(): void {
+    drafts.cancel();
     if (attached && typeof window !== "undefined") {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handlePageHide);
@@ -661,6 +765,7 @@ export function createArticleEditor(
     getState: () => state,
     getConflict: () => conflict,
     getGuard: () => guard,
+    getDraftPrompt: () => draftPrompt,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -672,6 +777,8 @@ export function createArticleEditor(
     setEditorMode,
     overrideGuard: () => setEditorMode("wysiwyg", true),
     reevaluateGuard: runInitialGuard,
+    restoreDraft,
+    discardDraft,
     save,
     close,
     esc,
@@ -695,12 +802,14 @@ export function useArticleEditor(options: ArticleEditorOptions) {
   const state = shallowRef(core.getState());
   const conflict = shallowRef(core.getConflict());
   const guard = shallowRef(core.getGuard());
-  core.subscribe((next, nextConflict, nextGuard) => {
+  const draft = shallowRef(core.getDraftPrompt());
+  core.subscribe((next, nextConflict, nextGuard, nextDraft) => {
     state.value = next;
     conflict.value = nextConflict;
     guard.value = nextGuard;
+    draft.value = nextDraft;
   });
   onMounted(() => core.attach());
   onBeforeUnmount(() => core.dispose());
-  return { state, conflict, guard, core };
+  return { state, conflict, guard, draft, core };
 }

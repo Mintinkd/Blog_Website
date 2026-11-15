@@ -1,6 +1,6 @@
 # 文章编辑器升级与重构方案
 
-> 状态：方案已定；T0 技术验证「通过（有条件）」，T1–T4 已实施，T5–T8 待办
+> 状态：方案已定；T0 技术验证「通过（有条件）」，T1–T5 已实施，T6–T8 待办
 > 修订：2026-11-14（T0 实测结论 + #65 T4 实施同步；见 §8.1 / §8.4 / §9 与 `docs/reviews/2026-11-14-milkdown-t0-validation.md`）
 > 日期：2026-11-14
 > 关联：`docs/adr/0006-wysiwyg-markdown-editor.md`、`docs/reviews/2026-10-23-full-codebase-review.md` L3（巨石组件）；预览白名单一致性沿用 M13 的已有修复，M2（列表取正文）不在本批次
@@ -337,6 +337,8 @@ closed
 
 **T4 #65 已落地**：`tests/editor-markdown-bridge.test.ts`（34 项，node 环境用 `renderMarkdownServer` 作等价渲染器，安全 / lossy 两组按「不装配 image-block」前提重新判定）、`tests/editor-guard-integration.test.ts`（9 项，守卫接入加载 / 模式切换 / 保存前二次守卫 / 显式覆盖仍阻止保存）、`tests/markdown-preview-parity.test.ts` 扩展至 15 项（真实 `renderMarkdown` 管线下的守卫判定）。浏览器回归与 CI 门禁扩展仍由 T7 #68 承接。
 
+**T5 #66 已落地**：`tests/editor-upload.test.ts` 覆盖类型 / 10MB 预检、Bearer + FormData 请求、`original_name` → alt 映射、服务端 message / network 错误映射、失败保留原正文与选区；`tests/editor-draft.test.ts` 扩展 `loadDraftWithStatus`（none / found / expired）与基线哈希；`tests/article-editor-flow.test.ts` 增加打开只提示、恢复后重跑守卫、丢弃、1.5s 防抖 + `pagehide` 同步、保存 / 新建清理、超 1MB 只提示一次、过期提示。浏览器骨架见 §10.3。
+
 ### 10.2 Worker vitest
 
 | 文件                                        | 覆盖                                                                                                        |
@@ -348,6 +350,14 @@ closed
 ### 10.3 Playwright
 
 新增 `scripts/verify-article-editor.mjs`，复用本地 mock，不访问真实 Worker。mock 必须是有状态的本地 HTTP API：编辑器的 `PUT` 与 SSR 的 `GET` 共用同一份内存数据；只用浏览器 `page.route` 拦截无法覆盖 Astro SSR 的服务端取数。
+
+**T5 #66 已落地脚本骨架**：当前版本用 `page.route` 覆盖后台编辑器自身请求，已串起「工具栏上传（断言 Bearer / multipart）→ WYSIWYG 粘贴 / 拖拽 → 1.5s 草稿落盘 → 刷新恢复 / 丢弃 → 保存清理」；安全 / lossy 语料、`PUT` + SSR 有状态 mock、锁冲突与 CI 接线仍由 T7 #68 补齐。运行方式：
+
+```powershell
+npx astro dev --port 4321
+$env:PW_CHANNEL='msedge'   # 仅用系统 Edge 时
+node scripts/verify-article-editor.mjs
+```
 
 1. 安全语料（GFM 表格 / 围栏代码 / 引用 / `data-embed` / 原始 HTML）→ 断言进入 WYSIWYG；lossy 语料 → 断言进入源码模式并显示提示。
 2. 在 WYSIWYG 中编辑文字、插入普通链接与内嵌链接、上传图片（`setInputFiles` + mock 上传）→ 保存 → 断言 `PUT` 请求体是 Markdown、含 `data-embed="1"`、不含预览 HTML。
@@ -414,8 +424,8 @@ GitHub 跟踪：母票 [#60](https://github.com/Mintinkd/Blog_Website/issues/60)
 - [ ] 保存请求体只含 Markdown，`content_html` 不被写入；`data-embed="1"`、表格、代码块、引用、图片均保留。
 - [ ] 关闭 / 取消 / Esc / 刷新在脏状态下触发保护；放弃后锁被释放；保存失败不关闭编辑器。
 - [ ] 编辑锁心跳续期；保存前校验；锁冲突时禁止保存并有可操作出口。
-- [ ] 图片上传 / 粘贴 / 拖拽可用；失败不破坏正文。
-- [ ] 本地草稿可恢复 / 丢弃，保存后清理，退出登录清理。
+- [x] 图片上传 / 粘贴 / 拖拽可用；失败不破坏正文。
+- [x] 本地草稿可恢复 / 丢弃，保存后清理，退出登录清理。
 - [ ] 375px / 280px 无横向滚动；1280px 分屏正常；亮暗主题、焦点陷阱、对比度通过现有观感规则。
 - [ ] 新增 `GET /articles/:id/edit` 有 401 / 403 / 400 非法 id / 404 / owner / admin / 无统计副作用测试，响应不含 `content_html`。
 - [ ] `npm test`、Worker `typecheck` / `test`、`npm run check`、Playwright 回归、观感检查全部通过。

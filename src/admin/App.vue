@@ -1664,9 +1664,11 @@
           :state="editorState"
           :conflict="editorConflict"
           :guard="editorGuard"
+          :draft="editorDraft"
           :categories="categories"
           :tags="tags"
           :user-role="userRole"
+          :get-token="getEditorToken"
           @update-form="onEditorForm"
           @save="onEditorSave"
           @close="onEditorClose"
@@ -1682,6 +1684,8 @@
           @upload-error="onEditorUploadError"
           @add-tag="addEditorTag"
           @keep-draft="onEditorKeepDraft"
+          @restore-draft="onEditorRestoreDraft"
+          @discard-draft="onEditorDiscardDraft"
         />
       </main>
     </div>
@@ -1700,6 +1704,7 @@ import {
 } from "./editor/useArticleEditor.ts";
 import { roundTripMarkdown } from "./editor/milkdown/milkdownService";
 import { createEditLock, type LockConflict } from "./editor/useEditLock.ts";
+import type { DraftPrompt } from "./editor/useLocalDraft.ts";
 import {
   initialEditorState,
   isEditorOpen,
@@ -2415,6 +2420,7 @@ async function loadConfig() {
 const editorState = shallowRef<EditorState>(initialEditorState());
 const editorConflict = shallowRef<LockConflict | null>(null);
 const editorGuard = shallowRef<EditorGuardState>(initialGuardState());
+const editorDraft = shallowRef<DraftPrompt | null>(null);
 
 const editorLock = createEditLock({
   apiBase: import.meta.env.PUBLIC_API_BASE || "/api/v1",
@@ -2422,7 +2428,8 @@ const editorLock = createEditLock({
 });
 
 editorCore = createArticleEditor({
-  userId: currentUserId.value,
+  // 函数形式：首屏可能还没有 token / userId，登录后再打开编辑器必须取到真实 id。
+  userId: () => currentUserId.value,
   api: { request: (method, path, body) => api(method, path, body) },
   lock: editorLock,
   storage: window.localStorage,
@@ -2436,6 +2443,8 @@ editorCore = createArticleEditor({
     lockLost: t("admin.lock_lost_message"),
     guardLossy: t("admin.editor_guard_lossy"),
     guardBlocked: t("admin.editor_guard_blocked"),
+    draftOversize: t("admin.draft_oversize"),
+    draftStorageError: t("admin.draft_storage_error"),
   }),
   onSaved: () => {
     void loadArticles();
@@ -2447,11 +2456,16 @@ editorCore = createArticleEditor({
     alert(message);
   },
 });
-editorCore.subscribe((next, conflict, guard) => {
+editorCore.subscribe((next, conflict, guard, draft) => {
   editorState.value = next;
   editorConflict.value = conflict;
   editorGuard.value = guard;
+  editorDraft.value = draft;
 });
+
+function getEditorToken(): string {
+  return token.value;
+}
 
 function openNewArticle(): void {
   void editorCore?.open(null);
@@ -2506,6 +2520,12 @@ function onEditorCloseDialog(): void {
 }
 function onEditorKeepDraft(): void {
   editorCore?.keepDraftAndClose();
+}
+function onEditorRestoreDraft(): void {
+  void editorCore?.restoreDraft();
+}
+function onEditorDiscardDraft(): void {
+  editorCore?.discardDraft();
 }
 
 /** 新建标签沿用原有 POST /tags → loadTags → 加进表单的路径，行为等价。 */

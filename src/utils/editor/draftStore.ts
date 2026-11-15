@@ -54,6 +54,12 @@ export type DraftSaveResult =
   | { ok: true; key: string }
   | { ok: false; reason: "invalid-scope" | "oversize" | "storage-error" };
 
+/** 读取结果区分「没有草稿」「可恢复」「已过期」，过期提示需要它而不是静默清理。 */
+export type DraftLoadResult =
+  | { status: "none" }
+  | { status: "found"; draft: ArticleDraft }
+  | { status: "expired" };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -189,28 +195,53 @@ export function saveDraft(
 }
 
 /** 读取时惰性清理：坏数据、串到别的用户 / 文章、超过 7 天未更新都删除。 */
-export function loadDraft(
+export function loadDraftWithStatus(
   storage: DraftStorage,
   scope: DraftScope,
   options: { now: number }
-): ArticleDraft | null {
-  if (!isValidScope(scope)) return null;
+): DraftLoadResult {
+  if (!isValidScope(scope)) return { status: "none" };
   const key = draftKey(scope);
   const raw = storage.getItem(key);
   const draft = parseDraft(raw);
   if (!draft) {
     if (raw !== null) storage.removeItem(key);
-    return null;
+    return { status: "none" };
   }
   if (draft.userId !== scope.userId || draft.articleId !== scope.articleId) {
     storage.removeItem(key);
-    return null;
+    return { status: "none" };
   }
   if (options.now - draft.savedAt > DRAFT_TTL_MS) {
     storage.removeItem(key);
-    return null;
+    return { status: "expired" };
   }
-  return draft;
+  return { status: "found", draft };
+}
+
+/** 兼容旧调用：只关心是否存在可恢复草稿时不看过期原因。 */
+export function loadDraft(
+  storage: DraftStorage,
+  scope: DraftScope,
+  options: { now: number }
+): ArticleDraft | null {
+  const result = loadDraftWithStatus(storage, scope, options);
+  return result.status === "found" ? result.draft : null;
+}
+
+/**
+ * 基线标识：对白名单表单投影做稳定的 FNV-1a 哈希。
+ * 只用于「草稿基于哪份基线保存」的可诊断标记，不参与安全判定；
+ * 不用 `content.length` 这类弱标识，避免正文等长修改时误判为同一基线。
+ */
+export function hashDraftBaseline(form: DraftForm): string {
+  const text = JSON.stringify(projectForm(form));
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a:${hash.toString(16).padStart(8, "0")}`;
 }
 
 export function clearDraft(storage: DraftStorage, scope: DraftScope): void {

@@ -42,7 +42,7 @@ import { getMarkdown, insert, replaceAll } from "@milkdown/kit/utils";
 import { reactive } from "vue";
 import { getLocale, t } from "../../../utils/i18n";
 import { embedLinkRemark, embedLinkSchema, embedLinkView } from "./embedLink";
-import { uploadImageFile } from "./upload";
+import { describeUploadError, uploadImageFile } from "./upload";
 
 export interface MilkdownEditorOptions {
   defaultValue?: string;
@@ -143,9 +143,8 @@ export async function createMilkdownEditor(
             const block = paragraphType?.createAndFill(null, node);
             nodes.push(block ?? node);
           } catch (error) {
-            options.onUploadError?.(
-              error instanceof Error ? error.message : t("admin.upload_failed")
-            );
+            // 与工具栏上传共用同一映射：预检走 i18n、服务端 message 优先。
+            options.onUploadError?.(describeUploadError(error, t));
           }
         }
         return nodes;

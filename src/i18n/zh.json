@@ -311,6 +311,8 @@
   "privacy.note": "本页随阅读统计 Tier 0 生效；若未来启用更细的统计维度，会先更新本页。",
   "admin.editor_guard_lossy": "该文章包含所见即所得无法无损表示的语法，已在源码模式打开",
   "admin.editor_guard_blocked": "保存前守卫仍判定有损，请在源码模式保存",
+  "admin.draft_oversize": "本地草稿超过 1MB，已跳过保存",
+  "admin.draft_storage_error": "浏览器拒绝写入本地草稿，请检查隐私模式或存储空间",
   "editor.mode_wysiwyg": "所见即所得",
   "editor.mode_source": "源码",
   "editor.mode_split": "分屏",
@@ -325,5 +327,15 @@
   "editor.toolbar_quote": "引用",
   "editor.toolbar_list": "列表",
   "editor.placeholder": "开始写作…",
-  "editor.link_placeholder": "粘贴或输入链接…"
+  "editor.link_placeholder": "粘贴或输入链接…",
+  "editor.upload_image": "插入图片",
+  "editor.uploading": "上传中…",
+  "editor.upload_invalid_type": "只能上传图片文件",
+  "editor.upload_too_large": "图片不能超过 10MB",
+  "editor.upload_failed": "图片上传失败",
+  "editor.draft_found": "检测到 {time} 的本地草稿",
+  "editor.draft_expired": "本地草稿已过期（超过 7 天），已清理",
+  "editor.draft_restore": "恢复草稿",
+  "editor.draft_discard": "丢弃草稿",
+  "editor.draft_dismiss": "知道了"
 }

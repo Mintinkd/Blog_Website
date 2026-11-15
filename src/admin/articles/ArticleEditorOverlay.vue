@@ -23,7 +23,9 @@ import {
 } from "../../utils/editor/editorState";
 import type { LockConflict } from "../editor/useEditLock";
 import type { EditorGuardState } from "../editor/useArticleEditor";
+import type { DraftPrompt } from "../editor/useLocalDraft";
 import EditorMetaFields from "../editor/EditorMetaFields.vue";
+import DraftRecoveryBar from "../editor/DraftRecoveryBar.vue";
 import MarkdownWorkspace, {
   type WorkspaceMode,
 } from "../editor/MarkdownWorkspace.vue";
@@ -35,9 +37,12 @@ const props = defineProps<{
   state: EditorState;
   conflict: LockConflict | null;
   guard: EditorGuardState;
+  draft: DraftPrompt | null;
   categories: { id: number; name: string }[];
   tags: { id: number; name: string }[];
   userRole: string;
+  /** Bearer token 由宿主注入；上传走同一个入口，不在组件里读 localStorage。 */
+  getToken: () => string;
 }>();
 
 const emit = defineEmits<{
@@ -54,6 +59,8 @@ const emit = defineEmits<{
   (e: "change-mode", mode: "wysiwyg" | "source"): void;
   (e: "override-guard"): void;
   (e: "upload-error", message: string): void;
+  (e: "restore-draft"): void;
+  (e: "discard-draft"): void;
   (e: "add-tag", name: string): void;
   (e: "keep-draft"): void;
 }>();
@@ -167,6 +174,12 @@ async function copyContent(): Promise<void> {
                 </button>
               </div>
             </div>
+            <!-- T5 #66：只提示恢复 / 丢弃，绝不自动覆盖服务端加载出的正文。 -->
+            <DraftRecoveryBar
+              :prompt="props.draft"
+              @restore="emit('restore-draft')"
+              @discard="emit('discard-draft')"
+            />
             <EditorMetaFields
               :form="props.state.form"
               :categories="props.categories"
@@ -181,6 +194,7 @@ async function copyContent(): Promise<void> {
               :mode="mode"
               :guard="props.guard"
               :disabled="props.state.phase === 'saving'"
+              :get-token="props.getToken"
               @update:content="onContent"
               @update:mode="(next: WorkspaceMode) => (mode = next)"
               @change-mode="

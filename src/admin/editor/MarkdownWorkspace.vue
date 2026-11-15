@@ -26,12 +26,18 @@ import { getLocale, t } from "../../utils/i18n.ts";
 import { renderMarkdown } from "../../utils/markdown";
 import { enhanceMediaLinks } from "../../utils/mediaEmbed.ts";
 import {
+  buildImageSnippet,
   continueList,
   insertSnippet,
   toggleLinePrefix,
   wrapSelection,
   type CommandResult,
 } from "../../utils/editor/editorCommands";
+import {
+  describeUploadError,
+  uploadImageAtSelection,
+  uploadImageFile,
+} from "../../utils/editor/uploadImage";
 import type { EditorGuardState } from "./useArticleEditor";
 
 const MilkdownEditor = defineAsyncComponent(
@@ -67,6 +73,12 @@ interface WysiwygHandle {
 const textarea = ref<HTMLTextAreaElement | null>(null);
 const previewPane = ref<HTMLElement | null>(null);
 const wysiwyg = ref<WysiwygHandle | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
+/** 上传中禁用重复提交；不锁正文，作者可以继续写。 */
+const uploading = ref(false);
+const uploadDisabled = computed(
+  () => Boolean(props.disabled) || uploading.value
+);
 
 /** 守卫状态是编辑形态的唯一权威；lossy 未覆盖时一律渲染源码 textarea。 */
 const editorMode = computed<"wysiwyg" | "source">(() => props.guard.mode);
@@ -244,6 +256,63 @@ function insertAtCursor(snippet: string): void {
   else emit("update:content", props.content + snippet);
 }
 
+function resolveToken(): string {
+  if (props.getToken) return props.getToken();
+  try {
+    return localStorage.getItem("admin_token") ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function openImagePicker(): void {
+  if (uploadDisabled.value) return;
+  fileInput.value?.click();
+}
+
+/**
+ * 工具栏上传（T5 #66）：源码模式走可单测的一站式插入，失败原样保留正文；
+ * WYSIWYG 只把返回的 URL 变成普通图片节点，粘贴 / 拖拽由 Crepe uploader 复用同一适配器。
+ */
+async function onImagePicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  // 立即清空，允许再次选择同一个文件；上传失败也不留下旧选择。
+  input.value = "";
+  if (!file || uploadDisabled.value) return;
+
+  uploading.value = true;
+  try {
+    if (isSource.value) {
+      const snapshot = selection();
+      const result = await uploadImageAtSelection(
+        props.content,
+        snapshot,
+        file,
+        resolveToken
+      );
+      if (!result.ok) {
+        emit("upload-error", describeUploadError(result.error, t));
+        return;
+      }
+      emit("update:content", result.content);
+      await nextTick();
+      const ta = textarea.value;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(result.selection.start, result.selection.end);
+      }
+      return;
+    }
+    const image = await uploadImageFile(file, resolveToken);
+    insertAtCursor(buildImageSnippet(image.url, image.alt));
+  } catch (error) {
+    emit("upload-error", describeUploadError(error, t));
+  } finally {
+    uploading.value = false;
+  }
+}
+
 defineExpose({ insertAtCursor });
 </script>
 
@@ -321,6 +390,22 @@ defineExpose({ insertAtCursor });
       >
         {{ t("admin.insert_link") }}
       </button>
+      <button
+        type="button"
+        class="toolbar-btn editor-upload-btn"
+        :disabled="uploadDisabled"
+        @click="openImagePicker"
+      >
+        {{ uploading ? t("editor.uploading") : t("editor.upload_image") }}
+      </button>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/*"
+        class="editor-image-input"
+        :disabled="uploadDisabled"
+        @change="onImagePicked"
+      />
       <template v-if="isSource">
         <button
           v-for="command in sourceCommands"
