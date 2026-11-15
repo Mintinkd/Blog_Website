@@ -177,15 +177,9 @@ async function copyContent(): Promise<void> {
 
 <template>
   <Teleport to="body">
-    <div
-      class="article-editor-overlay"
-      role="dialog"
-      :aria-label="
-        props.state.articleId === 'new'
-          ? t('admin.new_article')
-          : t('admin.edit') + t('admin.articles')
-      "
-    >
+    <!-- 全屏壳是非模态工作区，不声明 role=dialog / aria-modal；
+         四个 .modal 弹窗才是 role=dialog 模态并由 useFocusTrap 接管焦点。 -->
+    <div class="article-editor-overlay">
       <div class="article-editor">
         <div class="editor-header">
           <h3>
@@ -213,8 +207,7 @@ async function copyContent(): Promise<void> {
           <div
             v-else-if="props.state.phase === 'load-error'"
             class="editor-state-panel"
-            role="status"
-            aria-live="polite"
+            role="alert"
           >
             <h3>{{ t("admin.editor_load_failed") }}</h3>
             <p>{{ props.state.error }}</p>
@@ -239,6 +232,9 @@ async function copyContent(): Promise<void> {
               role="status"
               aria-live="polite"
             >
+              <span class="meta-live-region">{{
+                t("admin.meta_lock_lost_status")
+              }}</span>
               <p>{{ t("admin.lock_lost_message") }}</p>
               <div class="modal-actions">
                 <button
@@ -338,12 +334,7 @@ async function copyContent(): Promise<void> {
         </div>
 
         <div class="editor-footer">
-          <p
-            v-if="props.state.error"
-            class="editor-error"
-            role="status"
-            aria-live="polite"
-          >
+          <p v-if="props.state.error" class="editor-error" role="alert">
             {{ props.state.error }}
           </p>
           <span class="meta-live-region" aria-live="polite">

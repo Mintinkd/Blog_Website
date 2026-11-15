@@ -24,6 +24,11 @@ export type PublishCheck =
 /**
  * 发布前检查：仅「已发布」要求标题与正文 trim 后非空；草稿不拦截。
  * 不追加服务端 validate 之外的长度 / 格式规则，避免前端擅自收紧口径。
+ *
+ * 已知张力（#67 票面措辞）：Worker 的 validate() 对 title / content 恒要求
+ * minLength 1，与 status 无关；本票按票面把前端拦截限定在「发布」动作，
+ * 草稿空标题 / 空正文仍会在保存时被服务端拒绝，错误由既有 save-failed 链路
+ * 原样展示。统一这两处口径需要改票面语义，留作后续票，不在此擅自收紧。
  */
 export function checkPublishReady(form: PublishableForm): PublishCheck {
   if (form.status !== "published") return { ok: true };

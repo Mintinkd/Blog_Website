@@ -35,6 +35,11 @@ import {
   effectiveForeground,
   formatRgb,
 } from "./visual-contrast.mjs";
+import {
+  EDITOR_ENTRY_SELECTOR,
+  EDITOR_VIEWPORTS,
+  fixtureFor,
+} from "./editor-meta-fixture.mjs";
 
 const BASE = process.env.BASE || "http://localhost:4321";
 const CHANNEL = process.env.PW_CHANNEL;
@@ -113,57 +118,6 @@ const RULES = {
     source: "页面脚本 / 组件挂载",
   },
 };
-
-const ok = (data) => ({ code: 0, message: "ok", data });
-
-function fixtureFor(pathname) {
-  if (pathname.includes("/settings")) return ok(null);
-  if (pathname.includes("/config")) {
-    return ok({
-      site_title: "Blog",
-      site_subtitle: "",
-      site_description: "观感检查 fixture",
-      posts_per_page: "10",
-      about_content: "",
-      profile_card: "",
-    });
-  }
-  // T6 #67：给元信息面板几个真实标签 chip，观感规则才有可量测的目标；
-  // 内含一个较长中文名，用来压「最长标签不裁切」这条。
-  if (pathname.endsWith("/tags")) {
-    return ok({
-      items: [
-        { id: 1, name: "TypeScript" },
-        { id: 2, name: "Cloudflare" },
-        { id: 3, name: "国际化与可访问性实践" },
-      ],
-      total: 3,
-      page: 1,
-      page_size: 20,
-      total_pages: 1,
-    });
-  }
-  if (pathname.includes("/analytics")) {
-    return ok({
-      range: "7d",
-      pv: 0,
-      uv: 0,
-      bot_filtered: 0,
-      engaged: null,
-      insufficient: true,
-      buckets: [],
-      items: [],
-      total: 0,
-    });
-  }
-  return ok({
-    items: [],
-    total: 0,
-    page: 1,
-    page_size: 20,
-    total_pages: 0,
-  });
-}
 
 /**
  * 可扩展的检查目标清单。
@@ -791,12 +745,6 @@ async function openScene(browser, target, viewport, theme) {
 /* ===== T6 #67：文章编辑器元信息面板目标 =====
    与卡片式 link-dialog 结构不同，这里单独采集并在 Node 侧判定，复用
    RULES 的 VF-01 / VF-08 / VF-09 / VF-10 / VF-11 / VF-13 编号与阈值。 */
-const EDITOR_VIEWPORTS = [
-  { name: "280px", width: 280, height: 720 },
-  { name: "375px", width: 375, height: 812 },
-  { name: "1280px", width: 1280, height: 800 },
-];
-
 const EDITOR_RULE_SOURCE = {
   "VF-01":
     "src/admin/admin-shared.css → .meta-hint / .form-group label / .tag-chip 的 color",
@@ -819,8 +767,8 @@ const EDITOR_TARGETS = [
     async prepare(page, viewport) {
       await page.goto(`${BASE}/admin`, { waitUntil: "load" });
       await page.waitForSelector(".admin-layout", { timeout: 15000 });
-      // data-editor-entry 与文案无关，中英文 locale 下都能稳定定位。
-      await page.locator('[data-editor-entry="new-article"]').click();
+      // EDITOR_ENTRY_SELECTOR 与文案无关，中英文 locale 下都能稳定定位。
+      await page.locator(EDITOR_ENTRY_SELECTOR).click();
       await page.waitForSelector(".article-editor-overlay", { timeout: 10000 });
       if (viewport.width <= 767) {
         // 窄屏元信息默认折叠，先展开抽屉，#meta-title 才会变为可见。

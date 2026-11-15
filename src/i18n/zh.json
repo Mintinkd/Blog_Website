@@ -356,7 +356,6 @@
   "admin.meta_publish_need_title": "发布前请填写标题",
   "admin.meta_publish_need_content": "发布前请填写正文",
   "admin.meta_publish_need_both": "发布前请填写标题与正文",
-  "admin.meta_drawer": "元信息",
   "admin.meta_drawer_open": "展开元信息",
   "admin.meta_drawer_close": "收起元信息",
   "admin.meta_drawer_title": "文章元信息",

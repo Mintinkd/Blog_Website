@@ -356,7 +356,6 @@
   "admin.meta_publish_need_title": "Add a title before publishing",
   "admin.meta_publish_need_content": "Add body content before publishing",
   "admin.meta_publish_need_both": "Add a title and body content before publishing",
-  "admin.meta_drawer": "Metadata",
   "admin.meta_drawer_open": "Show metadata",
   "admin.meta_drawer_close": "Hide metadata",
   "admin.meta_drawer_title": "Article metadata",

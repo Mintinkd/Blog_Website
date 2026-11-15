@@ -14,61 +14,21 @@
  */
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+// docs/agents/testing.md：入口选择器 / 视口 / API fixture 与观感脚本共用一份。
+import {
+  EDITOR_ENTRY_SELECTOR,
+  EDITOR_VIEWPORTS as VIEWPORTS,
+  fixtureFor,
+  ok,
+} from "./editor-meta-fixture.mjs";
 
 const BASE = process.env.BASE || "http://localhost:4321";
 const CHANNEL = process.env.PW_CHANNEL;
 
-const VIEWPORTS = [
-  { name: "280px", width: 280, height: 720 },
-  { name: "375px", width: 375, height: 812 },
-  { name: "1280px", width: 1280, height: 800 },
-];
 const LOCALES = ["zh", "en"];
 const TOKEN = "regression-token";
 
-const ok = (data) => ({ code: 0, message: "ok", data });
-const emptyList = () =>
-  ok({ items: [], total: 0, page: 1, page_size: 20, total_pages: 0 });
-
-function fixtureFor(pathname) {
-  if (pathname.includes("/settings")) return ok(null);
-  if (pathname.includes("/config")) {
-    return ok({
-      site_title: "Blog",
-      site_subtitle: "",
-      site_description: "",
-      posts_per_page: "10",
-      about_content: "",
-      profile_card: "",
-    });
-  }
-  if (pathname.endsWith("/tags")) {
-    return ok({
-      items: [
-        { id: 1, name: "TypeScript" },
-        { id: 2, name: "Cloudflare" },
-        { id: 3, name: "国际化与可访问性实践" },
-      ],
-      total: 3,
-      page: 1,
-      page_size: 20,
-      total_pages: 1,
-    });
-  }
-  if (pathname.endsWith("/categories")) {
-    return ok({ items: [{ id: 1, name: "技术" }], total: 1 });
-  }
-  if (
-    pathname.endsWith("/edit-lock") ||
-    pathname.endsWith("/edit-lock/force")
-  ) {
-    return ok(null);
-  }
-  if (pathname.endsWith("/users")) return ok([]);
-  return emptyList();
-}
-
-async function openEditor(browser, viewport, locale) {
+async function openEditor(browser, viewport, locale, options = {}) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     locale: locale === "zh" ? "zh-CN" : "en-US",
@@ -99,9 +59,9 @@ async function openEditor(browser, viewport, locale) {
       state.postCount += 1;
       state.savedPayload = JSON.parse(request.postData() || "{}");
       await route.fulfill({
-        status: 200,
+        status: options.postStatus ?? 200,
         contentType: "application/json",
-        body: JSON.stringify(ok({ id: 123 })),
+        body: JSON.stringify(options.postResponse ?? ok({ id: 123 })),
       });
       return;
     }
@@ -129,8 +89,8 @@ async function openEditor(browser, viewport, locale) {
 
   await page.goto(`${BASE}/admin`, { waitUntil: "load" });
   await page.waitForSelector(".admin-layout", { timeout: 15000 });
-  // data-editor-entry 与文案无关，中英文 locale 下都能稳定定位。
-  await page.locator('[data-editor-entry="new-article"]').click();
+  // EDITOR_ENTRY_SELECTOR 与文案无关，中英文 locale 下都能稳定定位。
+  await page.locator(EDITOR_ENTRY_SELECTOR).click();
   await page.waitForSelector(".article-editor-overlay", { timeout: 10000 });
 
   if (viewport.width <= 767) {
@@ -185,6 +145,25 @@ async function checkNoHorizontalScroll(page, label) {
       `${label}: ${box.name} 横向溢出 scrollWidth=${box.sw} clientWidth=${box.cw}`
     );
   }
+
+  // 票面「工具栏横向滚动或换行，不挤压正文」：编辑器沿用 flex-wrap: wrap，
+  // 且工具栏自身不得产生横向溢出。
+  const toolbar = await page.evaluate(() => {
+    const el = document.querySelector(".editor-toolbar");
+    if (!el) return null;
+    const style = getComputedStyle(el);
+    return {
+      wrap: style.flexWrap,
+      sw: el.scrollWidth,
+      cw: el.clientWidth,
+    };
+  });
+  assert.ok(toolbar, `${label}: .editor-toolbar 应存在`);
+  assert.ok(
+    ["wrap", "wrap-reverse"].includes(toolbar.wrap) ||
+      toolbar.sw <= toolbar.cw + 1,
+    `${label}: 工具栏既不换行又横向溢出（flex-wrap=${toolbar.wrap}, ${toolbar.sw}/${toolbar.cw}）`
+  );
 }
 
 /** 中英文下最长标签 / 按钮文案不裁切。 */
@@ -392,6 +371,22 @@ async function checkMetaFields(page, label) {
   );
 }
 
+const CONFLICT_MESSAGE = "Slug 已被占用：my-slug";
+
+/** 服务端 slug 冲突：原样展示 message，不改写 / 不追加后缀。 */
+async function checkSlugConflict(page, label) {
+  await page.locator("#meta-slug").fill("my-slug");
+  await page.locator(".editor-footer .btn-primary").click();
+  await page.waitForSelector(".editor-error", { timeout: 8000 });
+  const shown = (await page.locator(".editor-error").textContent())?.trim();
+  assert.equal(shown, CONFLICT_MESSAGE, `${label}: 服务端冲突提示应原样展示`);
+  assert.equal(
+    await page.locator("#meta-slug").inputValue(),
+    "my-slug",
+    `${label}: slug 不得被静默改写或追加后缀`
+  );
+}
+
 async function run() {
   const browser = await chromium.launch(CHANNEL ? { channel: CHANNEL } : {});
   let checks = 0;
@@ -444,6 +439,23 @@ async function run() {
       checks += 1;
     } finally {
       await context.close();
+    }
+
+    // slug 冲突单独一个 context：POST 返回业务错误，验证原样展示与不改写。
+    const conflict = await openEditor(browser, VIEWPORTS[2], "zh", {
+      postResponse: { code: 10005, message: CONFLICT_MESSAGE, data: null },
+    });
+    try {
+      await checkSlugConflict(conflict.page, "slug 冲突");
+      checks += 1;
+      console.log("  ✓ slug 冲突提示原样展示且不改写 slug");
+      assert.deepEqual(
+        conflict.errors,
+        [],
+        `slug 冲突场景控制台报错：${conflict.errors.join(" | ")}`
+      );
+    } finally {
+      await conflict.context.close();
     }
 
     console.log(`\nPASS：${checks} 组断言全部通过。`);

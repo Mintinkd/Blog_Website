@@ -136,7 +136,7 @@ function onSlugInput(value: string): void {
         id="meta-title"
         :value="props.form.title"
         :maxlength="TITLE_MAX_LENGTH"
-        required
+        aria-required="true"
         :disabled="props.disabled"
         :aria-describedby="'meta-title-count'"
         @input="patch({ title: ($event.target as HTMLInputElement).value })"

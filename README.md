@@ -36,8 +36,21 @@
 │   └── robots.txt
 ├── src/
 │   ├── admin/
-│   │   ├── App.vue             # 后台管理 SPA：登录 / 侧栏 / 标签页编排 + 11 个待拆面板（#69 T8 收口）
+│   │   ├── App.vue             # 后台壳层：登录 / 标签页编排 / 跨面板状态（T8 #69，223 行）
+│   │   ├── AdminSidebar.vue    # 导航定义 / admin-only 角色可见性 / 登出入口（T8 #69）
 │   │   ├── admin-shared.css    # 后台共享样式单源（由 App.vue 的 <style scoped> 整块抽出，T3 #64）
+│   │   ├── composables/        # 壳层依赖：会话 / 请求 / 反馈 / 共享数据 / 编辑器桥接（T8 #69）
+│   │   │   ├── useSession.ts        # token / 角色 / 登录 / 登出 / 10003 失效（草稿清理分叉）
+│   │   │   ├── useAdminApi.ts       # /api/v1 认证请求 + 10003 / 10004 错误码
+│   │   │   ├── useFeedback.ts       # 包装现有 alert / confirm，不引入新 toast UI
+│   │   │   ├── useAdminCatalog.ts   # 跨面板共享列表数据 + loadInitialData 预加载
+│   │   │   ├── useAdminEditor.ts    # 编辑器装配 + overlay 事件 + 抓取草稿转文章
+│   │   │   └── adminContext.ts      # 依赖聚合与 provide / inject 单一注入点
+│   │   ├── panels/             # 11 个领域面板，各配一个 *.logic.ts 纯逻辑（T8 #69）
+│   │   │   ├── CategoriesPanel.vue / TagsPanel.vue / CommentsPanel.vue / MediaPanel.vue
+│   │   │   ├── ConfigPanel.vue / AboutPanel.vue / AppearancePanel.vue
+│   │   │   ├── UsersPanel.vue / FriendLinksPanel.vue
+│   │   │   └── ScrapePanel.vue / AnalyticsPanel.vue   # 壳层 defineAsyncComponent 懒加载
 │   │   ├── articles/
 │   │   │   ├── ArticlesPanel.vue         # 文章列表 / 筛选 / 操作列（T3 #64）
 │   │   │   └── ArticleEditorOverlay.vue  # 文章编辑器全屏壳层（T3 #64）
@@ -129,7 +142,9 @@
 │   │       ├── uploadImage.ts       # 图片类型 / 10MB 预检、Bearer 上传、{ url, alt } 映射、失败保留正文
 │   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
 │   │       ├── slug.ts              # 标题生成 slug 与合法性（与 Worker generateSlug 对齐）
-│   │       └── wordCount.ts         # 中英文字数与阅读时长（与 Worker calculateReadingTime 对齐）
+│   │       ├── wordCount.ts         # 中英文字数与阅读时长（与 Worker calculateReadingTime 对齐）
+│   │       ├── focusTrap.ts         # 弹窗焦点陷阱纯 DOM 模块：Tab 循环 / 焦点归还（T6 #67）
+│   │       └── metaFields.ts        # 元信息纯函数：发布前校验 / 封面 URL 白名单 / slug 锁定 / 标签筛选 / 面板读数（T6 #67）
 │   └── types/
 │       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
 │       └── turndown-plugin-gfm.d.ts  # turndown-plugin-gfm 的类型声明（包内无 .d.ts，#33）
@@ -398,11 +413,13 @@ D1 (SQLite) 共 13 张表：
 - **文章管理** — 新建/编辑/删除，Markdown编辑器（所见即所得 / 源码 / 分屏 / 线上预览四档，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
   - editor 只能编辑/删除自己的文章
   - 组件化（T3 #64）：文章列表与全屏壳层在 `src/admin/articles/`，元信息 / 工作区 / 弹窗 / composables 在 `src/admin/editor/`；`App.vue` 不再包含文章编辑器主体，后台样式由 `src/admin/admin-shared.css` 单源提供
+  - 面板拆分（T8 #69）：11 个后台面板移到 `src/admin/panels/`，`App.vue`（223 行）只保留登录、侧栏编排、tab 编排与跨面板状态，不再包含领域模板 / 领域请求 / 面板样式；壳层依赖由 `src/admin/composables/` 的 `provide` / `inject` 注入，`scrape` 与 `analytics` 经 `defineAsyncComponent` 懒加载不进后台首屏 chunk；`about` 保持 Markdown 编辑与预览链接，不接 WYSIWYG；设置类面板只搬 UI，不改设置规则生成链
   - 取数：打开已发布文章走认证接口 `GET /articles/:id/edit`（不经公开 slug 接口、不写阅读统计）；强制接管后重新加载详情并重建未保存基线
   - 编辑锁：打开前获取、每 10 分钟心跳续期、保存前再次校验；取消 / X / Esc / 保存成功 / 放弃均释放，`beforeunload` 只提示，`pagehide`（`persisted === false`）尽力释放；冲突时禁止保存并提供复制正文 / 保留草稿 / 关闭
   - 未保存保护：脏状态下关闭 / 取消 / Esc / 刷新触发三出口（保存并关闭 / 放弃修改 / 继续编辑）；加载正文失败不进入可编辑状态，保存失败保持编辑器打开、保持锁并保留内容
   - 会话失效（`10003`）：先同步落盘本地草稿、尽力释放锁，再退出到登录页，不清除该用户草稿
   - 所见即所得（T4 #65）：Milkdown 7 内核打开时懒加载；加载 / 模式切换 / 保存前均执行回写守卫，有损时默认进源码模式，作者可显式覆盖但保存前守卫仍失败会阻止保存；打开未编辑不改写正文，源码模式未修改保存保留原始字节
+  - 元信息面板（T6 #67）：标题 `maxlength=200`（与服务端 `validate` 一致）、slug「根据标题生成」后默认锁定可解锁手改、摘要字数计数、封面仅 http(s) 预览且失败占位、标签 chips + 本地筛选、字数 / 阅读时长读数复用 T1 纯函数；发布前检查标题与正文 trim 后非空，slug 冲突由服务端错误原样展示、不改写不加后缀。窄屏元信息折叠为抽屉、宽屏常显，触控目标 ≥44px，280/375px 无横向滚动、1280px 分屏并排；四个模态弹窗有 `role=dialog` / `aria-modal` / 焦点陷阱与焦点归还，保存 / 上传 / 锁丢失用 `aria-live="polite"` 播报
 - **分类管理** — 增改（editor仅自己的），删除仅admin
 - **标签管理** — 增（editor创建的），删除仅admin
 - **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
@@ -411,7 +428,7 @@ D1 (SQLite) 共 13 张表：
 - **关于页面** — Markdown 编辑 + 个人名片（姓名 / 职位 / 简介 / 头像 / 可增删社交链接）配置，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
 
-#### 文章编辑器（T4 #65 / T5 #66 / ADR 0006）
+#### 文章编辑器（T4 #65 / T5 #66 / T6 #67 / ADR 0006）
 
 - **正文契约**：`articles.content` 的 Markdown 是唯一正文源；保存只写 Markdown，绝不写 `content_html`（历史遗留列，不读不写，无 D1 迁移）。前台、后台预览、线上预览共用 `src/utils/markdown.ts` 的 `renderMarkdown`（marked + DOMPurify，白名单见 `markdownPolicy.ts`）。
 - **四档形态**：所见即所得（Milkdown 7 / ProseMirror）、源码（textarea + 轻量工具栏，复用 `editorCommands.ts`）、分屏（左侧编辑 + 右侧只读预览）、线上预览弹窗。分屏 ≥1024px 并排、768–1023px 堆叠、<768px 隐藏入口；预览 150ms 防抖、只在可见时渲染，`enhanceMediaLinks` 限定各自容器。
@@ -425,6 +442,7 @@ D1 (SQLite) 共 13 张表：
 - **i18n / 主题**：编辑器文案进 `zh.json` / `en.json`；工具栏 label 用 Vue `reactive` 配置 + `locale-changed` 事件原地更新，切换语言不重建实例、不丢正文；`classic.css` 的 `--crepe-color-*` 映射到站点设计令牌，亮暗跟随 `[data-theme]`。
 - **包体 / CSP**：内核只在首次打开编辑器时加载（实测增量 gzip 约 182 KiB < 350 KiB 预算）；不使用 eval / CDN，`npm run build` 的 `patch-csp` 通过，静态与 SSR 两份 CSP 逐字符一致。
 - **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/editor-upload.test.ts`（预检 / 上传映射 / 服务端错误 / 失败保留正文）、`tests/editor-draft.test.ts`（键 / 隔离 / 7 天过期 / 1MB 配额 / 基线哈希）、`tests/article-editor-flow.test.ts`（草稿恢复 / 丢弃 / 防抖 / pagehide / 保存清理）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。`scripts/verify-article-editor.mjs` 是上传 mock、粘贴 / 合成拖拽、刷新恢复 / 丢弃、保存清理的浏览器脚本骨架；CI 接线、真实拖拽与真机中文输入法由 T7 #68 收口。
+- **元信息 / 响应式 / 可访问性测试（T6 #67）**：`tests/editor-meta-fields.test.ts`（node，25 项）钉住发布前校验、封面 http(s) 白名单、slug 锁定状态机、标签筛选、字数与阅读时长同服务端样例；`tests/editor-focus-trap.test.ts`（jsdom，12 项）钉住 Tab 循环、焦点归还与幂等。`scripts/verify-visual-friendliness.mjs` 的 `EDITOR_TARGETS` 独立量测元信息面板（280/375/1280 × 亮暗的对比度 / 裁切 / 触控目标 / 焦点环 / 溢出）；`scripts/verify-editor-responsive.mjs` 手动回归抽屉、焦点陷阱与归还、封面失败占位、发布前校验、slug 冲突原样展示、工具栏换行与中英最长标签不裁切。两脚本的入口选择器 / 视口矩阵 / `/api/v1/**` fixture 共用 `scripts/editor-meta-fixture.mjs`（单一事实源），CI 门禁接线仍由 T7 #68 收口。
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
