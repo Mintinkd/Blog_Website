@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { buildCategoryRequest } from "../src/admin/panels/categories.logic";
 import { buildTagRequest } from "../src/admin/panels/tags.logic";
-import { commentsPath } from "../src/admin/panels/comments.logic";
+import { commentsPath } from "../src/admin/composables/useAdminCatalog";
 import { resolveMediaUrl } from "../src/admin/panels/media.logic";
 import { formatDate, canEditCategory } from "../src/admin/panels/shared.logic";
 

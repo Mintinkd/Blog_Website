@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { useAdminContext } from "../composables/adminContext";
 import { t } from "../../utils/i18n.ts";
 import { buildCategoryRequest } from "./categories.logic";
+import { canEditCategory } from "./shared.logic";
 
 const { api, feedback, catalog, session, locale } = useAdminContext();
 
@@ -72,11 +73,7 @@ async function deleteCategory(id: number) {
           </td>
           <td class="actions" :data-label="t('admin.actions')">
             <button
-              v-if="
-                userRole === 'admin' ||
-                !c.created_by ||
-                c.created_by === currentUserId
-              "
+              v-if="canEditCategory(userRole, c.created_by, currentUserId)"
               @click="
                 categoryForm = {
                   name: c.name,

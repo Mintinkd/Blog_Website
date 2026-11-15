@@ -36,7 +36,7 @@
 │   └── robots.txt
 ├── src/
 │   ├── admin/
-│   │   ├── App.vue             # 后台壳层：登录 / 标签页编排 / 跨面板状态（T8 #69，223 行）
+│   │   ├── App.vue             # 后台壳层：登录 / 标签页编排 / 跨面板状态（T8 #69，226 行）
 │   │   ├── AdminSidebar.vue    # 导航定义 / admin-only 角色可见性 / 登出入口（T8 #69）
 │   │   ├── admin-shared.css    # 后台共享样式单源（由 App.vue 的 <style scoped> 整块抽出，T3 #64）
 │   │   ├── composables/        # 壳层依赖：会话 / 请求 / 反馈 / 共享数据 / 编辑器桥接（T8 #69）
@@ -413,7 +413,8 @@ D1 (SQLite) 共 13 张表：
 - **文章管理** — 新建/编辑/删除，Markdown编辑器（所见即所得 / 源码 / 分屏 / 线上预览四档，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
   - editor 只能编辑/删除自己的文章
   - 组件化（T3 #64）：文章列表与全屏壳层在 `src/admin/articles/`，元信息 / 工作区 / 弹窗 / composables 在 `src/admin/editor/`；`App.vue` 不再包含文章编辑器主体，后台样式由 `src/admin/admin-shared.css` 单源提供
-  - 面板拆分（T8 #69）：11 个后台面板移到 `src/admin/panels/`，`App.vue`（223 行）只保留登录、侧栏编排、tab 编排与跨面板状态，不再包含领域模板 / 领域请求 / 面板样式；壳层依赖由 `src/admin/composables/` 的 `provide` / `inject` 注入，`scrape` 与 `analytics` 经 `defineAsyncComponent` 懒加载不进后台首屏 chunk；`about` 保持 Markdown 编辑与预览链接，不接 WYSIWYG；设置类面板只搬 UI，不改设置规则生成链
+  - 面板拆分（T8 #69）：11 个后台面板移到 `src/admin/panels/`，`App.vue`（226 行）只保留登录、侧栏编排、tab 编排与跨面板状态，不再包含领域模板 / 领域请求 / 面板样式；壳层依赖由 `src/admin/composables/` 的 `provide` / `inject` 注入，`scrape` 与 `analytics` 经 `defineAsyncComponent` 懒加载不进后台首屏 chunk；`about` 保持 Markdown 编辑与预览链接，不接 WYSIWYG；设置类面板只搬 UI，不改设置规则生成链
+  - 拆分度量（T8 #69）：`App.vue` 3206 → 226 行；后台首屏 chunk `App.0CFMjVT7.js` 113,837 B → `App.SP8Znihm.js` 117,975 B（壳层依赖胶水 +4,138 B；同期并行的 T6 #67 也改了后台代码，两次构建共用同一工作区，数字含其影响）；新增 `AnalyticsPanel.C5LZ1aSR.js` 12,876 B 与 `ScrapePanel.HHE3gfBI.js` 8,552 B 两个懒加载面板 chunk，抓取工具 `scrape.CBAiJISo.js` 54,639 B 保持不变
   - 取数：打开已发布文章走认证接口 `GET /articles/:id/edit`（不经公开 slug 接口、不写阅读统计）；强制接管后重新加载详情并重建未保存基线
   - 编辑锁：打开前获取、每 10 分钟心跳续期、保存前再次校验；取消 / X / Esc / 保存成功 / 放弃均释放，`beforeunload` 只提示，`pagehide`（`persisted === false`）尽力释放；冲突时禁止保存并提供复制正文 / 保留草稿 / 关闭
   - 未保存保护：脏状态下关闭 / 取消 / Esc / 刷新触发三出口（保存并关闭 / 放弃修改 / 继续编辑）；加载正文失败不进入可编辑状态，保存失败保持编辑器打开、保持锁并保留内容

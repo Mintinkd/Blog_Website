@@ -1,6 +1,15 @@
 import { ref } from "vue";
-import { commentsPath } from "../panels/comments.logic";
 import type { AdminApi } from "./useAdminApi";
+
+/**
+ * 评论列表的 URL 构造。拆分前是 `App.vue` 的 `loadComments()` 行内逻辑，
+ * 现在由本数据层唯一持有，`tests/admin-content-panels.test.ts` 直接锁定它，
+ * 避免壳层反向依赖 `panels/*`，也避免测试锁到未被消费的镜像实现。
+ */
+export function commentsPath(filter: string): string {
+  const status = filter ? `?status=${filter}` : "";
+  return `/comments${status}`;
+}
 
 /**
  * 跨面板共享的数据层。
@@ -56,7 +65,6 @@ export function createAdminCatalog(api: AdminApi) {
   }
 
   async function loadComments(): Promise<void> {
-    // URL 构造与 `CommentsPanel` 共用同一份纯逻辑（由 node 单测锁定）。
     const data = await api("GET", commentsPath(commentFilter.value));
     if (data.code === 0) comments.value = data.data || [];
   }
