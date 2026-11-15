@@ -4,12 +4,18 @@
  * docs/ARTICLE_EDITOR_UPGRADE.md §5.6：脏状态下 X / 取消 / Esc 都走这里，
  * 「放弃」由宿主释放编辑锁并清本地草稿，「保存」不得静默关闭编辑器。
  */
+import { ref, toRef } from "vue";
 import { t } from "../../utils/i18n.ts";
+import { useFocusTrap } from "./useFocusTrap";
 
-defineProps<{
+const props = defineProps<{
   visible: boolean;
   saving: boolean;
 }>();
+
+/** T6 #67：三出口弹窗补齐焦点陷阱与关闭后焦点归还。 */
+const dialogEl = ref<HTMLElement | null>(null);
+useFocusTrap(dialogEl, toRef(props, "visible"));
 
 const emit = defineEmits<{
   (e: "save"): void;
@@ -21,7 +27,14 @@ const emit = defineEmits<{
 <template>
   <Teleport to="body">
     <div v-if="visible" class="modal-overlay unsaved-dialog-overlay">
-      <div class="modal unsaved-dialog" role="dialog" aria-modal="true">
+      <div
+        ref="dialogEl"
+        class="modal unsaved-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('admin.unsaved_title')"
+        tabindex="-1"
+      >
         <h3>{{ t("admin.unsaved_title") }}</h3>
         <p>{{ t("admin.unsaved_message") }}</p>
         <div class="modal-actions">

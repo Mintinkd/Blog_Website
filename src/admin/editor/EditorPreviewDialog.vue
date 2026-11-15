@@ -7,10 +7,11 @@
  * 不再全局 querySelector。Esc 由弹窗自己消费，不冒泡到 T3 的未保存保护。
  * T3 #64 的预览形态（分屏 / 预览布局）不由本票改变，本组件是新增的只读弹窗。
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from "vue";
 import { getLocale, t } from "../../utils/i18n.ts";
 import { renderMarkdown } from "../../utils/markdown";
 import { enhanceMediaLinks } from "../../utils/mediaEmbed.ts";
+import { useFocusTrap } from "./useFocusTrap";
 
 const props = defineProps<{
   visible: boolean;
@@ -22,6 +23,9 @@ const emit = defineEmits<{
 }>();
 
 const body = ref<HTMLElement | null>(null);
+/** T6 #67：只读预览也是模态弹窗，接入焦点陷阱与焦点归还。 */
+const dialogEl = ref<HTMLElement | null>(null);
+useFocusTrap(dialogEl, toRef(props, "visible"));
 const debounced = ref(props.content);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -73,6 +77,7 @@ function onKeydown(event: KeyboardEvent): void {
       @click.self="emit('close')"
     >
       <div
+        ref="dialogEl"
         class="modal editor-preview-dialog"
         role="dialog"
         aria-modal="true"

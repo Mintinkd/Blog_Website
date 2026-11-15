@@ -66,7 +66,12 @@ function onFilterChange(event: Event): void {
             {{ u.display_name || u.username }}
           </option>
         </select>
-        <button class="btn-primary" @click="emit('new')">
+        <!-- data-editor-entry：跨中英文 locale 的回归脚本稳定入口（不依赖按钮文案）。 -->
+        <button
+          class="btn-primary"
+          data-editor-entry="new-article"
+          @click="emit('new')"
+        >
           {{ t("admin.new_article") }}
         </button>
       </div>

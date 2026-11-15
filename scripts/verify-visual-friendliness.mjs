@@ -18,6 +18,10 @@
  *
  * 退出码：0 = 通过；1 = 存在观感问题；2 = 环境/脚本异常。
  * 扩展检查范围：往 TARGETS 加一条 target（parts 指向同类元素即可复用全部规则）。
+ * T6 #67：另设 EDITOR_TARGETS / EDITOR_VIEWPORTS，专测文章编辑器元信息面板
+ * （280 / 375 / 1280 × light / dark 的文本对比度、裁切、触控目标、焦点环、
+ * 横向溢出与控制台），因为元信息面板没有卡片式 radio 结构，不能复用
+ * TARGETS 那套 parts 引擎；两者共用 RULES 编号与对比度工具。
  * 所有 /api/v1/** 由本地 fixture 返回，不依赖真实 Worker 与账号。
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -122,6 +126,21 @@ function fixtureFor(pathname) {
       posts_per_page: "10",
       about_content: "",
       profile_card: "",
+    });
+  }
+  // T6 #67：给元信息面板几个真实标签 chip，观感规则才有可量测的目标；
+  // 内含一个较长中文名，用来压「最长标签不裁切」这条。
+  if (pathname.endsWith("/tags")) {
+    return ok({
+      items: [
+        { id: 1, name: "TypeScript" },
+        { id: 2, name: "Cloudflare" },
+        { id: 3, name: "国际化与可访问性实践" },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
     });
   }
   if (pathname.includes("/analytics")) {
@@ -764,8 +783,232 @@ async function openScene(browser, target, viewport, theme) {
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
-  await target.prepare(page);
+  // T6 #67：编辑器目标需要按视口决定「是否先展开元信息抽屉」。
+  await target.prepare(page, viewport, theme);
   return { context, page, errors };
+}
+
+/* ===== T6 #67：文章编辑器元信息面板目标 =====
+   与卡片式 link-dialog 结构不同，这里单独采集并在 Node 侧判定，复用
+   RULES 的 VF-01 / VF-08 / VF-09 / VF-10 / VF-11 / VF-13 编号与阈值。 */
+const EDITOR_VIEWPORTS = [
+  { name: "280px", width: 280, height: 720 },
+  { name: "375px", width: 375, height: 812 },
+  { name: "1280px", width: 1280, height: 800 },
+];
+
+const EDITOR_RULE_SOURCE = {
+  "VF-01":
+    "src/admin/admin-shared.css → .meta-hint / .form-group label / .tag-chip 的 color",
+  "VF-04": "src/admin/admin-shared.css → .editor-meta-panel",
+  "VF-08":
+    "src/admin/admin-shared.css → .meta-inline-row / .meta-cover-placeholder 宽度",
+  "VF-09": "src/admin/admin-shared.css → 触控目标 ≥44px 规则块",
+  "VF-10": "src/admin/admin-shared.css → :focus-visible 焦点环规则块",
+  "VF-11":
+    "src/admin/admin-shared.css → .editor-body / .editor-meta-panel 宽度",
+  "VF-13": "页面脚本 / 组件挂载",
+};
+
+const EDITOR_TARGETS = [
+  {
+    id: "editor-meta",
+    name: "文章编辑器 · 元信息面板",
+    source:
+      "src/admin/editor/EditorMetaFields.vue + src/admin/admin-shared.css",
+    async prepare(page, viewport) {
+      await page.goto(`${BASE}/admin`, { waitUntil: "load" });
+      await page.waitForSelector(".admin-layout", { timeout: 15000 });
+      // data-editor-entry 与文案无关，中英文 locale 下都能稳定定位。
+      await page.locator('[data-editor-entry="new-article"]').click();
+      await page.waitForSelector(".article-editor-overlay", { timeout: 10000 });
+      if (viewport.width <= 767) {
+        // 窄屏元信息默认折叠，先展开抽屉，#meta-title 才会变为可见。
+        await page.locator(".meta-drawer-toggle").click();
+        await page.waitForSelector(".editor-meta-panel.open", {
+          timeout: 5000,
+        });
+      }
+      await page.waitForSelector("#meta-title", { timeout: 10000 });
+    },
+  },
+];
+
+function makeEditorChecker(ctx, target, scene) {
+  return (ruleId, element, pass, actual, expected) => {
+    ctx.assertions += 1;
+    if (pass) return;
+    ctx.problems.push({
+      ruleId,
+      rule: RULES[ruleId].name,
+      scene,
+      element,
+      actual: String(actual),
+      expected: String(expected),
+      source: `${target.source} → ${EDITOR_RULE_SOURCE[ruleId]}`,
+    });
+  };
+}
+
+/** 只查横向：documentElement / 滚动容器的 scrollHeight 天然大于 clientHeight。 */
+function checkHorizontalOverflow(check, element, box) {
+  if (!box) {
+    check("VF-11", element, false, "元素缺失", "元素存在");
+    return;
+  }
+  const { sw, cw } = box;
+  check(
+    "VF-11",
+    element,
+    sw <= cw + EPS,
+    `scrollWidth ${sw} / clientWidth ${cw}`,
+    `scrollWidth ≤ clientWidth + ${EPS}（无横向溢出）`
+  );
+}
+
+async function collectEditorSnapshot(page) {
+  // page.evaluate 内不能引用外部闭包，常量与辅助函数全部内联。
+  return page.evaluate(() => {
+    const panel = document.querySelector(".editor-meta-panel");
+    if (!panel) return null;
+    const layersOf = (el) => {
+      const out = [];
+      let node = el;
+      while (node) {
+        out.push(getComputedStyle(node).backgroundColor);
+        node = node.parentElement;
+      }
+      out.push("rgb(255, 255, 255)");
+      return out;
+    };
+    const info = (el, selector, index) => {
+      const style = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        selector: `${selector}[${index}]`,
+        color: style.color,
+        layers: layersOf(el),
+        rect: { width: r.width, height: r.height },
+        overflow: {
+          sw: el.scrollWidth,
+          cw: el.clientWidth,
+          sh: el.scrollHeight,
+          ch: el.clientHeight,
+        },
+        text: (el.textContent || "").trim(),
+      };
+    };
+    // 隐藏元素（宽屏的抽屉开关 / 抽屉头、窄屏的分屏入口）不参与量测：
+    // 它们的 rect 全为 0，混进来会产生假的对比度 / 触控目标失败。
+    const all = (selector) =>
+      [...document.querySelectorAll(selector)]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        })
+        .map((el, i) => info(el, selector, i));
+    const overflowTargets = [
+      ["html", document.documentElement],
+      [
+        ".article-editor-overlay",
+        document.querySelector(".article-editor-overlay"),
+      ],
+      [".editor-body", document.querySelector(".editor-body")],
+      [".editor-meta-panel", panel],
+    ]
+      .filter(([, el]) => el)
+      .map(([name, el]) => ({
+        selector: name,
+        overflow: {
+          sw: el.scrollWidth,
+          cw: el.clientWidth,
+          sh: el.scrollHeight,
+          ch: el.clientHeight,
+        },
+      }));
+
+    return {
+      labels: all(".editor-meta-panel .form-group label"),
+      hints: all(
+        ".editor-meta-panel .meta-hint, .editor-meta-panel .meta-stats, .editor-meta-panel .meta-cover-placeholder"
+      ),
+      inputs: all(
+        ".editor-meta-panel input, .editor-meta-panel select, .editor-meta-panel textarea"
+      ),
+      chips: all(".editor-meta-panel .tag-chip"),
+      buttons: all(
+        ".editor-meta-panel button, .meta-drawer-toggle, " +
+          ".article-editor-overlay .editor-header button, " +
+          ".article-editor-overlay .editor-footer button, " +
+          ".article-editor-overlay .editor-toolbar button"
+      ),
+      overflowTargets,
+    };
+  });
+}
+
+function runEditorRules(snap, target, scene, ctx) {
+  const check = makeEditorChecker(ctx, target, scene);
+  if (!snap) {
+    check("VF-04", ".editor-meta-panel", false, "作用域不存在", "作用域可渲染");
+    return;
+  }
+
+  const textItems = [
+    ...snap.labels,
+    ...snap.hints,
+    ...snap.chips,
+    ...snap.inputs,
+  ];
+  for (const item of textItems) {
+    checkContrast(
+      check,
+      "VF-01",
+      item.selector,
+      item,
+      MIN_TEXT_CONTRAST,
+      "WCAG 2.1 AA 正文"
+    );
+    // 只查横向裁切；textarea 等多行控件的 scrollHeight > clientHeight 属正常。
+    checkHorizontalOverflow(check, item.selector, item.overflow);
+  }
+
+  for (const item of [...snap.buttons, ...snap.inputs, ...snap.chips]) {
+    check(
+      "VF-09",
+      item.selector,
+      item.rect.height >= MIN_TOUCH_TARGET - EPS,
+      `${item.rect.height.toFixed(1)}px`,
+      `≥ ${MIN_TOUCH_TARGET}px`
+    );
+  }
+
+  for (const box of snap.overflowTargets) {
+    checkHorizontalOverflow(check, box.selector, box.overflow);
+  }
+}
+
+async function checkEditorKeyboard(page, target, scene, ctx) {
+  const check = makeEditorChecker(ctx, target, scene);
+  await page.locator("#meta-title").focus();
+  await page.keyboard.press("Tab");
+  const ring = await page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el || el === document.body) return null;
+    const style = getComputedStyle(el);
+    return {
+      tag: el.tagName.toLowerCase(),
+      width: parseFloat(style.outlineWidth) || 0,
+      style: style.outlineStyle,
+    };
+  });
+  check(
+    "VF-10",
+    "Tab 后的焦点元素",
+    ring !== null && ring.width >= 2 && ring.style !== "none",
+    ring ? `${ring.tag}: ${ring.width}px ${ring.style}` : "未找到焦点元素",
+    "≥ 2px 可见 outline"
+  );
 }
 
 const sceneLabel = (target, viewport, theme, mode) =>
@@ -776,6 +1019,7 @@ async function run() {
     generatedAt: new Date().toISOString(),
     base: BASE,
     viewports: VIEWPORTS.map((v) => v.name),
+    editorViewports: EDITOR_VIEWPORTS.map((v) => v.name),
     themes: THEMES,
     rules: RULES,
     scenes: [],
@@ -784,9 +1028,12 @@ async function run() {
   };
 
   console.log("页面观感友好度检查（Playwright 浏览器实测）");
-  console.log(`目标：${TARGETS.map((t) => `${t.id} — ${t.name}`).join("、")}`);
   console.log(
-    `场景：${VIEWPORTS.length} 视口 × ${THEMES.length} 主题 = ${VIEWPORTS.length * THEMES.length} 组，每组 2 种选中态\n`
+    `目标：${[...TARGETS, ...EDITOR_TARGETS].map((t) => `${t.id} — ${t.name}`).join("、")}`
+  );
+  console.log(
+    `场景：卡片目标 ${VIEWPORTS.length} 视口 × ${THEMES.length} 主题 × 2 选中态；` +
+      `编辑器目标 ${EDITOR_VIEWPORTS.length} 视口 × ${THEMES.length} 主题\n`
   );
 
   if (SHOT_DIR) mkdirSync(SHOT_DIR, { recursive: true });
@@ -850,6 +1097,51 @@ async function run() {
             viewport: viewport.name,
             theme,
             modes: scenes,
+            assertions: sceneCtx.assertions,
+            problems: failed,
+          });
+          const mark = failed === 0 ? "✓" : "✗";
+          console.log(
+            `  ${mark} ${viewport.name.padEnd(7)} / ${theme.padEnd(5)} — ${sceneCtx.assertions} 条断言，${failed} 处问题`
+          );
+        }
+      }
+    }
+
+    // T6 #67：编辑器元信息面板目标，独立的 280 / 375 / 1280 视口矩阵。
+    for (const target of EDITOR_TARGETS) {
+      for (const viewport of EDITOR_VIEWPORTS) {
+        for (const theme of THEMES) {
+          const { context, page, errors } = await openScene(
+            browser,
+            target,
+            viewport,
+            theme
+          );
+          const sceneCtx = { assertions: 0, problems: [] };
+          const scene = `${target.id} / ${viewport.name} / ${theme}`;
+          try {
+            await settle(page);
+            runEditorRules(
+              await collectEditorSnapshot(page),
+              target,
+              scene,
+              sceneCtx
+            );
+            await checkEditorKeyboard(page, target, scene, sceneCtx);
+            checkConsole(errors, target, scene, sceneCtx);
+          } finally {
+            await context.close();
+          }
+
+          report.assertions += sceneCtx.assertions;
+          report.problems.push(...sceneCtx.problems);
+          const failed = sceneCtx.problems.length;
+          report.scenes.push({
+            target: target.id,
+            viewport: viewport.name,
+            theme,
+            modes: [{ scene, mode: "元信息面板" }],
             assertions: sceneCtx.assertions,
             problems: failed,
           });

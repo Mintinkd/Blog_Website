@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 文章编辑器全屏壳层（T3 #64）：头部 / 状态区 / 元信息 / Markdown 工作区 / 底部操作。
+ * 文章编辑器全屏壳层（T3 #64；T6 #67 补元信息抽屉、响应式与可访问性）。
  *
  * 状态全部来自 useArticleEditor 的 EditorState，本组件只抛事件，不做状态转移：
  * - 加载正文失败 → load-error 态（重试 / 关闭），不渲染可编辑表单；
@@ -8,8 +8,14 @@
  * - 保存失败 → 保持编辑器打开、保持锁、保留当前内容（state.error 显示原因）；
  * - 锁丢失 → 禁止保存，给出「复制正文 / 保留草稿 / 关闭」三个可操作出口。
  *
- * T4 #65：工作区改为 WYSIWYG / 源码 / 分屏 / 线上预览，守卫快照由
- * useArticleEditor 传入；线上预览弹窗复用同一个 renderMarkdown。
+ * T6 #67 新增契约：
+ * - 所有保存入口（底部按钮 / 工作区快捷键 / 未保存弹窗）统一走 requestSave()，
+ *   发布前检查标题与正文 trim 后非空；失败只在本组件内提示，不发 save 事件、
+ *   不改编排器 phase、不释放锁。
+ * - 元信息面板在窄屏折叠为抽屉（CSS 控制显隐，无 matchMedia 分支状态），
+ *   宽屏常显；抽屉是非模态 region，四个 .modal 弹窗才是 role=dialog 模态。
+ * - 保存 / 上传 / 锁丢失状态用 aria-live="polite" 播报；模态弹窗统一接
+ *   useFocusTrap，关闭后焦点归还触发按钮。
  *
  * `.article-editor-overlay` / `.editor-toolbar` / `.toolbar-btn` 等类名保持不变，
  * 供 scripts/verify-visual-friendliness.mjs（CI 门禁）定位与量测。
@@ -21,9 +27,11 @@ import {
   type EditorFormSnapshot,
   type EditorState,
 } from "../../utils/editor/editorState";
+import { checkPublishReady } from "../../utils/editor/metaFields";
 import type { LockConflict } from "../editor/useEditLock";
 import type { EditorGuardState } from "../editor/useArticleEditor";
 import type { DraftPrompt } from "../editor/useLocalDraft";
+import { useFocusTrap } from "../editor/useFocusTrap";
 import EditorMetaFields from "../editor/EditorMetaFields.vue";
 import DraftRecoveryBar from "../editor/DraftRecoveryBar.vue";
 import MarkdownWorkspace, {
@@ -66,6 +74,11 @@ const emit = defineEmits<{
 }>();
 
 const mode = ref<WorkspaceMode>("wysiwyg");
+const metaDrawerOpen = ref(false);
+const publishError = ref("");
+const conflictDialog = ref<HTMLElement | null>(null);
+const conflictVisible = computed(() => props.state.phase === "lock-conflict");
+useFocusTrap(conflictDialog, conflictVisible);
 
 /** 守卫判定为 lossy 时把布局同步回源码，避免按钮高亮与实际编辑形态漂移。 */
 watch(
@@ -74,6 +87,16 @@ watch(
     if (next === "source" && mode.value === "wysiwyg") mode.value = "source";
   }
 );
+
+/** 切文章时清空本组件的 UI 状态，避免上一篇的抽屉 / 错误提示漂移过来。 */
+watch(
+  () => props.state.articleId,
+  () => {
+    metaDrawerOpen.value = false;
+    publishError.value = "";
+  }
+);
+
 const linkSelected = ref("");
 const workspace = ref<InstanceType<typeof MarkdownWorkspace> | null>(null);
 
@@ -91,13 +114,47 @@ const isBusy = computed(
 const saveDisabled = computed(
   () => !canSave(props.state) || props.state.phase === "saving"
 );
+const saveStatusText = computed(() => {
+  if (props.state.phase === "saving") return t("admin.meta_save_saving");
+  if (props.state.phase === "saved") return t("admin.meta_save_saved");
+  if (props.state.error) return t("admin.meta_save_failed");
+  return "";
+});
 
 function onForm(form: EditorFormSnapshot): void {
+  publishError.value = "";
   emit("update-form", form);
 }
 
 function onContent(content: string): void {
+  publishError.value = "";
   emit("update-form", { ...props.state.form, content });
+}
+
+/** 发布前校验失败的文案，按缺失字段分别给出，草稿状态直接放行。 */
+function publishBlockedMessage(): string {
+  const check = checkPublishReady(props.state.form);
+  if (check.ok) return "";
+  if (check.missing.length === 2) return t("admin.meta_publish_need_both");
+  return check.missing[0] === "title"
+    ? t("admin.meta_publish_need_title")
+    : t("admin.meta_publish_need_content");
+}
+
+/**
+ * 唯一保存入口：底部按钮、MarkdownWorkspace 的 Ctrl+S、未保存弹窗的
+ * 「保存并关闭」都汇到这里。校验失败时不发 save、不动 phase、不释放锁，
+ * 窄屏顺带展开元信息抽屉，让作者看得见缺哪个字段。
+ */
+function requestSave(): void {
+  const message = publishBlockedMessage();
+  if (message) {
+    publishError.value = message;
+    metaDrawerOpen.value = true;
+    return;
+  }
+  publishError.value = "";
+  emit("save");
 }
 
 function onOpenLink(selected: string): void {
@@ -120,7 +177,15 @@ async function copyContent(): Promise<void> {
 
 <template>
   <Teleport to="body">
-    <div class="article-editor-overlay">
+    <div
+      class="article-editor-overlay"
+      role="dialog"
+      :aria-label="
+        props.state.articleId === 'new'
+          ? t('admin.new_article')
+          : t('admin.edit') + t('admin.articles')
+      "
+    >
       <div class="article-editor">
         <div class="editor-header">
           <h3>
@@ -130,7 +195,14 @@ async function copyContent(): Promise<void> {
                 : t("admin.edit") + t("admin.articles")
             }}
           </h3>
-          <button class="close-btn" @click="emit('close')">&times;</button>
+          <button
+            class="close-btn"
+            type="button"
+            :aria-label="t('admin.cancel')"
+            @click="emit('close')"
+          >
+            &times;
+          </button>
         </div>
 
         <div class="editor-body">
@@ -141,15 +213,20 @@ async function copyContent(): Promise<void> {
           <div
             v-else-if="props.state.phase === 'load-error'"
             class="editor-state-panel"
-            role="alert"
+            role="status"
+            aria-live="polite"
           >
             <h3>{{ t("admin.editor_load_failed") }}</h3>
             <p>{{ props.state.error }}</p>
             <div class="modal-actions">
-              <button class="btn-secondary" @click="emit('close')">
+              <button
+                class="btn-secondary"
+                type="button"
+                @click="emit('close')"
+              >
                 {{ t("admin.cancel") }}
               </button>
-              <button class="btn-primary" @click="emit('retry')">
+              <button class="btn-primary" type="button" @click="emit('retry')">
                 {{ t("admin.editor_retry") }}
               </button>
             </div>
@@ -159,17 +236,30 @@ async function copyContent(): Promise<void> {
             <div
               v-if="props.state.phase === 'lock-lost'"
               class="editor-lock-lost"
-              role="alert"
+              role="status"
+              aria-live="polite"
             >
               <p>{{ t("admin.lock_lost_message") }}</p>
               <div class="modal-actions">
-                <button class="btn-secondary" @click="copyContent">
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  @click="copyContent"
+                >
                   {{ t("admin.lock_lost_copy") }}
                 </button>
-                <button class="btn-secondary" @click="emit('keep-draft')">
+                <button
+                  class="btn-secondary"
+                  type="button"
+                  @click="emit('keep-draft')"
+                >
                   {{ t("admin.lock_lost_keep_draft") }}
                 </button>
-                <button class="btn-danger" @click="emit('discard')">
+                <button
+                  class="btn-danger"
+                  type="button"
+                  @click="emit('discard')"
+                >
                   {{ t("admin.lock_lost_close") }}
                 </button>
               </div>
@@ -180,14 +270,52 @@ async function copyContent(): Promise<void> {
               @restore="emit('restore-draft')"
               @discard="emit('discard-draft')"
             />
-            <EditorMetaFields
-              :form="props.state.form"
-              :categories="props.categories"
-              :tags="props.tags"
-              :disabled="props.state.phase === 'saving'"
-              @update:form="onForm"
-              @add-tag="(name: string) => emit('add-tag', name)"
-            />
+
+            <!-- T6 #67：宽屏常显，窄屏折叠为抽屉（非模态 region）。 -->
+            <div class="editor-meta-region">
+              <button
+                type="button"
+                class="btn-secondary meta-drawer-toggle"
+                :aria-expanded="metaDrawerOpen"
+                aria-controls="editor-meta-panel"
+                @click="metaDrawerOpen = !metaDrawerOpen"
+              >
+                {{
+                  metaDrawerOpen
+                    ? t("admin.meta_drawer_close")
+                    : t("admin.meta_drawer_open")
+                }}
+              </button>
+              <div
+                id="editor-meta-panel"
+                :class="['editor-meta-panel', { open: metaDrawerOpen }]"
+                role="region"
+                :aria-label="t('admin.meta_drawer_title')"
+              >
+                <div class="meta-drawer-header">
+                  <h3>{{ t("admin.meta_drawer_title") }}</h3>
+                  <button
+                    class="close-btn"
+                    type="button"
+                    :aria-label="t('admin.meta_drawer_close')"
+                    @click="metaDrawerOpen = false"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <EditorMetaFields
+                  :form="props.state.form"
+                  :categories="props.categories"
+                  :tags="props.tags"
+                  :article-id="props.state.articleId"
+                  :publish-error="publishError || null"
+                  :disabled="props.state.phase === 'saving'"
+                  @update:form="onForm"
+                  @add-tag="(name: string) => emit('add-tag', name)"
+                />
+              </div>
+            </div>
+
             <MarkdownWorkspace
               ref="workspace"
               :content="props.state.form.content"
@@ -203,23 +331,32 @@ async function copyContent(): Promise<void> {
               @override-guard="emit('override-guard')"
               @open-link="onOpenLink"
               @open-preview="emit('open-preview')"
-              @save="emit('save')"
+              @save="requestSave"
               @upload-error="(message: string) => emit('upload-error', message)"
             />
           </template>
         </div>
 
         <div class="editor-footer">
-          <p v-if="props.state.error" class="editor-error" role="alert">
+          <p
+            v-if="props.state.error"
+            class="editor-error"
+            role="status"
+            aria-live="polite"
+          >
             {{ props.state.error }}
           </p>
-          <button class="btn-secondary" @click="emit('close')">
+          <span class="meta-live-region" aria-live="polite">
+            {{ saveStatusText }}
+          </span>
+          <button class="btn-secondary" type="button" @click="emit('close')">
             {{ t("admin.cancel") }}
           </button>
           <button
             class="btn-primary"
+            type="button"
             :disabled="saveDisabled"
-            @click="emit('save')"
+            @click="requestSave"
           >
             {{
               props.state.phase === "saving"
@@ -237,7 +374,14 @@ async function copyContent(): Promise<void> {
       class="modal-overlay lock-conflict-overlay"
       @click.self="emit('close')"
     >
-      <div class="modal">
+      <div
+        ref="conflictDialog"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('admin.edit_locked')"
+        tabindex="-1"
+      >
         <h3>{{ t("admin.edit_locked") }}</h3>
         <p>
           {{
@@ -251,12 +395,13 @@ async function copyContent(): Promise<void> {
           {{ new Date(props.conflict.expires_at).toLocaleString() }}
         </p>
         <div class="modal-actions">
-          <button class="btn-secondary" @click="emit('close')">
+          <button class="btn-secondary" type="button" @click="emit('close')">
             {{ t("admin.cancel") }}
           </button>
           <button
             v-if="props.userRole === 'admin'"
             class="btn-danger"
+            type="button"
             @click="emit('takeover')"
           >
             {{ t("admin.force_takeover") }}
@@ -280,7 +425,7 @@ async function copyContent(): Promise<void> {
     <UnsavedChangesDialog
       :visible="props.state.dialog === 'unsaved'"
       :saving="props.state.phase === 'saving'"
-      @save="emit('save')"
+      @save="requestSave"
       @discard="emit('discard')"
       @continue="emit('continue')"
     />

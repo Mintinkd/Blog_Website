@@ -10,13 +10,14 @@
  * `.link-mode-*` 结构与类名保持不变：scripts/verify-visual-friendliness.mjs
  * 的 13 条观感规则（CI 门禁）直接量这些元素。
  */
-import { reactive, watch } from "vue";
+import { reactive, ref, toRef, watch } from "vue";
 import { t } from "../../utils/i18n.ts";
 import {
   buildLinkSnippet,
   isAllowedLinkUrl,
   type LinkMode,
 } from "../../utils/editor/editorCommands";
+import { useFocusTrap } from "./useFocusTrap";
 
 const props = defineProps<{
   visible: boolean;
@@ -34,6 +35,10 @@ const linkDialog = reactive({
   mode: "link" as LinkMode,
   error: "",
 });
+
+/** T6 #67：模态语义 + 焦点陷阱，关闭后焦点归还触发按钮。 */
+const dialogEl = ref<HTMLElement | null>(null);
+useFocusTrap(dialogEl, toRef(props, "visible"));
 
 watch(
   () => props.visible,
@@ -69,7 +74,14 @@ function confirmInsertLink(): void {
       class="modal-overlay link-dialog-overlay"
       @click.self="emit('close')"
     >
-      <div class="modal link-dialog">
+      <div
+        ref="dialogEl"
+        class="modal link-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('admin.insert_link')"
+        tabindex="-1"
+      >
         <h3>{{ t("admin.insert_link") }}</h3>
         <div class="form-group">
           <label>{{ t("admin.link_url") }}</label>

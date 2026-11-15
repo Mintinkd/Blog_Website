@@ -413,6 +413,11 @@ defineExpose({ insertAtCursor });
       <span class="toolbar-hint">{{ t("admin.link_hint") }}</span>
     </div>
 
+    <!-- T6 #67：上传状态用 polite live region 播报，按钮文案本身也同步变化。 -->
+    <span class="meta-live-region" aria-live="polite">
+      {{ uploading ? t("admin.meta_upload_status") : "" }}
+    </span>
+
     <div
       :class="[
         'editor-content-area',
