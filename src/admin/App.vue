@@ -1697,19 +1697,14 @@ import "./admin-shared.css";
 import ArticlesPanel from "./articles/ArticlesPanel.vue";
 import ArticleEditorOverlay from "./articles/ArticleEditorOverlay.vue";
 import {
-  createArticleEditor,
-  initialGuardState,
+  useArticleEditor,
   type ArticleEditorCore,
-  type EditorGuardState,
 } from "./editor/useArticleEditor.ts";
 import { roundTripMarkdown } from "./editor/milkdown/milkdownService";
-import { createEditLock, type LockConflict } from "./editor/useEditLock.ts";
-import type { DraftPrompt } from "./editor/useLocalDraft.ts";
+import { createEditLock } from "./editor/useEditLock.ts";
 import {
-  initialEditorState,
   isEditorOpen,
   type EditorFormSnapshot,
-  type EditorState,
 } from "../utils/editor/editorState";
 import { clearUserDrafts } from "../utils/editor/draftStore";
 import {
@@ -1719,7 +1714,6 @@ import {
   onMounted,
   onBeforeUnmount,
   watch,
-  shallowRef,
   nextTick,
   h,
   defineComponent,
@@ -2417,17 +2411,14 @@ async function loadConfig() {
   }
 }
 
-const editorState = shallowRef<EditorState>(initialEditorState());
-const editorConflict = shallowRef<LockConflict | null>(null);
-const editorGuard = shallowRef<EditorGuardState>(initialGuardState());
-const editorDraft = shallowRef<DraftPrompt | null>(null);
-
 const editorLock = createEditLock({
   apiBase: import.meta.env.PUBLIC_API_BASE || "/api/v1",
   getToken: () => token.value,
 });
 
-editorCore = createArticleEditor({
+// Vue 包装统一持有 state / conflict / guard / draft 四个通道与挂载 / 卸载；
+// App.vue 只消费 refs，不再手写 subscribe，避免新增通道时两处漂移。
+const editorView = useArticleEditor({
   // 函数形式：首屏可能还没有 token / userId，登录后再打开编辑器必须取到真实 id。
   userId: () => currentUserId.value,
   api: { request: (method, path, body) => api(method, path, body) },
@@ -2456,12 +2447,11 @@ editorCore = createArticleEditor({
     alert(message);
   },
 });
-editorCore.subscribe((next, conflict, guard, draft) => {
-  editorState.value = next;
-  editorConflict.value = conflict;
-  editorGuard.value = guard;
-  editorDraft.value = draft;
-});
+editorCore = editorView.core;
+const editorState = editorView.state;
+const editorConflict = editorView.conflict;
+const editorGuard = editorView.guard;
+const editorDraft = editorView.draft;
 
 function getEditorToken(): string {
   return token.value;
@@ -3198,12 +3188,10 @@ watch(isLoggedIn, (v) => {
 
 onMounted(() => {
   if (isLoggedIn.value) loadInitialData();
-  editorCore?.attach();
   document.addEventListener("locale-changed", handleLocaleChanged);
 });
 
 onBeforeUnmount(() => {
-  editorCore?.dispose();
   document.removeEventListener("locale-changed", handleLocaleChanged);
 });
 

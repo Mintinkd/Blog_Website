@@ -155,7 +155,6 @@ src/admin/
 │       ├── MilkdownEditor.vue      # defineAsyncComponent 的 Vue 壳层
 │       ├── createEditor.ts         # CrepeBuilder 7 项装配 / uploader / 响应式文案
 │       ├── embedLink.ts            # data-embed 专用内联节点 + NodeView + remark 合并
-│       ├── upload.ts               # POST /media/upload 适配（src / alt）
 │       └── milkdownService.ts      # 守卫用的同装配隐藏实例往返
 ├── panels/                         # T8：余下后台面板
 │   ├── AnalyticsPanel.vue
@@ -185,7 +184,7 @@ src/utils/editor/
 src/admin/editor/milkdown/
 ├── createEditor.ts                 # CrepeBuilder 装配、功能裁剪、主题、懒加载
 ├── embedLink.ts                    # data-embed 内联节点 / remark 解析与序列化
-└── upload.ts                       # 粘贴 / 拖拽 / 文件选择统一上传
+└── milkdownService.ts              # 守卫用同装配隐藏实例往返
 ```
 
 依赖方向：`App.vue` → `articles/*` / `panels/*` → `editor/*` → `utils/editor/*`；共享会话 / API / 提示走 `composables/*`；`utils/editor/*` 不反向依赖 Vue 组件。Milkdown 只在 `MarkdownWorkspace.vue` 打开时动态加载，不进入后台首屏 chunk。
@@ -255,7 +254,7 @@ closed
 ### 8.4 图片上传
 
 - `uploadImage(file)` 统一适配：校验类型 / 大小 → `POST /media/upload` → 返回 `{ url, alt }`。
-- **T0/T4 修订**：不装配 `image-block`，因此没有它的 `onUpload` 可配。改为保留 Crepe 内置 `upload` 插件、覆盖 `uploadConfig.uploader`，用 `schema.nodes.image.createAndFill({ src, alt })` 写普通图片节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。默认 uploader 会写 `blob:` URL，必须覆盖。粘贴链路 T0 已实测可用；拖拽真实用户操作仍未复现，由 T5 / T7 收口。
+- **T0/T4 修订**：不装配 `image-block`，因此没有它的 `onUpload` 可配。改为保留 Crepe 内置 `upload` 插件、覆盖 `uploadConfig.uploader`，用 `schema.nodes.image.createAndFill({ src, alt })` 写普通图片节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。默认 uploader 会写 `blob:` URL，必须覆盖。粘贴链路 T0 已实测可用；T5 骨架用合成 `DragEvent` 覆盖 uploader 调用，真实用户拖拽仍由 T7 复核。
 - 源码模式插入 `![alt](url)`，光标落在 alt 文本内。
 - 上传中显示进度 / 禁用重复提交；失败按服务端 `message` 映射为可读文案，保留原内容。
 
@@ -424,7 +423,7 @@ GitHub 跟踪：母票 [#60](https://github.com/Mintinkd/Blog_Website/issues/60)
 - [ ] 保存请求体只含 Markdown，`content_html` 不被写入；`data-embed="1"`、表格、代码块、引用、图片均保留。
 - [ ] 关闭 / 取消 / Esc / 刷新在脏状态下触发保护；放弃后锁被释放；保存失败不关闭编辑器。
 - [ ] 编辑锁心跳续期；保存前校验；锁冲突时禁止保存并有可操作出口。
-- [x] 图片上传 / 粘贴 / 拖拽可用；失败不破坏正文。
+- [x] 图片上传 / 粘贴可用；失败不破坏正文；合成拖拽已进骨架，真实拖拽由 T7 复核。
 - [x] 本地草稿可恢复 / 丢弃，保存后清理，退出登录清理。
 - [ ] 375px / 280px 无横向滚动；1280px 分屏正常；亮暗主题、焦点陷阱、对比度通过现有观感规则。
 - [ ] 新增 `GET /articles/:id/edit` 有 401 / 403 / 400 非法 id / 404 / owner / admin / 无统计副作用测试，响应不含 `content_html`。

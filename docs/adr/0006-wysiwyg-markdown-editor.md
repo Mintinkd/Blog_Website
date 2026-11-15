@@ -23,7 +23,7 @@
 - **本地草稿**：仅 `localStorage`，按用户 + 文章隔离，1.5s 防抖写入，打开时提示恢复；不做服务端自动保存、版本历史或多人协作。
 - **包体**：Milkdown / Crepe 只在编辑器打开时动态加载，不进入后台首屏 chunk；gzip 预算 ≤ 350KB。T0 实测首次打开增量 **226,078 B gzip**（预算 358,400 B），见「T0 实测修订」。超预算优先裁剪装饰能力，不牺牲回写守卫与图片上传。
 - **CSP**：不使用 eval / CDN / 内联脚本；构建后跑 `patch-csp` 与浏览器回归。T0 实测严格 `script-src 'self'` 下 0 violation（bundle 内 lodash 的 `Function("return this")()` 是短路兜底，未执行；详见「T0 实测修订」）。
-- **测试**：回写守卫、命令、草稿、状态机、slug、字数走 vitest；编辑器关键路径新增 `scripts/verify-article-editor.mjs`，纳入 CI 部署门禁。
+- **测试**：回写守卫、命令、草稿、状态机、slug、字数走 vitest；编辑器关键路径新增 `scripts/verify-article-editor.mjs` 骨架，CI 部署门禁接线由 T7 #68 承接。
 - **回退路径**：T0 否决 Milkdown 时，按上述候选重选内核并更新本 ADR；组件拆分、回写守卫、API、锁与草稿契约不受影响。**T0 结论为通过，本条未触发。**
 
 ## T0 实测修订（2026-11-14，issue #61）

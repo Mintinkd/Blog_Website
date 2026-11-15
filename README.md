@@ -47,13 +47,14 @@
 │   │       ├── EditorPreviewDialog.vue   # 只读线上预览（同一个 renderMarkdown）
 │   │       ├── LinkDialog.vue            # 普通链接 / 内嵌网页预览
 │   │       ├── UnsavedChangesDialog.vue  # 保存并关闭 / 放弃修改 / 继续编辑
+│   │       ├── DraftRecoveryBar.vue      # 本地草稿恢复 / 丢弃 / 过期提示
 │   │       ├── useArticleEditor.ts       # 显式状态机 + 副作用编排 + 回写守卫（消费 T1 reducer）
+│   │       ├── useLocalDraft.ts          # 1.5s 防抖 / pagehide 同步 / 配额提示一次
 │   │       ├── useEditLock.ts            # 获取 / 10 分钟心跳 / 保存前校验 / 释放
 │   │       └── milkdown/                 # T4 编辑内核（懒加载）
 │   │           ├── MilkdownEditor.vue    # 异步组件壳层：打开时不回写正文，只有实际编辑才更新
 │   │           ├── createEditor.ts       # CrepeBuilder 7 项装配 / uploader 覆盖 / 响应式文案
 │   │           ├── embedLink.ts          # data-embed 专用内联节点 + NodeView + remark 合并
-│   │           ├── upload.ts             # POST /media/upload 适配（src / alt）
 │   │           └── milkdownService.ts    # 守卫用同装配隐藏实例做 Markdown 往返
 │   ├── components/
 │   │   ├── article/
@@ -125,6 +126,7 @@
 │   │       ├── markdownBridge.ts    # 语义等价回写守卫 / 规范化比较 / 模式判定 / 保存前二次守卫
 │   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义
 │   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
+│   │       ├── uploadImage.ts       # 图片类型 / 10MB 预检、Bearer 上传、{ url, alt } 映射、失败保留正文
 │   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
 │   │       ├── slug.ts              # 标题生成 slug 与合法性（与 Worker generateSlug 对齐）
 │   │       └── wordCount.ts         # 中英文字数与阅读时长（与 Worker calculateReadingTime 对齐）
@@ -409,19 +411,20 @@ D1 (SQLite) 共 13 张表：
 - **关于页面** — Markdown 编辑 + 个人名片（姓名 / 职位 / 简介 / 头像 / 可增删社交链接）配置，保存后前台实时更新（仅admin）
 - **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
 
-#### 文章编辑器（T4 #65 / ADR 0006）
+#### 文章编辑器（T4 #65 / T5 #66 / ADR 0006）
 
 - **正文契约**：`articles.content` 的 Markdown 是唯一正文源；保存只写 Markdown，绝不写 `content_html`（历史遗留列，不读不写，无 D1 迁移）。前台、后台预览、线上预览共用 `src/utils/markdown.ts` 的 `renderMarkdown`（marked + DOMPurify，白名单见 `markdownPolicy.ts`）。
 - **四档形态**：所见即所得（Milkdown 7 / ProseMirror）、源码（textarea + 轻量工具栏，复用 `editorCommands.ts`）、分屏（左侧编辑 + 右侧只读预览）、线上预览弹窗。分屏 ≥1024px 并排、768–1023px 堆叠、<768px 隐藏入口；预览 150ms 防抖、只在可见时渲染，`enhanceMediaLinks` 限定各自容器。
 - **装配**：`CrepeBuilder` 只装 7 项（toolbar / list-item / link-tooltip / table / block-edit / placeholder / cursor）。**不装 `image-block`**：7.23.0 的 `imageBlockSchema` 把图片 `alt` 当宽高比，会静默改写存量正文（T0 实测 15 条语料有 2 条 lossy，去掉后 15/15 语义等价）。也不装 code-mirror / latex / ai / top-bar。
 - **语义等价回写守卫**：`src/utils/editor/markdownBridge.ts` 比较「原文」与「编辑器解析后立即序列化结果」经同一 `renderMarkdown` 渲染、规范化后的 HTML；不要求字节相同（T0 实测 0/15 字节相同）。加载时判定，lossy 默认进源码模式并提示；作者可显式覆盖进 WYSIWYG，但**保存前二次守卫**独立重新判定，仍失败即阻止保存（不发请求、不改状态、保持锁），绝不静默改写。判定结果接入 `useArticleEditor`，不是孤立模块。
 - **内嵌链接**：`<a … data-embed="1">文字</a>` 由 `milkdown/embedLink.ts` 的专用内联节点 + NodeView 承接（编辑器内是真实可编辑 `<a>`，编辑态点击不导航），序列化按原开标签逐字还原；无法安全合并的复杂结构回退到内核原子 html 片段，保持逐字保真。
-- **图片**：保留内置 `upload` 插件但覆盖 `uploadConfig.uploader`，写普通 `image` 节点；`src` 取 `POST /api/v1/media/upload` 返回的相对地址，`alt` 取 `original_name` 去扩展名。不写 `blob:` / base64 图片，不扩大正文白名单。
+- **图片**：工具栏「插入图片」、WYSIWYG 粘贴 / 拖拽统一走 `src/utils/editor/uploadImage.ts`：图片类型与 10MB 预检 → `POST /api/v1/media/upload`（Bearer + FormData `file`）→ `{ url, original_name }` 映射为 `{ url, alt }`（alt 取 `original_name` 去扩展名）。源码模式插入 `![alt](url)` 并选中 alt，alt 走 T1 的 Markdown 转义；上传中禁用工具栏重复提交，失败保留原正文。保留内置 `upload` 插件但覆盖 `uploadConfig.uploader`，写普通 `image` 节点；不写 `blob:` / base64 图片，不新增图片代理或转存，不扩大正文白名单。
+- **本地草稿**：复用 `src/utils/editor/draftStore.ts`，键为 `blog:article-draft:v1:u{userId}:a{articleId|new}`，只存白名单表单字段、`savedAt` 与基线哈希，不存 token。编辑后 1.5s 防抖写入，`pagehide` 同步落盘；打开时显示「恢复 / 丢弃」条，不自动覆盖服务端内容。保存 / 放弃 / 退出登录时清理；超过 1MB 跳过并只提示一次；超过 7 天视为过期并惰性清理。恢复后仍走正常保存 / 锁校验，并重新执行 T4 回写守卫，lossy 时进入源码模式；新建文章首次保存成功后清除 `new` 键，避免下次新建误恢复。
 - **能力边界**：启用的节点 / 标记不超过 `ARTICLE_BODY_TAGS` / `ARTICLE_BODY_ATTRS`；不做 LaTeX、任务列表、下划线、文字颜色、代码高亮、iframe。
 - **快捷键**（仅编辑器焦点内生效）：Ctrl/Cmd+S 保存、K 插入链接、B/I 粗体/斜体（源码模式）、Shift+P 线上预览、Shift+E 切换源码/所见即所得；Esc 在弹窗打开时由弹窗消费，否则走未保存保护。
 - **i18n / 主题**：编辑器文案进 `zh.json` / `en.json`；工具栏 label 用 Vue `reactive` 配置 + `locale-changed` 事件原地更新，切换语言不重建实例、不丢正文；`classic.css` 的 `--crepe-color-*` 映射到站点设计令牌，亮暗跟随 `[data-theme]`。
 - **包体 / CSP**：内核只在首次打开编辑器时加载（实测增量 gzip 约 182 KiB < 350 KiB 预算）；不使用 eval / CDN，`npm run build` 的 `patch-csp` 通过，静态与 SSR 两份 CSP 逐字符一致。
-- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。浏览器回归、真机中文输入法与真实拖拽上传由 T5 / T7 收口。
+- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/editor-upload.test.ts`（预检 / 上传映射 / 服务端错误 / 失败保留正文）、`tests/editor-draft.test.ts`（键 / 隔离 / 7 天过期 / 1MB 配额 / 基线哈希）、`tests/article-editor-flow.test.ts`（草稿恢复 / 丢弃 / 防抖 / pagehide / 保存清理）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。`scripts/verify-article-editor.mjs` 是上传 mock、粘贴 / 合成拖拽、刷新恢复 / 丢弃、保存清理的浏览器脚本骨架；CI 接线、真实拖拽与真机中文输入法由 T7 #68 收口。
 - **站点配置** — 标题、副标题、描述、关键词等（仅admin）
 - **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
 - **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）

@@ -78,6 +78,13 @@ export function emptyEditorForm(): EditorFormSnapshot {
   };
 }
 
+/** 服务端文章 id 只有正整数才可用于新建后的状态迁移；其余视为缺失。 */
+export function normalizeArticleId(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
 export function initialEditorState(): EditorState {
   return {
     phase: "closed",
@@ -224,12 +231,7 @@ export function reduceEditorState(
         ...state,
         phase: "saved",
         // 新建文章保存后记录服务端 id；旧调用不传时保持原值。
-        articleId:
-          typeof event.articleId === "number" &&
-          Number.isFinite(event.articleId) &&
-          event.articleId > 0
-            ? event.articleId
-            : state.articleId,
+        articleId: normalizeArticleId(event.articleId) ?? state.articleId,
         lockHeld: false,
         dialog: "none",
         error: null,

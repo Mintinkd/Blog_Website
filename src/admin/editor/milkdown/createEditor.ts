@@ -42,7 +42,10 @@ import { getMarkdown, insert, replaceAll } from "@milkdown/kit/utils";
 import { reactive } from "vue";
 import { getLocale, t } from "../../../utils/i18n";
 import { embedLinkRemark, embedLinkSchema, embedLinkView } from "./embedLink";
-import { describeUploadError, uploadImageFile } from "./upload";
+import {
+  describeUploadError,
+  uploadImageFile,
+} from "../../../utils/editor/uploadImage";
 
 export interface MilkdownEditorOptions {
   defaultValue?: string;

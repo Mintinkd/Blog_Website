@@ -41,7 +41,7 @@ const props = defineProps<{
   categories: { id: number; name: string }[];
   tags: { id: number; name: string }[];
   userRole: string;
-  /** Bearer token 由宿主注入；上传走同一个入口，不在组件里读 localStorage。 */
+  /** Bearer token 由宿主注入；MarkdownWorkspace 的所有上传入口都只调用它。 */
   getToken: () => string;
 }>();
 

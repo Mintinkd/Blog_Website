@@ -10,8 +10,7 @@
  * - 失败只返回错误码 / 服务端 message，原正文与选区原样返回，绝不清空正文；
  * - 不写 base64，也不做图片代理或转存。
  *
- * 纯模块：fetch 可注入，不 import Vue / DOM，node 环境单测；
- * `src/admin/editor/milkdown/upload.ts` 保留为兼容 T4 的转发入口。
+ * 纯模块：fetch 可注入，不 import Vue / DOM，node 环境单测。
  */
 import { insertImage, type TextSelection } from "./editorCommands";
 

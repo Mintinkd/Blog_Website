@@ -22,6 +22,7 @@ import {
   initialEditorState,
   isEditorDirty,
   isEditorOpen,
+  normalizeArticleId,
   reduceEditorState,
   shouldBlockUnload,
   type EditorDialog,
@@ -445,7 +446,7 @@ export function createArticleEditor(
     prefill?: EditorFormSnapshot
   ): Promise<void> {
     drafts.cancel();
-    draftPrompt = null;
+    setDraftPrompt(null);
     await options.lock.release();
     options.lock.stopHeartbeat();
     conflict = null;
@@ -621,13 +622,7 @@ export function createArticleEditor(
     if (res.code === 0) {
       // 新建文章成功后记录服务端 id；草稿键在 dispatch 前按旧 scope（new）清除，
       // 避免下次新建误恢复旧内容。迁移或清除都满足 §5.5，这里选择清除。
-      const savedId =
-        isNew &&
-        typeof res.data?.id === "number" &&
-        Number.isFinite(res.data.id) &&
-        res.data.id > 0
-          ? res.data.id
-          : undefined;
+      const savedId = isNew ? normalizeArticleId(res.data?.id) : undefined;
       drafts.cancel();
       clearDraftSync();
       dispatch({ type: "save-ok", articleId: savedId });

@@ -51,7 +51,8 @@ const props = defineProps<{
   mode: WorkspaceMode;
   guard: EditorGuardState;
   disabled?: boolean;
-  getToken?: () => string;
+  /** Bearer token 由宿主注入；所有上传入口共用，组件不自行读 localStorage。 */
+  getToken: () => string;
 }>();
 
 const emit = defineEmits<{
@@ -256,15 +257,6 @@ function insertAtCursor(snippet: string): void {
   else emit("update:content", props.content + snippet);
 }
 
-function resolveToken(): string {
-  if (props.getToken) return props.getToken();
-  try {
-    return localStorage.getItem("admin_token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function openImagePicker(): void {
   if (uploadDisabled.value) return;
   fileInput.value?.click();
@@ -289,7 +281,7 @@ async function onImagePicked(event: Event): Promise<void> {
         props.content,
         snapshot,
         file,
-        resolveToken
+        props.getToken
       );
       if (!result.ok) {
         emit("upload-error", describeUploadError(result.error, t));
@@ -304,7 +296,7 @@ async function onImagePicked(event: Event): Promise<void> {
       }
       return;
     }
-    const image = await uploadImageFile(file, resolveToken);
+    const image = await uploadImageFile(file, props.getToken);
     insertAtCursor(buildImageSnippet(image.url, image.alt));
   } catch (error) {
     emit("upload-error", describeUploadError(error, t));
