@@ -52,6 +52,7 @@ export function parseWranglerJson(raw) {
     throw new Error("wrangler 输出中找不到 JSON 数组");
   }
 
+  const candidates = [];
   let lastError;
   // 对每个 `[` × 每个 `]` 组合尝试（从长到短，优先取完整数组）；
   // 文本只有几 KB，O(n²) 可接受，换来对进度行/前后噪声的完全容忍。
@@ -68,10 +69,17 @@ export function parseWranglerJson(raw) {
       }
       if (!Array.isArray(parsed) || parsed.length === 0) continue;
       if (!Array.isArray(parsed[0]?.results)) continue;
-      return parsed[0].results;
+      candidates.push(parsed[0].results);
     }
   }
-  throw lastError ?? new Error("wrangler --json 输出中未找到有效 results 数组");
+  if (candidates.length === 0) {
+    throw (
+      lastError ?? new Error("wrangler --json 输出中未找到有效 results 数组")
+    );
+  }
+  // --remote 上传文件阶段会先打印一个 results:[] 的合法 JSON；真正的查询
+  // 结果在其后且 results 非空。优先取非空候选，否则（确实是空库）取第一个。
+  return candidates.find((r) => r.length > 0) ?? candidates[0];
 }
 
 /** 对比 sqlite_master 的 name 集合与预期清单，返回缺失项（顺序按预期清单）。 */
@@ -120,11 +128,20 @@ function main() {
     // 参数均为无空格字面量（SQL 在文件里），shell 拼接无注入风险。
     shell: process.platform === "win32",
   });
-  const missing = findMissingObjects(parseWranglerJson(raw));
+  const rows = parseWranglerJson(raw);
+  // 诊断输出（CI 日志可见）：仅打印对象名，无敏感信息；核对失败时能直接看出
+  // 是「查询返回空」还是「部分对象缺失」，无需再猜 wrangler 的 stdout 结构。
+  console.log(
+    `sqlite_master 命中 ${rows.length} 项：${rows.map((r) => r.name).join(", ") || "(空)"}`
+  );
+  const missing = findMissingObjects(rows);
   if (missing.length > 0) {
     console.error(
       `D1 迁移核对失败：缺少 ${missing.length} 个对象：\n  ${missing.join("\n  ")}`
     );
+    // 诊断：命中 0/部分时打印 wrangler 原始 stdout 尾部（不含凭证，只有对象名与统计），
+    // 便于定位「查询返回空」究竟是 SQL 问题还是 stdout 解析问题。
+    console.error("wrangler stdout 尾部诊断：\n" + raw.slice(-1500));
     process.exit(1);
   }
   console.log(

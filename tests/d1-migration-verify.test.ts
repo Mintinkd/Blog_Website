@@ -72,6 +72,18 @@ describe("D1 迁移核对", () => {
     ).toEqual([{ name: "analytics_view_token" }]);
   });
 
+  it("parseWranglerJson 跳过 wrangler 上传阶段的空 results，取真实查询结果", () => {
+    // CI --remote 会先上传 .sql 文件；wrangler 可能先打印一个 results:[] 的
+    // 合法 JSON（上传/进度确认），真正的 sqlite_master 查询 JSON 在其后。
+    // 若取了第一个候选就会误报「全部缺失」——必须优先取非空 results。
+    const uploadJson = JSON.stringify([{ results: [], success: true }]);
+    const queryJson = JSON.stringify([
+      { results: [{ name: "analytics_view_token" }], success: true },
+    ]);
+    const raw = `├ Uploading bundle\n${uploadJson}\n└ Done\n${queryJson}`;
+    expect(parseWranglerJson(raw)).toEqual([{ name: "analytics_view_token" }]);
+  });
+
   it("parseWranglerJson 对空/坏 JSON 抛错（fail-closed，不静默通过）", () => {
     expect(() => parseWranglerJson("")).toThrow();
     expect(() => parseWranglerJson("not json")).toThrow();
