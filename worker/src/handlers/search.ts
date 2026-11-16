@@ -1,5 +1,7 @@
 import { Env } from "../index";
 import { successResponse, error, ErrorCodes } from "../utils/response";
+// issue #95 / M15：escape 单点收敛——同包内不再重复定义 escapeHtml。
+import { escapeHtml } from "../utils/sanitizer";
 
 function tokenize(query: string): string[] {
   const tokens: string[] = [];
@@ -56,17 +58,6 @@ function buildLikeClause(
 /** LIKE 通配符转义：`%` `_` `\\` 前加反斜杠，并以 `ESCAPE '\\'` 声明 */
 export function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, "\\$&");
-}
-
-function escapeHtml(s: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return s.replace(/[&<>"']/g, (m) => map[m]);
 }
 
 /**

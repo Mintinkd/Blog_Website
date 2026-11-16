@@ -1,11 +1,11 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { escapeAttr, escapeHtml } from "../src/utils/escape";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// vitest 在仓库根运行；用 cwd 而非 import.meta.url（workers-types 的 URL 与 node:fs 类型不兼容）
+const ROOT = process.cwd();
 
 /**
  * issue #95 / M15：escape 四份收敛为单点 + 补齐单引号转义。
@@ -19,6 +19,12 @@ describe("escapeHtml / escapeAttr 五字符口径统一（issue #95）", () => {
     expect(escapeHtml(`&<>"'`)).toBe("&amp;&lt;&gt;&quot;&#039;");
     expect(escapeAttr(undefined)).toBe("");
     expect(escapeHtml(null)).toBe("");
+  });
+
+  it("escapeAttr 与 escapeHtml 五字符口径逐字一致（属性位可互换）", () => {
+    for (const sample of [`&<>"'`, "中文 ' onmouseover='x", "a&b<c>d\"e'f"]) {
+      expect(escapeAttr(sample)).toBe(escapeHtml(sample));
+    }
   });
 
   it("单引号属性包裹场景：' 被转义，属性不逃逸", () => {
@@ -46,11 +52,46 @@ describe("页面不再重复定义 esc（issue #95 AC）", () => {
 
   it.each(PAGES)("%s 无本地 esc 定义，且 import 单源 escapeHtml", (rel) => {
     const src = readFileSync(path.join(ROOT, rel), "utf8");
+    // 覆盖 function / const / let / var + 箭头赋值；esc() 无参（键盘 Esc）不算 escape 副本
     expect(src, `${rel} 仍定义本地 esc`).not.toMatch(
-      /function\s+esc\s*\(|const\s+esc\s*=/
+      /(?:function|const|let|var)\s+esc\s*[=(]|esc\s*=\s*(?:\(|function)/
     );
     expect(src, `${rel} 未 import escapeHtml`).toMatch(
       /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*utils\/escape/
+    );
+  });
+
+  it("全仓 .astro / .vue 无本地 escape 函数副本（通用规则，不只三页面）", () => {
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walk(full);
+        return /\.(astro|vue)$/.test(entry.name) ? [full] : [];
+      });
+    const offenders: string[] = [];
+    for (const file of walk(path.join(ROOT, "src"))) {
+      const src = readFileSync(file, "utf8");
+      // 只匹配带 escape 语义的本地定义（含 &amp; 或 &lt; 实体），排除键盘 Esc 等无关 esc()
+      if (
+        /(?:function|const|let|var)\s+\w*esc\w*\s*(?:\(|=)/i.test(src) &&
+        /&(?:amp|lt|quot|#0?39);/.test(src)
+      ) {
+        offenders.push(path.relative(ROOT, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("Worker 包内 escapeHtml 单点（issue #95 / M15）", () => {
+  it("search.ts 不重复定义 escapeHtml，改为 import 消毒器单源", () => {
+    const src = readFileSync(
+      path.join(ROOT, "worker/src/handlers/search.ts"),
+      "utf8"
+    );
+    expect(src).not.toMatch(/function\s+escapeHtml\s*\(/);
+    expect(src).toMatch(
+      /import\s*\{\s*escapeHtml\s*\}\s*from\s*["'][^"']*utils\/sanitizer/
     );
   });
 });
