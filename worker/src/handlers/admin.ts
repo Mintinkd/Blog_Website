@@ -179,8 +179,13 @@ export async function handleExport(
   const url = new URL(request.url);
   const tableParam = url.searchParams.get("table");
 
-  // table 白名单：只认 IMPORTABLE_TABLES（拒绝任意表名，避免拼进 SQL）。
-  if (tableParam !== null && !IMPORTABLE_TABLES[tableParam]) {
+  // table 白名单：只认 IMPORTABLE_TABLES 自有属性。
+  // 用 hasOwn 而非 `IMPORTABLE_TABLES[x]` 真值判断——后者会被 constructor /
+  // toString 等原型属性绕过，进而在 .columns.join 抛未捕获 500（review 发现）。
+  if (
+    tableParam !== null &&
+    !Object.prototype.hasOwnProperty.call(IMPORTABLE_TABLES, tableParam)
+  ) {
     return error(ErrorCodes.PARAM_ERROR, "Invalid export table");
   }
 
@@ -202,16 +207,21 @@ export async function handleExport(
   // 默认导出所有 IMPORTABLE_TABLES；带 table 参数时只导该表。
   const tables = tableParam ? [tableParam] : Object.keys(IMPORTABLE_TABLES);
   const export_data: Record<string, unknown[]> = {};
+  // 每表是否还有下一页：让调用方能可靠翻页，避免静默截断被当成完整备份（review F2/F4）。
+  const has_more: Record<string, boolean> = {};
 
   for (const table of tables) {
     // 列清单取自描述符白名单（与导入白名单同一来源），不再全列读取。
     const cols = IMPORTABLE_TABLES[table].columns.join(", ");
+    // 多取一行判断是否还有数据：有则 has_more=true 并裁掉哨兵行。
     const result = await env.DB.prepare(
       `SELECT ${cols} FROM ${table} LIMIT ? OFFSET ?`
     )
-      .bind(pageSize, offset)
+      .bind(pageSize + 1, offset)
       .all();
-    export_data[table] = result.results as unknown[];
+    const rows = result.results as unknown[];
+    has_more[table] = rows.length > pageSize;
+    export_data[table] = has_more[table] ? rows.slice(0, pageSize) : rows;
   }
 
   return new Response(
@@ -220,6 +230,7 @@ export async function handleExport(
       exported_at: new Date().toISOString(),
       page,
       page_size: pageSize,
+      has_more,
       ...(tableParam ? { table: tableParam } : {}),
       total_tables: tables.length,
     }),

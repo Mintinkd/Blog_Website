@@ -26,6 +26,32 @@ describe("M22 索引幂等（#73）", () => {
     );
   });
 
+  it("M22 增量 DDL 与 schema.sql 的三个索引语句一致（单一来源机械守卫）", () => {
+    const schema = readFileSync(path.join(ROOT, "schema.sql"), "utf8");
+    const incremental = readFileSync(
+      path.join(ROOT, "schema-m22-incremental.sql"),
+      "utf8"
+    );
+    for (const name of [
+      "idx_media_assets_uploaded_by",
+      "idx_comments_article_id_status",
+      "idx_friend_links_is_active",
+    ]) {
+      // 只匹配实际 DDL 行（行首 CREATE ... ;），避免把注释里的「CREATE ...；」算进来
+      const inSchema = schema.match(
+        new RegExp(`^CREATE[^\\n]*${name}[^\\n]*;`, "im")
+      );
+      const inIncremental = incremental.match(
+        new RegExp(`^CREATE[^\\n]*${name}[^\\n]*;`, "im")
+      );
+      expect(inSchema, `${name} 应在 schema.sql 中`).not.toBeNull();
+      expect(inIncremental, `${name} 应在增量 DDL 中`).not.toBeNull();
+      expect(inIncremental![0].replace(/\s+/g, " ").trim()).toBe(
+        inSchema![0].replace(/\s+/g, " ").trim()
+      );
+    }
+  });
+
   it("依赖迁移列的索引位于 ALTER TABLE 之后（全新库初始化不报 no such column）", () => {
     const schema = readFileSync(path.join(ROOT, "schema.sql"), "utf8");
     const alterUploadedBy = schema.search(

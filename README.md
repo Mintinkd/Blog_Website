@@ -341,7 +341,7 @@ D1 (SQLite) 共 13 张表：
 | POST   | `/friend-links`               | 创建友链（URL 仅 http/https）                                                                                                                                |
 | PUT    | `/friend-links/:id`           | 更新友链（URL 仅 http/https）                                                                                                                                |
 | DELETE | `/friend-links/:id`           | 删除友链                                                                                                                                                     |
-| GET    | `/admin/export`               | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                                                               |
+| GET    | `/admin/export`               | 导出数据（阅读统计三表不参与备份；`page`/`page_size` 分片，每表默认上限 5000 行，`table=` 只导单表；`has_more[table]` 标记是否还有下一页，须翻页取全）       |
 | POST   | `/admin/import`               | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                                                               |
 | POST   | `/admin/reconcile-counters`   | 计数器对账（admin；按 `article_likes` / `comments` 的 `COUNT(*)` 重算 `like_count` / `comment_count`，返回修复条数与逐条前后差异；手动触发，无自动定时任务） |
 | GET    | `/admin/scrape`               | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`）                                   |
@@ -633,6 +633,13 @@ cd worker
 npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
 ```
 
+**M22 索引增量 DDL**：补 `media_assets(uploaded_by)`、`comments(article_id, status)`、`friend_links(is_active)` 三个二级索引（issue #73）。执行 `worker/schema-m22-incremental.sql`（3 条，均 `IF NOT EXISTS`，重复执行安全；前置条件是存量库已有 `uploaded_by` 迁移列）。该文件与 `worker/schema.sql` 中对应索引语句一致，由 `worker/tests/query_columns.test.ts` 机械守卫。
+
+```bash
+cd worker
+npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
+```
+
 > 每日 cron（`0 16 * * *`，即 Asia/Shanghai 00:00）由 Worker `scheduled` 入口执行：删除过期令牌、删除 400 天保留窗口外的日聚合与维度桶，并写入 `site_config.analytics_last_job_at` 心跳。
 
 ### 首次设置
@@ -656,7 +663,8 @@ npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
 > ```bash
 > cd worker
 > npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
-> npx wrangler d1 execute blog-db --remote --command "SELECT type, name FROM sqlite_master WHERE name LIKE 'analytics%' OR name LIKE 'idx_view_token%' OR name LIKE 'idx_dim_daily%' ORDER BY type, name"
+> npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
+> npx wrangler d1 execute blog-db --remote --command "SELECT type, name FROM sqlite_master WHERE name LIKE 'analytics%' OR name LIKE 'idx_view_token%' OR name LIKE 'idx_dim_daily%' OR name LIKE 'idx_%uploaded_by' OR name LIKE 'idx_comments_article_id_status' OR name LIKE 'idx_friend_links_is_active' ORDER BY type, name"
 > ```
 >
 > 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）。代码侧已加计数容错，但**迁移仍须手动执行**，不可跳过。
