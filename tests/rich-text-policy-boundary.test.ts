@@ -51,8 +51,8 @@ describe("三层策略边界在文档留痕（issue #99）", () => {
   });
 });
 
-describe("跨端 XSS 样本一致性（issue #99）", () => {
-  it("rich-text-policy.json 明确禁止 XSS 相关标签与 scheme 入白名单", async () => {
+describe("正文白名单不含高风险标签 / scheme（issue #99；跨端消毒一致性由 #92 测试覆盖）", () => {
+  it("rich-text-policy.json 明确禁止 XSS 相关标签与 scheme 入白名单", () => {
     const descriptor = JSON.parse(
       readFileSync(path.join(ROOT, "rich-text-policy.json"), "utf8")
     );

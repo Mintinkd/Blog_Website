@@ -102,7 +102,7 @@ _Avoid_: 消毒黑名单、双份白名单
 _Avoid_: 正文白名单的一部分、通用 HTML 消毒
 
 **DOM clobbering 防护**：
-`ARTICLE_BODY_FORBIDDEN_IDS` 在前端 DOMPurify 渲染层丢弃会遮蔽 DOM API 的 `id`；Worker 入库消毒不复现该规则，因正文交付前台会再过一次 DOMPurify 兜底，属分层边界而非双份清单。
+服务端正文渲染器（`markdownServer.ts` → sanitize-html）用 `markdownPolicy.ts` 的 `ARTICLE_BODY_FORBIDDEN_IDS` 丢弃会遮蔽 DOM API 的 `id`（静态清单，无 DOM 可用时的保守防护）；浏览器侧 DOMPurify 走自身的动态 `value in document` 检查丢弃同类 id。Worker 入库消毒不复现该静态清单——正文交付前台必经服务端渲染器的 transformTags，防护在该层生效，属分层边界而非双份清单。
 _Avoid_: Worker 侧重复维护同一份 id 表
 
 ## 阅读
