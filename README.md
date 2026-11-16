@@ -482,6 +482,7 @@ D1 (SQLite) 共 13 张表：
 - **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
 - **数据安全**：这些设置不含任何密钥，`/settings/public` 白名单投影作为公开接口供前台拉取；全量读取（`/settings`、`/settings/all`）与写 / 导出 / 导入 / 恢复均为 admin 专属。
 - **合法性单源（issue #27 / ADR 0001）**：读侧回落与写侧拒绝共享同一套校验规则 —— 手写单源为仓库根 `settings.rules.json`（规则描述符），`npm run gen:settings` 从其生成 `src/generated/settings-rules.ts` 与 `worker/src/generated/settings-rules.ts` 两份字节一致的规则模块，两侧校验逻辑只消费生成物；生成物禁止手工编辑，CI 以「重新生成 → diff 必须为空」的漂移断言最早门禁守护，漂移修复流程为改描述符 → 重跑生成 → 一并提交。
+- **CORS 白名单单源（issue #85 / H4）**：Worker（`worker/src/middleware/cors.ts`）与同源 API 代理（`src/utils/api-proxy.ts`）共用一份 Origin 白名单 —— 手写单源为仓库根 `cors.origins.json`，`npm run gen:cors` 生成两端 `src/generated/cors-origins.ts` / `worker/src/generated/cors-origins.ts` 字节一致的模块。代理不再无条件写 `Access-Control-Allow-Origin: *`（此前会把 Worker 已收紧的白名单重新放开），改为白名单精确回显 + `Vary: Origin`；OPTIONS 预检补安全头，代理 fetch 加 10s 超时。CI 漂移断言同设置白名单。新增 Origin 只改 `cors.origins.json` 并重跑生成。
 
 ### 外链内容智能代理
 
@@ -613,7 +614,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是两份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是三份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002、CORS 白名单 `npm run gen:cors` issue #85 / H4，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
 
 ### 初始化数据库
 

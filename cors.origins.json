@@ -1,0 +1,8 @@
+{
+  "origins": [
+    "https://blog.zenfishlog.dpdns.org",
+    "https://blog-website-page.pages.dev",
+    "http://localhost:4321",
+    "http://127.0.0.1:4321"
+  ]
+}

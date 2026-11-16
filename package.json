@@ -14,6 +14,7 @@
     "test": "vitest run",
     "gen:headers": "node scripts/generate-headers.mjs",
     "gen:settings": "node scripts/generate-settings-rules.mjs",
+    "gen:cors": "node scripts/generate-cors-origins.mjs",
     "verify:visual": "node scripts/verify-visual-friendliness.mjs"
   },
   "dependencies": {

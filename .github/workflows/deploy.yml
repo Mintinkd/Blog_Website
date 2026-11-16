@@ -31,6 +31,11 @@ jobs:
       - name: Check Security Headers drift
         run: npm run gen:headers && git diff --exit-code -- public/_headers
 
+      # issue #85 / H4：CORS 白名单双端生成物不得漂移——
+      # 重新生成后 diff 非空即红（零依赖脚本，Worker/Pages 共用单一描述符）
+      - name: Check CORS Origins drift
+        run: npm run gen:cors && git diff --exit-code -- src/generated/cors-origins.ts worker/src/generated/cors-origins.ts
+
       - name: Install dependencies
         run: npm ci
 

@@ -1,6 +1,6 @@
 import { WORKER_ORIGIN } from "../../../utils/workerOrigin";
 import {
-  PROXY_CORS_HEADERS,
+  buildPreflightHeaders,
   buildProxyResponseHeaders,
 } from "../../../utils/api-proxy";
 import {
@@ -11,11 +11,15 @@ import {
 
 export const prerender = false;
 
+/** #85 / H4：代理上游超时（10s，与 articleServer.ts 的 8s 同量级） */
+const PROXY_TIMEOUT_MS = 10_000;
+
 export async function ALL({ request, url }: { request: Request; url: URL }) {
+  // #85 / H4：预检不再绕过安全头；CORS 按白名单回显（非白名单无 ACAO）
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: PROXY_CORS_HEADERS,
+      headers: buildPreflightHeaders(request.headers.get("Origin")),
     });
   }
 
@@ -41,16 +45,24 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
     body = await request.arrayBuffer();
   }
 
+  // #85 / H4：代理 fetch 加 10s 超时（与 articleServer.ts 的 8s 同量级），
+  // 上游挂起不再无限占用 Pages Function；超时映射为 502（与网络失败同口径）。
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  const requestOrigin = request.headers.get("Origin");
+
   try {
     const workerResponse = await fetch(workerUrl, {
       method: request.method,
       headers,
       body,
+      signal: controller.signal,
     });
 
     const responseHeaders = buildProxyResponseHeaders(
       workerResponse.headers,
-      import.meta.env.DEV
+      import.meta.env.DEV,
+      requestOrigin
     );
 
     return new Response(workerResponse.body, {
@@ -63,9 +75,11 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
       JSON.stringify({ code: 502, message: "Worker unreachable" }),
       {
         status: 502,
-        headers: { "Content-Type": "application/json" },
+        headers: buildPreflightHeaders(requestOrigin),
       }
     );
+  } finally {
+    clearTimeout(timer);
   }
 }
 
