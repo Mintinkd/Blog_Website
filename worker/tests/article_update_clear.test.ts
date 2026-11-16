@@ -156,8 +156,14 @@ function makeEnv(state: State): Env {
         if (sql.includes("SELECT author_id FROM articles WHERE id = ?")) {
           return { author_id: state.article.author_id } as T;
         }
-        if (sql.includes("SELECT * FROM articles WHERE id = ?")) {
-          return { ...state.article } as T;
+        if (
+          sql.includes("SELECT id, published_at FROM articles WHERE id = ?")
+        ) {
+          // #73 / M22：updateArticle 的局部更新只读取 id + published_at。
+          return {
+            id: state.article.id,
+            published_at: state.article.published_at,
+          } as T;
         }
         if (sql.includes("SELECT slug FROM articles WHERE id = ?")) {
           return { slug: state.article.slug } as T;

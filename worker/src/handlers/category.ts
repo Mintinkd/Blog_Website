@@ -13,6 +13,7 @@ import {
   UpdateCategoryRequest,
 } from "../models/category";
 import type { AuthResult } from "../middleware/auth";
+import { CATEGORY_COLUMNS, CATEGORY_OWNER_COLUMNS } from "../utils/columns";
 
 export async function handleListCategories(
   request: Request,
@@ -20,7 +21,7 @@ export async function handleListCategories(
 ): Promise<Response> {
   const categories = await env.DB.prepare(
     `
-    SELECT c.*, COUNT(a.id) as article_count
+    SELECT c.id, c.name, c.slug, c.description, c.created_by, c.created_at, c.updated_at, COUNT(a.id) as article_count
     FROM categories c
     LEFT JOIN articles a ON c.id = a.category_id AND a.status = 'published'
     GROUP BY c.id
@@ -97,7 +98,9 @@ export async function handleCreateCategory(
     .bind(body.name, slug, body.description || "", created_by)
     .run();
 
-  const category = await env.DB.prepare("SELECT * FROM categories WHERE id = ?")
+  const category = await env.DB.prepare(
+    `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE id = ?`
+  )
     .bind(res.meta.last_row_id)
     .first();
   return successResponse(category, "Category created");
@@ -111,7 +114,9 @@ export async function handleUpdateCategory(
 ): Promise<Response> {
   const { id } = params;
 
-  const existing = await env.DB.prepare("SELECT * FROM categories WHERE id = ?")
+  const existing = await env.DB.prepare(
+    `SELECT ${CATEGORY_OWNER_COLUMNS} FROM categories WHERE id = ?`
+  )
     .bind(id)
     .first<{ id: number; created_by: number | null }>();
   if (!existing) return notFound("Category not found");
@@ -154,7 +159,9 @@ export async function handleUpdateCategory(
     .bind(...values)
     .run();
 
-  const category = await env.DB.prepare("SELECT * FROM categories WHERE id = ?")
+  const category = await env.DB.prepare(
+    `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE id = ?`
+  )
     .bind(id)
     .first();
   return successResponse(category, "Category updated");

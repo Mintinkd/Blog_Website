@@ -166,21 +166,63 @@ const INSERT_ORDER = Object.keys(IMPORTABLE_TABLES).sort(
   (a, b) => IMPORTABLE_TABLES[a].insertRank - IMPORTABLE_TABLES[b].insertRank
 );
 
+/**
+ * 单次导出每张表的行数硬上限（issue #73 / M22）：避免一次性把 9 张表全表全列
+ * 载入内存。超过上限的数据用 page 参数分片拉取；page_size 钳制到本值。
+ */
+export const MAX_EXPORT_ROWS = 5000;
+
 export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // 只导出 IMPORTABLE_TABLES：阅读统计三表为派生数据，刻意不参与备份。
-  const tables = Object.keys(IMPORTABLE_TABLES);
+  const url = new URL(request.url);
+  const tableParam = url.searchParams.get("table");
+
+  // table 白名单：只认 IMPORTABLE_TABLES（拒绝任意表名，避免拼进 SQL）。
+  if (tableParam !== null && !IMPORTABLE_TABLES[tableParam]) {
+    return error(ErrorCodes.PARAM_ERROR, "Invalid export table");
+  }
+
+  const rawPage = url.searchParams.get("page") ?? "1";
+  const rawSize = url.searchParams.get("page_size") ?? String(MAX_EXPORT_ROWS);
+  const page = Number(rawPage);
+  const rawSizeNum = Number(rawSize);
+  if (
+    !Number.isInteger(page) ||
+    page < 1 ||
+    !Number.isInteger(rawSizeNum) ||
+    rawSizeNum < 1
+  ) {
+    return error(ErrorCodes.PARAM_ERROR, "Invalid pagination parameters");
+  }
+  const pageSize = Math.min(rawSizeNum, MAX_EXPORT_ROWS);
+  const offset = (page - 1) * pageSize;
+
+  // 默认导出所有 IMPORTABLE_TABLES；带 table 参数时只导该表。
+  const tables = tableParam ? [tableParam] : Object.keys(IMPORTABLE_TABLES);
   const export_data: Record<string, unknown[]> = {};
 
   for (const table of tables) {
-    const result = await env.DB.prepare(`SELECT * FROM ${table}`).all();
+    // 列清单取自描述符白名单（与导入白名单同一来源），不再全列读取。
+    const cols = IMPORTABLE_TABLES[table].columns.join(", ");
+    const result = await env.DB.prepare(
+      `SELECT ${cols} FROM ${table} LIMIT ? OFFSET ?`
+    )
+      .bind(pageSize, offset)
+      .all();
     export_data[table] = result.results as unknown[];
   }
 
   return new Response(
-    JSON.stringify({ export_data, exported_at: new Date().toISOString() }),
+    JSON.stringify({
+      export_data,
+      exported_at: new Date().toISOString(),
+      page,
+      page_size: pageSize,
+      ...(tableParam ? { table: tableParam } : {}),
+      total_tables: tables.length,
+    }),
     {
       headers: {
         "Content-Type": "application/json",

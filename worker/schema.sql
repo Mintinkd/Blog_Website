@@ -115,6 +115,9 @@ CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status);
 CREATE INDEX IF NOT EXISTS idx_article_likes_article_id ON article_likes(article_id);
 CREATE INDEX IF NOT EXISTS idx_media_assets_kv_key ON media_assets(kv_key);
 CREATE INDEX IF NOT EXISTS idx_friend_links_sort ON friend_links(sort_order);
+-- #73 / M22：补齐两个高频查询路径的二级索引（幂等，存量库重跑初始化即可生效）
+CREATE INDEX IF NOT EXISTS idx_comments_article_id_status ON comments(article_id, status);
+CREATE INDEX IF NOT EXISTS idx_friend_links_is_active ON friend_links(is_active);
 
 -- FTS5 Full-text Search Virtual Table
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
@@ -203,6 +206,8 @@ UPDATE articles SET author_id = (SELECT id FROM users WHERE role = 'admin' LIMIT
 -- Migration: Add uploaded_by to media_assets
 ALTER TABLE media_assets ADD COLUMN uploaded_by INTEGER REFERENCES users(id);
 UPDATE media_assets SET uploaded_by = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE uploaded_by IS NULL;
+-- #73 / M22：依赖迁移列的索引须在 ALTER 之后创建（全新库初始化才不报 no such column）
+CREATE INDEX IF NOT EXISTS idx_media_assets_uploaded_by ON media_assets(uploaded_by);
 
 -- Migration: Add created_by to categories and tags
 ALTER TABLE categories ADD COLUMN created_by INTEGER REFERENCES users(id);

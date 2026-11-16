@@ -59,7 +59,7 @@ function loggedText(spy: { mock: { calls: unknown[][] } }): string {
 describe("分类编辑所有权 fail-closed（T8）", () => {
   it("用户行解析失败时返回 403，且不执行 UPDATE", async () => {
     const { db, statements } = makeDb((sql) =>
-      sql.includes("SELECT * FROM categories")
+      sql.includes("SELECT id, created_by FROM categories")
         ? { id: 7, created_by: 42 }
         : null
     );

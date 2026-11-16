@@ -8,6 +8,7 @@ import {
   UpdateArticleRequest,
 } from "../models/article";
 import type { AuthResult } from "../middleware/auth";
+import { ARTICLE_PUBLISH_COLUMNS } from "../utils/columns";
 
 function generateSlug(title: string): string {
   return title
@@ -389,7 +390,9 @@ export async function updateArticle(
   id: number,
   data: UpdateArticleRequest
 ): Promise<ArticleDetail | null> {
-  const existing = await env.DB.prepare("SELECT * FROM articles WHERE id = ?")
+  const existing = await env.DB.prepare(
+    `SELECT ${ARTICLE_PUBLISH_COLUMNS} FROM articles WHERE id = ?`
+  )
     .bind(id)
     .first();
   if (!existing) return null;

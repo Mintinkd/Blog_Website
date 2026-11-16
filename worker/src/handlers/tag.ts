@@ -1,60 +1,119 @@
-import { Env } from '../index';
-import { successResponse, notFound, error, forbidden, ErrorCodes } from '../utils/response';
-import { validate, isValidSlug } from '../utils/validator';
-import type { AuthResult } from '../middleware/auth';
+import { Env } from "../index";
+import {
+  successResponse,
+  notFound,
+  error,
+  forbidden,
+  ErrorCodes,
+} from "../utils/response";
+import { validate, isValidSlug } from "../utils/validator";
+import type { AuthResult } from "../middleware/auth";
+import { TAG_COLUMNS } from "../utils/columns";
 
-export async function handleListTags(request: Request, env: Env): Promise<Response> {
-  const tags = await env.DB.prepare(`
-    SELECT t.*, COUNT(at.article_id) as article_count
+export async function handleListTags(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const tags = await env.DB.prepare(
+    `
+    SELECT t.id, t.name, t.slug, t.created_by, t.created_at, COUNT(at.article_id) as article_count
     FROM tags t
     LEFT JOIN article_tags at ON t.id = at.tag_id
     LEFT JOIN articles a ON at.article_id = a.id AND a.status = 'published'
     GROUP BY t.id
     ORDER BY t.name
-  `).all();
+  `
+  ).all();
 
   return successResponse(tags.results);
 }
 
-export async function handleCreateTag(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
-  const body = await request.json() as Record<string, unknown>;
+export async function handleCreateTag(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
+  const body = (await request.json()) as Record<string, unknown>;
 
   const result = validate(body, [
-    { field: 'name', required: true, type: 'string', minLength: 1, maxLength: 50 },
-    { field: 'slug', required: true, type: 'string', minLength: 1, maxLength: 50 },
+    {
+      field: "name",
+      required: true,
+      type: "string",
+      minLength: 1,
+      maxLength: 50,
+    },
+    {
+      field: "slug",
+      required: true,
+      type: "string",
+      minLength: 1,
+      maxLength: 50,
+    },
   ]);
 
   if (!result.valid) {
-    return error(ErrorCodes.VALIDATION_FAILED, result.errors.map(e => e.message).join('; '));
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      result.errors.map((e) => e.message).join("; ")
+    );
   }
 
   const slug = String(body.slug);
   if (!isValidSlug(slug)) {
-    return error(ErrorCodes.VALIDATION_FAILED, 'Invalid slug format. Use lowercase letters, numbers, and hyphens.');
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      "Invalid slug format. Use lowercase letters, numbers, and hyphens."
+    );
   }
 
-  const existing = await env.DB.prepare('SELECT id FROM tags WHERE slug = ? OR name = ?').bind(slug, body.name).first();
+  const existing = await env.DB.prepare(
+    "SELECT id FROM tags WHERE slug = ? OR name = ?"
+  )
+    .bind(slug, body.name)
+    .first();
   if (existing) {
-    return error(ErrorCodes.CONFLICT, 'Tag with this name or slug already exists');
+    return error(
+      ErrorCodes.CONFLICT,
+      "Tag with this name or slug already exists"
+    );
   }
 
   let created_by: number | null = null;
   if (authResult) {
-    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
+      .bind(authResult.username)
+      .first<{ id: number }>();
     created_by = user?.id || null;
   }
 
-  const res = await env.DB.prepare('INSERT INTO tags (name, slug, created_by) VALUES (?, ?, ?)').bind(body.name, slug, created_by).run();
-  const tag = await env.DB.prepare('SELECT * FROM tags WHERE id = ?').bind(res.meta.last_row_id).first();
+  const res = await env.DB.prepare(
+    "INSERT INTO tags (name, slug, created_by) VALUES (?, ?, ?)"
+  )
+    .bind(body.name, slug, created_by)
+    .run();
+  const tag = await env.DB.prepare(
+    `SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`
+  )
+    .bind(res.meta.last_row_id)
+    .first();
 
-  return successResponse(tag, 'Tag created');
+  return successResponse(tag, "Tag created");
 }
 
-export async function handleDeleteTag(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleDeleteTag(
+  request: Request,
+  env: Env,
+  params: Record<string, string>
+): Promise<Response> {
   const { id } = params;
 
-  const result = await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
-  if (result.meta.changes === 0) return notFound('Tag not found');
+  const result = await env.DB.prepare("DELETE FROM tags WHERE id = ?")
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return notFound("Tag not found");
 
-  return successResponse(null, 'Tag deleted');
+  return successResponse(null, "Tag deleted");
 }

@@ -8,6 +8,7 @@ import {
   unauthorized,
 } from "../utils/response";
 import type { AuthResult } from "../middleware/auth";
+import { MEDIA_COLUMNS } from "../utils/columns";
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -222,7 +223,7 @@ export async function handleListMedia(
 
   const media = await env.DB.prepare(
     `
-    SELECT * FROM media_assets ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?
+    SELECT ${MEDIA_COLUMNS} FROM media_assets ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?
   `
   )
     .bind(...queryParams, page_size, (page - 1) * page_size)
