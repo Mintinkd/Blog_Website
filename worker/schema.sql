@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS articles (
   view_count INTEGER NOT NULL DEFAULT 0,
   like_count INTEGER NOT NULL DEFAULT 0,
   comment_count INTEGER NOT NULL DEFAULT 0,
+  reading_time INTEGER NOT NULL DEFAULT 1,
   published_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),

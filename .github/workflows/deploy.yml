@@ -142,6 +142,7 @@ jobs:
         run: |
           npx wrangler d1 execute blog-db --remote --yes --file=./schema-tier0-incremental.sql
           npx wrangler d1 execute blog-db --remote --yes --file=./schema-m22-incremental.sql
+          node ../scripts/migrate-reading-time.mjs
 
       # 迁移命令返回 0 不等于对象真的建出来（表名错/前置列缺失会跳过），
       # 用 sqlite_master 核对 3 表 + 5 索引，缺一项即红。

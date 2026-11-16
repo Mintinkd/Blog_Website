@@ -19,7 +19,7 @@ function generateSlug(title: string): string {
     .slice(0, 120);
 }
 
-function calculateReadingTime(text: string): number {
+export function calculateReadingTime(text: string): number {
   const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || [])
     .length;
   const englishWords = text
@@ -142,10 +142,13 @@ export async function listArticles(
   const total = countResult?.total || 0;
 
   // issue #89 / M1：用相关子查询一次取回每篇文章的标签 blob，消除逐篇 D1 往返。
+  // issue #90 / M2：列表不再 select a.content（content 只用于算时长，落库后无需搬运），
+  // reading_time 直接读落库列。
   // 内层按 t.id 排序保证 blob 中标签顺序稳定（可复现），外层 group_concat 拼接。
   const articles = await env.DB.prepare(
     `
-    SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status, a.content,
+    SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status,
+           a.reading_time,
            a.view_count, a.like_count, a.comment_count, a.published_at, a.created_at,
            a.author_id,
            c.id as category_id, c.name as category_name, c.slug as category_slug,
@@ -195,7 +198,11 @@ export async function listArticles(
       author_name: row.author_name as string | null,
       published_at: row.published_at as string | null,
       created_at: row.created_at as string,
-      reading_time: calculateReadingTime((row.content as string) || ""),
+      // 落库值优先；存量文章若尚未回填（列为 null），惰性回退现算，保证形状与数值稳定。
+      reading_time:
+        row.reading_time != null
+          ? (row.reading_time as number)
+          : calculateReadingTime((row.content as string) || ""),
     });
   }
 
@@ -261,7 +268,11 @@ function mapArticleDetail(
     author_name: row.author_name as string | null,
     published_at: row.published_at as string | null,
     created_at: row.created_at as string,
-    reading_time: calculateReadingTime((row.content as string) || ""),
+    // 落库值优先；存量缺值时回退现算（详情 SELECT 仍含 a.*，content 可得）。
+    reading_time:
+      row.reading_time != null
+        ? (row.reading_time as number)
+        : calculateReadingTime((row.content as string) || ""),
   };
 }
 
@@ -346,10 +357,11 @@ export async function createArticle(
     author_id = await getUserIdByUsername(env, auth_result.username);
   }
 
+  const reading_time = calculateReadingTime(data.content);
   const result = await env.DB.prepare(
     `
-    INSERT INTO articles (title, slug, content, content_html, summary, cover_image, category_id, status, published_at, author_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO articles (title, slug, content, content_html, summary, cover_image, category_id, status, published_at, author_id, reading_time)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   )
     .bind(
@@ -362,7 +374,8 @@ export async function createArticle(
       data.category_id || 1,
       data.status || "draft",
       published_at,
-      author_id
+      author_id,
+      reading_time
     )
     .run();
 
@@ -435,6 +448,9 @@ export async function updateArticle(
   if (data.content !== undefined) {
     sets.push("content = ?");
     values.push(data.content);
+    // issue #90 / M2：正文变化时同步刷新落库的阅读时长。
+    sets.push("reading_time = ?");
+    values.push(calculateReadingTime(data.content));
   }
   if (data.summary !== undefined) {
     sets.push("summary = ?");

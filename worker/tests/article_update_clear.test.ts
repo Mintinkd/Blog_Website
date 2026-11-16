@@ -59,6 +59,7 @@ interface ArticleRow {
   view_count: number;
   like_count: number;
   comment_count: number;
+  reading_time: number;
 }
 
 interface Statement {
@@ -92,6 +93,7 @@ function makeState(overrides: Partial<State> = {}): State {
       view_count: 0,
       like_count: 0,
       comment_count: 0,
+      reading_time: 1,
     },
     statements: [],
     ...overrides,
@@ -276,10 +278,10 @@ describe("issue #70：空字符串清空正文 / 摘要 / 封面", () => {
 
     const update = updateStatement(state);
     expect(update.sql).toBe(
-      "UPDATE articles SET content = ?, updated_at = ? WHERE id = ?"
+      "UPDATE articles SET content = ?, reading_time = ?, updated_at = ? WHERE id = ?"
     );
     expect(update.binds[0]).toBe("");
-    expect(update.binds[2]).toBe(ARTICLE_ID);
+    expect(update.binds[3]).toBe(ARTICLE_ID);
   });
 
   it('summary: "" 清空摘要', async () => {
@@ -327,9 +329,13 @@ describe("issue #70：空字符串清空正文 / 摘要 / 封面", () => {
 
     const update = updateStatement(state);
     expect(update.sql).toBe(
-      "UPDATE articles SET content = ?, summary = ?, cover_image = ?, updated_at = ? WHERE id = ?"
+      "UPDATE articles SET content = ?, reading_time = ?, summary = ?, cover_image = ?, updated_at = ? WHERE id = ?"
     );
-    expect(update.binds.slice(0, 3)).toEqual(["", "", ""]);
+    expect([update.binds[0], update.binds[2], update.binds[3]]).toEqual([
+      "",
+      "",
+      "",
+    ]);
   });
 
   it("非空值仍按原语义写入（清空修复不破坏普通更新）", async () => {

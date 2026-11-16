@@ -664,9 +664,11 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 ## 部署
 
-> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。该 token 另需 `Zone:Read` + `Transform Rules:Edit` 供 `scripts/remove-edge-cors.mjs` 自动清理 zone 级通配 CORS（见 `docs/security/cloudflare-guards.md`）。
+> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）以及 `scripts/migrate-reading-time.mjs`（加列类迁移，见下），再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。该 token 另需 `Zone:Read` + `Transform Rules:Edit` 供 `scripts/remove-edge-cors.mjs` 自动清理 zone 级通配 CORS（见 `docs/security/cloudflare-guards.md`）。
 >
-> **新增迁移**：把新语句写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。**禁止**把全量 `schema.sql` 当迁移跑（含 `ALTER TABLE ADD COLUMN`，重复执行报 `duplicate column`）。
+> **新增对象类迁移**（表 / 索引）：写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。
+>
+> **新增列类迁移**（`ALTER TABLE ADD COLUMN`，无 `IF NOT EXISTS`）：不能塞进 SQL 文件重放（第二次报 `duplicate column`）。照 `scripts/migrate-reading-time.mjs` 的模式写幂等 JS：先查 `PRAGMA table_info` 判列存在，缺列才 ALTER + 回填，末尾再查一次 fail-closed；在 `Apply D1 migrations` 步骤追加一行 `node ../scripts/<name>.mjs`。`reading_time`（#90 / M2）即以此迁移：存量库加列后按与 Worker 一致的算法回填（`tests/reading-time-migration.test.ts` 守卫两端同值），已有列则跳过不覆盖。**禁止**把全量 `schema.sql` 当迁移跑。
 >
 > 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）——CI 自动迁移 + 对象核对正是为防止此类漏跑。手动应急命令见上文「初始化数据库 / 增量 DDL」段。
 
