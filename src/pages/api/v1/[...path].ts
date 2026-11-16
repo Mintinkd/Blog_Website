@@ -23,7 +23,22 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
     });
   }
 
-  const workerUrl = `${WORKER_ORIGIN}/api/v1${url.pathname.replace(/^\/api\/v1/, "")}${url.search}`;
+  // issue #98 / M18：路径逃逸防护。原始拼接下 `/api/v1/%2e%2e/admin/import` 会被
+  // WHATWG URL 规范化成 `/api/admin/import`，`/api/v1/../../admin/import` 更直接落到
+  // `/admin/import`——两者都逃出代理应有的 /api/v1 前缀，可越权触达 Worker 管理端点。
+  // 先把 pathname 按 URL 语义规范化，再校验仍以 /api/v1/ 开头，不满足即 400。
+  const subPath = url.pathname.replace(/^\/api\/v1/, "");
+  const normalized = new URL(`${WORKER_ORIGIN}/api/v1${subPath}`).pathname;
+  if (!normalized.startsWith("/api/v1/") && normalized !== "/api/v1") {
+    return new Response(
+      JSON.stringify({ code: 400, message: "Invalid proxy path" }),
+      {
+        status: 400,
+        headers: buildPreflightHeaders(request.headers.get("Origin")),
+      }
+    );
+  }
+  const workerUrl = `${WORKER_ORIGIN}${normalized}${url.search}`;
 
   const headers = new Headers(request.headers);
   headers.set("Host", new URL(WORKER_ORIGIN).host);

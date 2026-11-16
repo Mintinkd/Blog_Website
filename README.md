@@ -273,7 +273,7 @@ D1 (SQLite) 共 13 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。
+所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理安全（issue #98 / M18）：转发前校验 pathname 规范化后仍在 `/api/v1/` 前缀内（逃逸 → 400 不转发），响应剥离 hop-by-hop 头（含 `Connection` 列举的自定义头）与上游 CORS 头后按白名单重建，10s 超时映射 502。
 
 ### 公开接口
 
