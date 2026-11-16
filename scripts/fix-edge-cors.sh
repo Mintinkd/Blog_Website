@@ -210,7 +210,8 @@ banner "Remove zone-level wildcard CORS header"
 stage "Diagnose current response headers"
 say "Goal: remove the edge-injected 'Access-Control-Allow-Origin: *' on the zone."
 say "This header is added by a Cloudflare Transform Rule, NOT by the origin —"
-say "the app's CORS whitelist cannot override it, and API tokens lack zone write."
+say "the app's CORS whitelist cannot override it. It is removed via the Cloudflare"
+say "Rulesets API (token needs Zone:Read + Transform Rules:Edit), with manual fallback."
 say "Checking live headers now..."
 if curl -sS -D - -o /dev/null --max-time 15 "$SITE_URL" 2>/dev/null \
    | grep -qi '^access-control-allow-origin:'; then
@@ -223,22 +224,31 @@ say "Raw headers (for the record):"
 curl -sS -D - -o /dev/null --max-time 15 "$SITE_URL" 2>/dev/null \
   | grep -iE '^HTTP/|^access-control-allow-origin:' || true
 
-# ── Stage 2：人工在 Dashboard 删除规则（纯动作，无值捕获）─────────────────
-stage "Delete the Response Header Transform Rule (manual)"
-say "This stage is manual: the agent cannot do it (API token has no zone edit)."
-open_url "$RULES_URL"
-step "Log in to Cloudflare Dashboard; select the account owning zone 'zenfishlog.dpdns.org'."
-step "In the left sidebar, open 'Rules' → 'Overview' (Rules Overview page)."
-step "Find the rule whose action adds response header 'Access-Control-Allow-Origin' = '*'."
-note "Official path: Dashboard → Rules Overview → the Response Header Transform Rule."
-note "Do NOT delete unrelated rules (Speculation-Rules / CSP guards live in origin headers, not here)."
-step "Delete or disable that rule (prefer Delete; Deploy the change)."
-# 即便回答 N / 回车也继续到 Stage 3 复验——复验结果本身就是真相来源。
-# 不能让裸 confirm 的返回值碰 set -e 提前退出（否则文档承诺的自动复验被跳过）。
-if confirm "Have you deleted/disabled the rule and deployed?"; then
-  say "Thanks — verifying now."
+# ── Stage 2：API 自动删除优先，失败则人工兜底 ────────────────────────────
+stage "Delete the Response Header Transform Rule"
+say "Preferred path: API token (Transform Rules Edit + Zone Read) removes the rule."
+say "Fallback: manual Dashboard deletion if the API path fails."
+local WIZARD_ROOT
+WIZARD_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] && \
+   node "$WIZARD_ROOT/scripts/remove-edge-cors.mjs"; then
+  say "✓ API path succeeded (script includes its own verification)."
 else
-  warn "No confirmation recorded; running verification anyway so you can see the live state."
+  warn "API path unavailable/failed — falling back to manual Dashboard steps."
+  say "If the token lacks permissions, grant Zone:Read + Transform Rules:Edit first."
+  open_url "$RULES_URL"
+  step "Log in to Cloudflare Dashboard; select the account owning zone 'zenfishlog.dpdns.org'."
+  step "In the left sidebar, open 'Rules' → 'Overview' (Rules Overview page)."
+  step "Find the rule whose action adds response header 'Access-Control-Allow-Origin' = '*'."
+  note "Official path: Dashboard → Rules Overview → the Response Header Transform Rule."
+  note "Do NOT delete unrelated rules (Speculation-Rules / CSP guards live in origin headers, not here)."
+  step "Delete or disable that rule (prefer Delete; Deploy the change)."
+  # 裸 confirm 在 set -e 下答 N 会退出；包进 if 保证 Stage 3 复验始终执行。
+  if confirm "Have you deleted/disabled the rule and deployed?"; then
+    say "Thanks — verifying now."
+  else
+    warn "No confirmation recorded; running verification anyway so you can see the live state."
+  fi
 fi
 
 # ── Stage 3：复验（脚本自动 curl，断言头消失）─────────────────────────────

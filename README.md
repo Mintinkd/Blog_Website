@@ -658,7 +658,7 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 ## 部署
 
-> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。
+> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。该 token 另需 `Zone:Read` + `Transform Rules:Edit` 供 `scripts/remove-edge-cors.mjs` 自动清理 zone 级通配 CORS（见 `docs/security/cloudflare-guards.md`）。
 >
 > **新增迁移**：把新语句写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。**禁止**把全量 `schema.sql` 当迁移跑（含 `ALTER TABLE ADD COLUMN`，重复执行报 `duplicate column`）。
 >
@@ -668,10 +668,10 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：
 
-| Secret                  | 说明                                                                              |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（需 Pages + Workers + **D1 编辑**权限；D1 用于 CI 自动迁移） |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                |
+| Secret                  | 说明                                                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（CI 部署/迁移需 Pages + Workers + **D1 编辑**；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                                   |
 
 ### Cloudflare 资源
 

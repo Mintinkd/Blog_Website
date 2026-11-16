@@ -80,13 +80,14 @@ Cloudflare 自定义域会在 HTML 上追加两项与本站策略冲突的内容
    - Application → Speculation Rules 不再加载 `/cdn-cgi/speculation`；
 5. `cd worker && npm test`（`worker/tests/cloudflare_guards.test.ts`）。
 
-## zone 级 CORS 残留（需人工清理）
+## zone 级 CORS 残留（API 自动删除 + 人工兜底）
 
-`zenfishlog.dpdns.org` zone 上曾有一条 Response Header Transform Rule 给全站硬加 `Access-Control-Allow-Origin: *`。这是 **zone 边缘层**注入，与本仓库的 origin CORS 白名单（`worker/src/middleware/cors.ts`）无关：origin 收紧后边缘头仍在，等于白名单被全站绕过；API token 无 zone 写权限，wrangler / CI 都改不了。
+`zenfishlog.dpdns.org` zone 上曾有一条 Response Header Transform Rule 给全站硬加 `Access-Control-Allow-Origin: *`。这是 **zone 边缘层**注入，与本仓库的 origin CORS 白名单（`worker/src/middleware/cors.ts`）无关：origin 收紧后边缘头仍在，等于白名单被全站绕过。API token 现已具备 Zone:Read + Transform Rules:Edit 权限，可自动删除。
 
 - **诊断**：`curl -sS -D - -o /dev/null https://blog.zenfishlog.dpdns.org/ | grep -i access-control-allow-origin` —— 仍有输出即未清理。
-- **清理**：运行交互式向导 `bash scripts/fix-edge-cors.sh`。它先自动 curl 诊断，再带你到 Cloudflare Dashboard → Rules Overview 找到那条加 ACAO 的 Response Header Transform Rule 删除 / 停用，最后自动复验头已消失。脚本不捕获任何秘密值、不写 `.env` / GitHub secret；只有人工删除那一步无法代劳。
-- **背景**：#42 母票安全加固的未闭环项；2026-11-16 实测该头仍在，wizard 由此产生。
+- **自动清理（首选）**：`CLOUDFLARE_API_TOKEN=... node scripts/remove-edge-cors.mjs`。脚本走 Rulesets API：按 zone 名查 id → 找 `http_response_headers_transform` phase 的 ruleset → 筛出「明确 set/add 字面量 `*`」的 ACAO 规则 → PUT 回剔除后的 rules（保留其他规则）→ curl 复验响应头。**幂等**（找不到目标即跳过、退出 0），**保守**（具体域名 / 其他 header / remove 操作 / 动态表达式一律不动）。`--dry-run` 只诊断不写；支持 `ZONE` / `SITE_URL` 环境变量覆盖。
+- **人工兜底**：`bash scripts/fix-edge-cors.sh`（交互式向导）。它先 curl 诊断，再尝试 API 自动删除（有 token 时）；失败才带你到 Dashboard → Rules Overview 手动删除，最后自动复验。脚本不写 `.env` / GitHub secret。
+- **背景**：#42 母票安全加固的未闭环项；2026-11-16 实测该头仍在，脚本与 wizard 由此产生。
 
 ## 维护
 
