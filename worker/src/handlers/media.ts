@@ -9,6 +9,7 @@ import {
 } from "../utils/response";
 import type { AuthResult } from "../middleware/auth";
 import { MEDIA_COLUMNS } from "../utils/columns";
+import { isServableMediaKey } from "../utils/media_key";
 import { getUserIdByUsername } from "../services/user_service";
 
 const ALLOWED_MIME_TYPES = [
@@ -279,7 +280,9 @@ export async function handleServeMedia(
 ): Promise<Response> {
   // issue #100 / M20：通配参数改为具名 path，不再依赖数字下标的旧约定
   const key = params.path || params.key || "";
-  if (!key) return notFound("Media not found");
+  // issue #105 / L6：MEDIA 命名空间里还有 backup:*（全库快照）与代理缓存，
+  // 只放行 media/ 下的安全 key；拒绝与「不存在」同形（404），不给存在性 oracle。
+  if (!isServableMediaKey(key)) return notFound("Media not found");
 
   const value = await env.MEDIA.get(key, { type: "arrayBuffer" });
   if (!value) return notFound("Media not found");

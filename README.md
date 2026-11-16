@@ -291,7 +291,7 @@ D1 (SQLite) 共 13 张表：
 | GET  | `/search`                           | 全文搜索（每 IP 每分钟 10 次）                                                                                                                      |
 | POST | `/articles/:article_id/like`        | 点赞/取消（每 IP 每分钟 10 次，跨文章共享配额，issue #48）                                                                                          |
 | GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
-| GET  | `/media/serve/*`                    | 媒体文件访问                                                                                                                                        |
+| GET  | `/media/serve/*`                    | 媒体文件访问（仅 `media/` 命名空间；`backup:` / `imgproxy/` / `textproxy/` 等 key 一律 404）                                                        |
 | GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
 | GET  | `/config`                           | 公开站点配置                                                                                                                                        |
 | GET  | `/settings/public`                  | 公开白名单投影（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效），前台运行时套用                                                                       |
