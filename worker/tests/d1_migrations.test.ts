@@ -86,12 +86,43 @@ describe("migrations/ 文件约定（issue #94）", () => {
     expect(files).toContain("0001_baseline.sql");
   });
 
+  it("真实 SQLite：极老库（连 users 表都没有）apply 0001 可补齐列与建表", () => {
+    const baseline = readFileSync(
+      path.join(ROOT, "migrations/0001_baseline.sql"),
+      "utf8"
+    );
+    const db = new DatabaseSync(":memory:");
+    try {
+      // 极老库：只有基础表，无 users / 无迁移列
+      db.exec(
+        "CREATE TABLE articles(id INTEGER PRIMARY KEY, title TEXT);" +
+          "CREATE TABLE media_assets(id INTEGER PRIMARY KEY, filename TEXT);" +
+          "CREATE TABLE categories(id INTEGER PRIMARY KEY, name TEXT);" +
+          "CREATE TABLE tags(id INTEGER PRIMARY KEY, name TEXT);"
+      );
+      expect(() => db.exec(baseline)).not.toThrow();
+      const tables = (
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+          .all() as Array<{ name: string }>
+      ).map((r) => r.name);
+      expect(tables).toContain("users");
+      const cols = db.prepare("PRAGMA table_info(articles)").all() as Array<{
+        name: string;
+      }>;
+      expect(cols.map((c) => c.name)).toContain("author_id");
+    } finally {
+      db.close();
+    }
+  });
+
   it("baseline 文件含历史 ALTER + legacy 口令 UPDATE（供未迁移极老库补齐）", () => {
     const baseline = readFileSync(
       path.join(ROOT, "migrations/0001_baseline.sql"),
       "utf8"
     );
     for (const frag of [
+      "CREATE TABLE IF NOT EXISTS users",
       "ALTER TABLE articles ADD COLUMN author_id",
       "ALTER TABLE media_assets ADD COLUMN uploaded_by",
       "ALTER TABLE categories ADD COLUMN created_by",

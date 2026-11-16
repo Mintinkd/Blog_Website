@@ -8,6 +8,18 @@
 --   - 全新库：列已并入 schema.sql 的 CREATE TABLE，同样只标记、不执行。
 -- 命令与 baseline 标记流程见 README「初始化数据库 / 数据库迁移」章节。
 
+-- 兜底：极老库可能连 users 表都还没有（旧 schema.sql 尾部曾 CREATE IF NOT EXISTS users）。
+-- 下面的 ALTER/UPDATE 都依赖 users 存在，故先建表；已存在时此句为 no-op。
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Add author_id to articles
 ALTER TABLE articles ADD COLUMN author_id INTEGER REFERENCES users(id);
 CREATE INDEX IF NOT EXISTS idx_articles_author_id ON articles(author_id);

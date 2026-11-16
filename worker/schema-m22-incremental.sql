@@ -1,7 +1,7 @@
 -- M22 索引增量 DDL（issue #73）
 -- 单一事实源：worker/schema.sql 的「Indexes」段与 media_assets 迁移段；本文件供已有部署升级直接执行。
 -- 全部 CREATE INDEX IF NOT EXISTS，重复执行安全；不含 DROP / DELETE / UPDATE / ALTER，不触碰现有数据。
--- 前置条件：存量库须已执行过 schema.sql 尾部的 ALTER TABLE 迁移（uploaded_by / 等列已存在）。
+-- 前置条件：存量库须已有 uploaded_by 列（旧库经 migrations/0001_baseline.sql 补齐；全新库已在 schema.sql 的 CREATE TABLE 内）。
 -- 用法（必须在 worker/ 目录下、带 --remote）：
 --   npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 

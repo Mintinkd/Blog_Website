@@ -136,7 +136,8 @@ jobs:
         run: npm run build
 
       # D1 增量迁移（issue：CI/CD 自动迁移）：两个文件都是 IF NOT EXISTS 幂等，
-      # 每次 push 安全重放；全量 schema.sql 含 ALTER TABLE 不支持幂等，禁止在此执行。
+      # 每次 push 安全重放；结构性历史迁移走 migrations/ 手动 apply（issue #94），
+      # 不在此重放。全量 schema.sql 虽已幂等（#94），仍不作为 CI 迁移源。
       # 放在所有门禁之后、部署之前：测试失败就不碰生产库。
       - name: Apply D1 migrations
         working-directory: worker
