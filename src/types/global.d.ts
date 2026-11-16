@@ -1,9 +1,9 @@
 /**
  * 运行时注入的全局能力类型声明（前端类型门禁，issue #26）。
  *
- * 实现由 src/components/layout/BaseLayout.astro 的内联脚本在页面运行时挂载，
- * 本文件只登记类型；新增「运行时挂到 window 的能力」在此补声明，
- * 消费方/挂载方一律类型化使用，不再 (window as any) 逃逸检查。
+ * 实现由 `src/scripts/layout/fetch-proxy.ts` 在页面运行时挂载（issue #103 后从
+ * BaseLayout 内联脚本抽出），本文件只登记类型；新增「运行时挂到 window 的能力」
+ * 在此补声明，消费方/挂载方一律类型化使用，不再 (window as any) 逃逸检查。
  */
 declare global {
   interface Window {
