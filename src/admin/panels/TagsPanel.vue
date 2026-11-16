@@ -4,7 +4,7 @@ import { useAdminContext } from "../composables/adminContext";
 import { t } from "../../utils/i18n.ts";
 import { buildTagRequest } from "./tags.logic";
 
-const { api, feedback, catalog, session, locale } = useAdminContext();
+const { api, feedback, catalog, session } = useAdminContext();
 
 const tags = catalog.tags;
 const userRole = session.role;

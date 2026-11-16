@@ -5,7 +5,7 @@ import { t } from "../../utils/i18n.ts";
 import { buildCategoryRequest } from "./categories.logic";
 import { canEditCategory } from "./shared.logic";
 
-const { api, feedback, catalog, session, locale } = useAdminContext();
+const { api, feedback, catalog, session } = useAdminContext();
 
 const categories = catalog.categories;
 const userRole = session.role;

@@ -394,7 +394,7 @@ async function run() {
     for (const viewport of VIEWPORTS) {
       for (const locale of LOCALES) {
         const label = `${viewport.name} / ${locale}`;
-        const { context, page, errors, state } = await openEditor(
+        const { context, page, errors } = await openEditor(
           browser,
           viewport,
           locale

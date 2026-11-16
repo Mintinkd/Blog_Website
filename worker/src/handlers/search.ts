@@ -30,31 +30,6 @@ function tokenize(query: string): string[] {
   return tokens;
 }
 
-function buildLikeClause(
-  tokens: string[],
-  fields: string[]
-): { clause: string; params: string[] } {
-  const fieldConditions = fields.map((field) => {
-    const tokenConditions = tokens.map(() => `${field} LIKE ? ESCAPE '\\'`);
-    return `(${tokenConditions.join(" AND ")})`;
-  });
-  const clause = `(${fieldConditions.join(" OR ")})`;
-  const params: string[] = [];
-  for (const field of fields) {
-    if (field === "content") continue;
-    for (const token of tokens) {
-      params.push(`%${escapeLike(token)}%`);
-    }
-  }
-  for (const token of tokens) {
-    params.push(`%${escapeLike(token)}%`);
-  }
-  for (const token of tokens) {
-    params.push(`%${escapeLike(token)}%`);
-  }
-  return { clause, params };
-}
-
 /** LIKE 通配符转义：`%` `_` `\\` 前加反斜杠，并以 `ESCAPE '\\'` 声明 */
 export function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, "\\$&");

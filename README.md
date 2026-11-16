@@ -749,7 +749,7 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏 + `_assets` immutable 长缓存），构建后钩子收紧 CSP 产物）
+1. 生成物漂移断言（设置白名单 / 安全头 / CORS / 富文本策略）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ **ESLint 门禁**（`npm run lint`，死代码 / 未使用变量 / 重复定义 error 级，根配置同时覆盖根包与 `worker/`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏 + `_assets` immutable 长缓存），构建后钩子收紧 CSP 产物）
 2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
 3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）

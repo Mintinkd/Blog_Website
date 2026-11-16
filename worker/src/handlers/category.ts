@@ -8,11 +8,6 @@ import {
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
 import { getUserIdByUsername } from "../services/user_service";
-import {
-  Category,
-  CreateCategoryRequest,
-  UpdateCategoryRequest,
-} from "../models/category";
 import type { AuthResult } from "../middleware/auth";
 import { CATEGORY_COLUMNS, CATEGORY_OWNER_COLUMNS } from "../utils/columns";
 

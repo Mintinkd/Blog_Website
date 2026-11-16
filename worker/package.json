@@ -8,7 +8,8 @@
     "db:init": "wrangler d1 execute blog-db --file=./schema.sql",
     "db:seed": "node scripts/db-seed.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint --config ../eslint.config.mjs src tests"
   },
   "dependencies": {
     "sanitize-html": "2.17.5",

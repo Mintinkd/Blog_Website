@@ -9,7 +9,7 @@ import {
   ErrorCodes,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
-import { generateSlug, slugExists } from "../services/article_service";
+import { slugExists } from "../services/article_service";
 import { getUserIdByUsername } from "../services/user_service";
 import type { AuthResult } from "../middleware/auth";
 

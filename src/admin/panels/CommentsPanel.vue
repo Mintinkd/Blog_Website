@@ -4,7 +4,7 @@ import { useAdminContext } from "../composables/adminContext";
 import { t, getLocale } from "../../utils/i18n.ts";
 import { formatDate as formatDatePure } from "./shared.logic";
 
-const { api, feedback, catalog, session, locale } = useAdminContext();
+const { api, feedback, catalog } = useAdminContext();
 
 const comments = catalog.comments;
 const commentFilter = catalog.commentFilter;

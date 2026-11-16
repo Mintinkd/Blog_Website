@@ -2,7 +2,6 @@ import zh from "../i18n/zh.json";
 import en from "../i18n/en.json";
 
 type Locale = "zh" | "en";
-type TranslationKeys = keyof typeof zh;
 
 const messages: Record<Locale, Record<string, string>> = { zh, en };
 

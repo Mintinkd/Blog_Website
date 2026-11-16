@@ -23,7 +23,7 @@
 import { ref, computed, onMounted } from "vue";
 import { safeFriendLinkUrl } from "../utils/friend-link-url";
 
-const props = defineProps<{ variant?: string }>();
+defineProps<{ variant?: string }>();
 
 const links = ref<any[]>([]);
 

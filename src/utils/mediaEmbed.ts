@@ -161,8 +161,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 const ICON_PLAY =
   '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l11-6.5a1 1 0 0 0 0-1.8l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>';
-const ICON_PAUSE =
-  '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
 const ICON_AUDIO =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17.5V6l10-2.2v10.2"/><circle cx="6.8" cy="17.5" r="2.8"/><circle cx="16.8" cy="14" r="2.8"/></svg>';
 

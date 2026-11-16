@@ -10,7 +10,6 @@ import {
 } from "../utils/response";
 import { validate } from "../utils/validator";
 import { sanitizeHtml, escapeHtml } from "../utils/sanitizer";
-import { SubmitCommentRequest } from "../models/comment";
 import type { AuthResult } from "../middleware/auth";
 import { getClientIpString } from "../utils/client_ip";
 import { hashIp, MissingIpHashSecretError } from "../utils/ip_hash";

@@ -4,7 +4,7 @@ import { useAdminContext } from "../composables/adminContext";
 import { t } from "../../utils/i18n.ts";
 import { resolveMediaUrl } from "./media.logic";
 
-const { api, feedback, catalog, session, locale } = useAdminContext();
+const { api, feedback, catalog, session } = useAdminContext();
 
 const token = session.token;
 const mediaList = catalog.mediaList;

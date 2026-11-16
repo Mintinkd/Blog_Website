@@ -3,7 +3,6 @@ import {
   successResponse,
   notFound,
   error,
-  forbidden,
   ErrorCodes,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";

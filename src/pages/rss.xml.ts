@@ -5,7 +5,6 @@ import { WORKER_ORIGIN } from "../utils/workerOrigin";
 export const prerender = false;
 
 export async function GET(context: APIContext) {
-  const siteUrl = context.site?.toString() || "https://blog-website.pages.dev";
   const res = await fetch(
     `${WORKER_ORIGIN}/api/v1/articles?page_size=50&status=published`
   );

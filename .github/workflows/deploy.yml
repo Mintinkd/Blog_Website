@@ -58,6 +58,11 @@ jobs:
       - name: Check Frontend Types
         run: npm run check
 
+      # issue #102 / L2：ESLint 门禁（死代码 / 未使用变量 / 重复定义为 error 级）。
+      # 根配置同时覆盖根包与 worker/src、worker/tests，故一条命令即可。
+      - name: Lint
+        run: npm run lint
+
       - name: Test Frontend
         run: npm test
 

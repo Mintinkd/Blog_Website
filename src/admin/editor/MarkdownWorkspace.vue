@@ -192,7 +192,6 @@ function runSourceCommand(command: SourceCommand): void {
 /** 源码模式列表续行（Enter），非列表行不拦截浏览器默认换行。 */
 function onSourceEnter(event: KeyboardEvent): void {
   if (!isSource.value || !textarea.value) return;
-  const ta = textarea.value;
   const sel = selection();
   const lineStart = props.content.slice(0, sel.start).lastIndexOf("\n") + 1;
   const line = props.content.slice(lineStart, sel.end);

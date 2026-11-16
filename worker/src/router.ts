@@ -251,7 +251,7 @@ addRoute("POST", "/auth/login", async (req, env) => handleLogin(req, env));
 addRoute(
   "POST",
   "/auth/refresh",
-  async (req, env, ctx, params) => handleRefresh(req, env),
+  async (req, env, _ctx, _params) => handleRefresh(req, env),
   true
 );
 addRoute(
