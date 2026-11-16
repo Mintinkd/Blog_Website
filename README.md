@@ -327,34 +327,35 @@ D1 (SQLite) 共 13 张表：
 
 #### 管理员专属接口（需 admin 角色）
 
-| 方法   | 路径                          | 说明                                                                                                                                                      |
-| ------ | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DELETE | `/categories/:id`             | 删除分类                                                                                                                                                  |
-| DELETE | `/tags/:id`                   | 删除标签                                                                                                                                                  |
-| GET    | `/users`                      | 用户列表                                                                                                                                                  |
-| POST   | `/users`                      | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                                                            |
-| PUT    | `/users/:id`                  | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                                                      |
-| DELETE | `/users/:id`                  | 删除用户（至少保留一个admin）                                                                                                                             |
-| GET    | `/config/all`                 | 全部配置                                                                                                                                                  |
-| PUT    | `/config`                     | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                                                          |
-| GET    | `/friend-links/all`           | 全部友链                                                                                                                                                  |
-| POST   | `/friend-links`               | 创建友链（URL 仅 http/https）                                                                                                                             |
-| PUT    | `/friend-links/:id`           | 更新友链（URL 仅 http/https）                                                                                                                             |
-| DELETE | `/friend-links/:id`           | 删除友链                                                                                                                                                  |
-| GET    | `/admin/export`               | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                                                            |
-| POST   | `/admin/import`               | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                                                            |
-| GET    | `/admin/scrape`               | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`）                                |
-| GET    | `/admin/analytics/overview`   | 阅读统计概览（admin；`range=today\|7d\|30d\|90d`，非法值 400；返回 PV / UV / 过滤 bot，Tier 0 的 `engaged` 为 `null`）                                    |
-| GET    | `/admin/analytics/dimensions` | 分布（admin；`dim=device\|country\|referrer`、`range` 白名单；省略 `article_id` 为全站 `GROUP BY`；桶 < 5 合并 `other`，总样本 < 20 返回 `insufficient`） |
-| GET    | `/admin/analytics/articles`   | 文章明细（admin；`range` 白名单、`page` 正整数；分页 20 / PV 降序 / 来源 Top1 / 固定 7 日 sparkline / `since` 起点；Tier 1 列为 `null`）                  |
-| GET    | `/admin/analytics/quality`    | 数据质量（admin；bot 占比 / 代理覆盖率 / 清理心跳 / 3σ 波动 / 令牌行数及告警；分母为 0 的比率返回 `null`）                                                |
-| GET    | `/admin/analytics/trend`      | 趋势（admin；`range` 白名单；按日返回 `pv` / `uv` / `bot_filtered`，无数据的日补 0；供后台 PV/UV 双线图使用，#58）                                        |
-| GET    | `/settings`                   | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                                                   |
-| GET    | `/settings/all`               | 拉取全部可视化配置                                                                                                                                        |
-| PUT    | `/settings`                   | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                                                 |
-| POST   | `/settings/reset`             | 恢复默认可视化配置                                                                                                                                        |
-| GET    | `/settings/export`            | 导出配置 JSON                                                                                                                                             |
-| POST   | `/settings/import`            | 导入配置 JSON                                                                                                                                             |
+| 方法   | 路径                          | 说明                                                                                                                                                         |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DELETE | `/categories/:id`             | 删除分类                                                                                                                                                     |
+| DELETE | `/tags/:id`                   | 删除标签                                                                                                                                                     |
+| GET    | `/users`                      | 用户列表                                                                                                                                                     |
+| POST   | `/users`                      | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                                                               |
+| PUT    | `/users/:id`                  | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                                                         |
+| DELETE | `/users/:id`                  | 删除用户（至少保留一个admin）                                                                                                                                |
+| GET    | `/config/all`                 | 全部配置                                                                                                                                                     |
+| PUT    | `/config`                     | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                                                             |
+| GET    | `/friend-links/all`           | 全部友链                                                                                                                                                     |
+| POST   | `/friend-links`               | 创建友链（URL 仅 http/https）                                                                                                                                |
+| PUT    | `/friend-links/:id`           | 更新友链（URL 仅 http/https）                                                                                                                                |
+| DELETE | `/friend-links/:id`           | 删除友链                                                                                                                                                     |
+| GET    | `/admin/export`               | 导出数据（阅读统计三表为派生数据，不参与备份）                                                                                                               |
+| POST   | `/admin/import`               | 导入数据（友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值）                                                                               |
+| POST   | `/admin/reconcile-counters`   | 计数器对账（admin；按 `article_likes` / `comments` 的 `COUNT(*)` 重算 `like_count` / `comment_count`，返回修复条数与逐条前后差异；手动触发，无自动定时任务） |
+| GET    | `/admin/scrape`               | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`）                                   |
+| GET    | `/admin/analytics/overview`   | 阅读统计概览（admin；`range=today\|7d\|30d\|90d`，非法值 400；返回 PV / UV / 过滤 bot，Tier 0 的 `engaged` 为 `null`）                                       |
+| GET    | `/admin/analytics/dimensions` | 分布（admin；`dim=device\|country\|referrer`、`range` 白名单；省略 `article_id` 为全站 `GROUP BY`；桶 < 5 合并 `other`，总样本 < 20 返回 `insufficient`）    |
+| GET    | `/admin/analytics/articles`   | 文章明细（admin；`range` 白名单、`page` 正整数；分页 20 / PV 降序 / 来源 Top1 / 固定 7 日 sparkline / `since` 起点；Tier 1 列为 `null`）                     |
+| GET    | `/admin/analytics/quality`    | 数据质量（admin；bot 占比 / 代理覆盖率 / 清理心跳 / 3σ 波动 / 令牌行数及告警；分母为 0 的比率返回 `null`）                                                   |
+| GET    | `/admin/analytics/trend`      | 趋势（admin；`range` 白名单；按日返回 `pv` / `uv` / `bot_filtered`，无数据的日补 0；供后台 PV/UV 双线图使用，#58）                                           |
+| GET    | `/settings`                   | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                                                      |
+| GET    | `/settings/all`               | 拉取全部可视化配置                                                                                                                                           |
+| PUT    | `/settings`                   | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                                                    |
+| POST   | `/settings/reset`             | 恢复默认可视化配置                                                                                                                                           |
+| GET    | `/settings/export`            | 导出配置 JSON                                                                                                                                                |
+| POST   | `/settings/import`            | 导入配置 JSON                                                                                                                                                |
 
 ### API 限流
 

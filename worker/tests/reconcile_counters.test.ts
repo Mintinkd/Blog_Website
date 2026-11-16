@@ -34,9 +34,22 @@ function makeD1(state: ReconcileState): {
   db: unknown;
   batchStatements: () => RecordedStatement[];
   committed: () => RecordedStatement[];
+  articles: () => ArticleRow[];
 } {
   const batchLog: RecordedStatement[] = [];
   const committed: RecordedStatement[] = [];
+
+  /** 把已提交的 UPDATE 写回 state.articles，使后续读取看到收敛后的值。 */
+  const applyWrite = (sql: string, binds: unknown[]): void => {
+    const id = String(binds[1]);
+    const row = state.articles.find((a) => a.id === id);
+    if (!row) return;
+    if (/UPDATE articles SET like_count = \?/i.test(sql)) {
+      row.like_count = Number(binds[0]);
+    } else if (/UPDATE articles SET comment_count = \?/i.test(sql)) {
+      row.comment_count = Number(binds[0]);
+    }
+  };
 
   const makeStmt = (sql: string) => ({
     sql,
@@ -89,6 +102,7 @@ function makeD1(state: ReconcileState): {
       if (state.failBatch)
         throw new Error("simulated D1 batch failure: table articles");
       committed.push(...batchLog);
+      for (const s of batchLog) applyWrite(s.sql, s.binds);
       return stmts.map(() => ({ success: true, meta: { changes: 1 } }));
     },
   };
@@ -96,6 +110,7 @@ function makeD1(state: ReconcileState): {
     db,
     batchStatements: () => [...batchLog],
     committed: () => [...committed],
+    articles: () => state.articles.map((a) => ({ ...a })),
   };
 }
 
@@ -169,6 +184,19 @@ describe("handleReconcileCounters 对账（#72 / M9）", () => {
     expect(
       commentUpdates.some((u) => u.binds[1] === "a2" && u.binds[0] === 2)
     ).toBe(true);
+
+    // 真值读回：batch 应用后，articles 上的计数值已与 COUNT(*) 一致
+    const rows = fake.articles();
+    expect(rows.find((a) => a.id === "a1")?.like_count).toBe(3);
+    expect(rows.find((a) => a.id === "a2")?.comment_count).toBe(2);
+
+    // 二次对账幂等：收敛后再跑一次，fixed=0（证明真的收敛，而非只发了一条 UPDATE）
+    const res2 = await handleReconcileCounters(
+      reconcileRequest(),
+      makeEnv(fake.db)
+    );
+    const body2 = await bodyOf(res2);
+    expect(body2.data?.fixed).toBe(0);
   });
 
   it("无漂移时不发 batch，fixed=0", async () => {

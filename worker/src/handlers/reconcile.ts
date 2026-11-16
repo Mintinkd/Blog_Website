@@ -9,11 +9,48 @@ import { successResponse, serverError } from "../utils/response";
  * comment_count 的真值口径与 comment.ts 一致：只计 status='approved' 的有效评论。
  */
 
+type CounterField = "like_count" | "comment_count";
+
 interface CounterDifference {
   article_id: string;
-  field: "like_count" | "comment_count";
+  field: CounterField;
   before: number;
   after: number;
+}
+
+type PreparedStatement = ReturnType<ReturnType<Env["DB"]["prepare"]>["bind"]>;
+
+/** GROUP BY 结果 → article_id 到真实计数的映射。 */
+function truthMap(results: unknown[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const row of results as Array<Record<string, unknown>>) {
+    map.set(String(row.article_id), Number(row.cnt));
+  }
+  return map;
+}
+
+/**
+ * 对比单个计数字段：漂移则同时产出差异记录与幂等的 UPDATE 语句。
+ * 语句以 (真值, article_id) 绑定，重复执行仍收敛，不依赖旧值。
+ */
+function diffField(
+  id: string,
+  field: CounterField,
+  before: number,
+  truth: Map<string, number>,
+  env: Env,
+  differences: CounterDifference[],
+  statements: PreparedStatement[]
+): void {
+  const after = truth.get(id) ?? 0;
+  if (before === after) return;
+  differences.push({ article_id: id, field, before, after });
+  statements.push(
+    env.DB.prepare(`UPDATE articles SET ${field} = ? WHERE id = ?`).bind(
+      after,
+      id
+    )
+  );
 }
 
 export async function handleReconcileCounters(
@@ -31,58 +68,34 @@ export async function handleReconcileCounters(
       "SELECT article_id, COUNT(*) AS cnt FROM comments WHERE status = 'approved' GROUP BY article_id"
     ).all();
 
-    const likeTruth = new Map<string, number>();
-    for (const row of (likesResult.results ?? []) as Array<
-      Record<string, unknown>
-    >) {
-      likeTruth.set(String(row.article_id), Number(row.cnt));
-    }
-    const commentTruth = new Map<string, number>();
-    for (const row of (commentsResult.results ?? []) as Array<
-      Record<string, unknown>
-    >) {
-      commentTruth.set(String(row.article_id), Number(row.cnt));
-    }
+    const likeTruth = truthMap(likesResult.results ?? []);
+    const commentTruth = truthMap(commentsResult.results ?? []);
 
     const differences: CounterDifference[] = [];
-    const statements: ReturnType<ReturnType<Env["DB"]["prepare"]>["bind"]>[] =
-      [];
+    const statements: PreparedStatement[] = [];
 
     for (const row of (articlesResult.results ?? []) as Array<
       Record<string, unknown>
     >) {
       const id = String(row.id);
-      const likeBefore = Number(row.like_count);
-      const likeAfter = likeTruth.get(id) ?? 0;
-      if (likeBefore !== likeAfter) {
-        differences.push({
-          article_id: id,
-          field: "like_count",
-          before: likeBefore,
-          after: likeAfter,
-        });
-        statements.push(
-          env.DB.prepare(
-            "UPDATE articles SET like_count = ? WHERE id = ?"
-          ).bind(likeAfter, id)
-        );
-      }
-
-      const commentBefore = Number(row.comment_count);
-      const commentAfter = commentTruth.get(id) ?? 0;
-      if (commentBefore !== commentAfter) {
-        differences.push({
-          article_id: id,
-          field: "comment_count",
-          before: commentBefore,
-          after: commentAfter,
-        });
-        statements.push(
-          env.DB.prepare(
-            "UPDATE articles SET comment_count = ? WHERE id = ?"
-          ).bind(commentAfter, id)
-        );
-      }
+      diffField(
+        id,
+        "like_count",
+        Number(row.like_count),
+        likeTruth,
+        env,
+        differences,
+        statements
+      );
+      diffField(
+        id,
+        "comment_count",
+        Number(row.comment_count),
+        commentTruth,
+        env,
+        differences,
+        statements
+      );
     }
 
     if (statements.length > 0) {
