@@ -215,7 +215,6 @@ function buildCardShell(o: EmbedCardOptions): {
 /** 加载失败 / 超时的兜底面板：新窗口打开 + 转回普通链接。 */
 function buildFallbackPanel(
   href: string,
-  title: string,
   strings: MediaEmbedStrings,
   onDegrade: () => void
 ): HTMLElement {
@@ -275,7 +274,7 @@ function buildAudioBody(o: EmbedCardOptions, body: HTMLElement): void {
 
   const degrade = () => {
     body.replaceChildren(
-      buildFallbackPanel(o.href, o.title, o.strings, () => {
+      buildFallbackPanel(o.href, o.strings, () => {
         degradeCardToLink(body);
       })
     );
@@ -362,7 +361,7 @@ function buildVideoBody(o: EmbedCardOptions, body: HTMLElement): void {
       // 源地址不可用（404 / MIME 不符）→ 兜底面板
       v.addEventListener("error", () => {
         v.replaceWith(
-          buildFallbackPanel(o.href, o.title, o.strings, () => {
+          buildFallbackPanel(o.href, o.strings, () => {
             degradeCardToLink(body);
           })
         );
@@ -424,7 +423,7 @@ function buildWebBody(o: EmbedCardOptions, body: HTMLElement): void {
       // 保留 frame 节点由面板取代展示，避免半加载状态闪烁
       frame.remove();
       frameWrap.append(
-        buildFallbackPanel(o.href, o.title, o.strings, () => {
+        buildFallbackPanel(o.href, o.strings, () => {
           degradeCardToLink(body);
         })
       );

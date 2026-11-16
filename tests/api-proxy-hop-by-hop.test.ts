@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { buildProxyResponseHeaders } from "../src/utils/api-proxy";
+import { ALLOWED_ORIGINS } from "../src/generated/cors-origins";
+
+/** 白名单内的 Origin（用生成物真值，避免自造值让断言退化成 `null !== "*"`） */
+const ALLOWED_ORIGIN = ALLOWED_ORIGINS[0];
 
 /**
  * issue #110：同源代理剥离 RFC 7230 §6.1 定义的 hop-by-hop 头。
@@ -113,14 +117,39 @@ describe("代理 hop-by-hop 头剥离（#110）", () => {
       "x-internal-token": "should-not-leak",
     });
 
-    const out = buildProxyResponseHeaders(
-      upstream,
-      false,
-      "https://allowed.example.test"
-    );
+    const out = buildProxyResponseHeaders(upstream, false, ALLOWED_ORIGIN);
 
-    expect(out.get("access-control-allow-origin")).not.toBe("*");
+    // 白名单 Origin → 精确回显（证明「重建」真的发生了，不只是没留下 `*`）
+    expect(out.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+    expect(out.get("vary")).toBe("Origin");
     expect(out.get("connection")).toBeNull();
     expect(out.get("x-internal-token")).toBeNull();
+  });
+
+  it("Connection 点名 CORS 头时，重建结果仍生效（锁定剥离先于重建的次序）", () => {
+    // 若实现把「剥 hop-by-hop」放在「按 Origin 重建 CORS」之后，
+    // 上游就能用 `Connection: access-control-allow-origin` 把重建结果一同删掉。
+    const upstream = new Headers({
+      "access-control-allow-origin": "*",
+      connection: "access-control-allow-origin, x-internal-token",
+      "x-internal-token": "should-not-leak",
+    });
+
+    const out = buildProxyResponseHeaders(upstream, false, ALLOWED_ORIGIN);
+
+    expect(out.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+    expect(out.get("x-internal-token")).toBeNull();
+  });
+
+  it("无请求 Origin 且上游点名 CORS 头：不重建也不残留", () => {
+    const upstream = new Headers({
+      "access-control-allow-origin": "https://evil.example.test",
+      connection: "access-control-allow-origin",
+    });
+
+    const out = buildProxyResponseHeaders(upstream, false, null);
+
+    expect(out.get("access-control-allow-origin")).toBeNull();
+    expect(out.get("connection")).toBeNull();
   });
 });

@@ -274,7 +274,7 @@ D1 (SQLite) 共 13 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理（issue #98 / M18 补测）：上游 CORS 头按白名单重建、10s 超时映射 502；`%2e%2e` / `../` 点段由入口 URL 规范化拦截（不以原样进入代理 handler）。已知边界（Deferred from #98 → #110）：响应头未剥离 RFC 7230 hop-by-hop 头（`Connection` / `Transfer-Encoding` 等），另票修。
+所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理（issue #98 / M18 补测）：上游 CORS 头按白名单重建、10s 超时映射 502；`%2e%2e` / `../` 点段由入口 URL 规范化拦截（不以原样进入代理 handler）。响应头剥离（issue #110，闭合 #98 的 Deferred）：RFC 7230 §6.1 的 8 类 hop-by-hop 头（`connection` / `keep-alive` / `proxy-authenticate` / `proxy-authorization` / `te` / `trailer` / `transfer-encoding` / `upgrade`）以及 `Connection` 头逐项点名的自定义头，全部从上游响应中删除，不再透传给浏览器（否则代理会替上游"接管"逐跳语义，且 `Connection: X` 可借道删掉本不该动的头）。**顺序有讲究**：先剥 hop-by-hop，再清掉上游 CORS 头并按请求 Origin 精确重建——反过来做的话，`Connection: access-control-allow-origin` 就能把刚重建的 CORS 头删掉（`buildProxyResponseHeaders` 的注释与 `tests/api-proxy-hop-by-hop.test.ts` 的「CORS 重建共存」用例一起锁定这个次序）。
 
 ### 公开接口
 
@@ -507,7 +507,7 @@ D1 (SQLite) 共 13 张表：
 - **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、**域名解析后 IP 复核**（DoH A/AAAA，任一结果落入受限段即拒绝；解析失败 / 超时 / 无记录 fail-closed 拒绝；每一跳重定向均复核）+ **双解析器一致性校验**（issue #109：主/备解析器答案集合必须完全一致，否则按 rebinding 拒绝并记 `[ssrf-blocked]`；Workers 无连接级 IP 绑定原语，理由与残余风险见 `docs/adr/0007-dns-rebinding-connection-binding.md`）、仅白名单 MIME（图片通道 image/_，文字通道 text/_ + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**SVG 纵深防御（issue #93 / M7）**：以 `image/svg+xml` 返回的响应强制 `Content-Disposition: attachment` + 沙箱 CSP（`default-src 'none'; sandbox`）+ nosniff（attachment 口径与媒体 serve 一致，沙箱 CSP 是代理通道额外的纵深防御）；`<img src>` 展示不受 attachment 影响，代理层不净化 SVG 内容（评估见 #93 关票评论）。**保持严格 TLS 证书校验**，不做全局绕过。
 - **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
 - **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
-- 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`、前端逻辑在 `src/components/layout/BaseLayout.astro`。
+- 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`；前端侧两个通道分别在 `src/scripts/layout/img-proxy-fallback.ts`（`<img>` 失败降级）与 `src/scripts/layout/fetch-proxy.ts`（`window.fetchWithProxy` + 域级 7 天标记），issue #103 起从 `BaseLayout.astro` 的内联脚本抽出。
 
 ### 网页抓取（admin-only）
 
@@ -545,6 +545,7 @@ D1 (SQLite) 共 13 张表：
   - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差；
   - motion chunk 动态 import 失败或 3s 内未完成初始化时，写入 `<html data-motion-failed>`，强制 `[data-reveal]` 可见（与禁用 JS 的 `<noscript>` 兜底互补）。
 - **生命周期**：`BaseLayout.astro` 引入 Astro `ClientRouter` 并在 `astro:page-load` 后调用 `initMotion()`；动态渲染的内容触发 `motion:refresh` 事件重新绑定。
+- **脚本组织（issue #103）**：`BaseLayout.astro` 里原来的 600 行内联脚本已拆成 `src/scripts/layout/` 下 11 个模块（`theme-locale` / `mobile-nav` / `dynamic-title` / `site-config` / `site-settings` / `motion-boot` / `back-to-top` / `fetch-proxy` / `hitokoto` / `img-proxy-fallback` / `favicon-light`），layout 里只剩 < 40 行的编排块（逐行 `initXxx()`）与文档头那个**必须保留**的 `is:inline` 主题初始化脚本（首屏防闪色，不能改成模块）。`bound` 幂等守卫在 `theme-locale` / `site-config` 里，防止重复初始化时事件委托叠层或重复打 `/config`。**拆分前后 SSR 产物一致性的证据**：本地构建产物归一化（抹掉 `data-v-*` / `astro-island` uid / 远端 `--bg-*` 变量）后结构零差异——这是人工核对，**未固化为 CI 断言**；仓库内可自动守的是「编排块 < 40 行 + 11 个模块都被 import 且被调用 + 无业务逻辑残留」（`tests/base-layout-modules.test.ts`）与两个有契约模块的行为（`tests/layout-modules.test.ts`），其余 9 个纯 DOM 装饰模块由 Playwright 脚本覆盖。
 
 ### 响应式布局
 
@@ -730,7 +731,7 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 
 - 算法：`SHA-256("ip-hash:v1:<域>:<ip>:<secret>")`，`<域>` 为 `blog`（评论）或 `like`（点赞）——一份 secret 派生两域盐，两域哈希不可交叉比对。单点实现 `worker/src/utils/ip_hash.ts`，源码中不再有任何字面量盐（`worker/tests/ip_hash.test.ts` 静态守卫）。
 - 轮换 secret：`ip_hash` 全部变化，效果是**点赞去重一次性重置**（同一访客可再点一次）；评论的 `ip_hash` 仅用于溯源展示，无功能依赖。存量数据无法在不知明文 IP 的前提下重算，故**不迁移**。
-- 未配置 secret 时的症状：点赞 / 评论提交 500，其余读接口正常。
+- 未配置 secret 时的症状：`POST /articles/:id/like`、`GET /articles/:id/like`（状态查询也要算 `ip_hash` 判断本人是否已赞）与 `POST /articles/:id/comments` 一律 500 + 通用文案（不回显缺哪个变量），文章列表 / 详情 / 搜索等读接口不受影响。
 
 ### Cloudflare 资源
 
@@ -746,6 +747,8 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 ### 自动部署
 
 > **重要**：请在 Cloudflare Dashboard 中关闭所有 Pages 项目的 Git 自动部署（Settings → Builds & deployments → 关闭 Automatic deployments），统一由 GitHub Actions 管理部署，避免覆盖 API Worker。
+>
+> **同样必须断开的第二条通道**：根 `wrangler.jsonc` 对应的 Workers Build（Worker `blog_website`，Settings → Build → 断开 Git 连接 / Disconnect）。这条通道与 Actions 并行运行、部署的是**另一份**前端 Worker，开着就会在每次 push 后多出一条不受门禁约束的部署，且线上实际返回哪个版本取决于两条通道谁后完成。**仓库侧无法验证 Dashboard 状态**（wrangler OAuth 无 zone 写权限），因此这条要求以人工核查为准，检查清单见本节末。
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
@@ -753,9 +756,16 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
 3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
-5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。
+5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
 
-> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署须在 Dashboard 关闭（见上文「自动部署」），由 Actions 单点管理。
+> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署与 `blog_website` 的 Workers Build 两条通道须在 Dashboard 断开（见上文「自动部署」），由 Actions 单点管理。
+
+**部署通道人工核查清单**（每次改动部署链路后过一遍，仓库内无法自动验证）：
+
+1. `npx wrangler pages project list` → `blog-website` 存在；再去 Dashboard → Settings → Builds & deployments，确认**没有** Automatic deployments 条目（关闭 Pages 的 Git 集成）。
+2. Dashboard → Workers & Pages → `blog_website` → Settings → Build，确认 Git 连接为 **Disconnected**。这一条是唯一的真判据——`npx wrangler deployments list` 只看得到部署时间，分不出是 push 触发还是 Actions 触发，不能当证据。
+3. 同一次 push 后，`gh run list --workflow=deploy.yml --limit 3` 只有**一个**运行在跑，且 Dashboard 里 `blog_website` 的部署条目不增加（说明那条并行通道确实没在动）。
+4. 就绪轮询失败时先看这个清单——轮询报「探针一直 200 但内容还是旧的」，通常是并行通道覆盖，而不是轮询本身有问题。
 
 ### Cloudflare 平台注入护栏
 
@@ -768,11 +778,11 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 
 ### 部署架构
 
-| 项目           | 类型   | URL                              | 说明                                                    |
-| -------------- | ------ | -------------------------------- | ------------------------------------------------------- |
-| `blog-website` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）                            |
-| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）                                     |
-| `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐） |
+| 项目           | 类型   | URL                              | 说明                                                                                |
+| -------------- | ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
+| `blog-website` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）                                                        |
+| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）                                                                 |
+| `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐）；**须断开**，见「自动部署」 |
 
 浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
 
@@ -780,10 +790,10 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 
 仓库内存在两份 wrangler 配置，对应两条互不相同的部署通道，**禁止混用**：
 
-| 配置文件                | 作用对象                             | 执行目录                                        | 说明                                                                 |
-| ----------------------- | ------------------------------------ | ----------------------------------------------- | -------------------------------------------------------------------- |
-| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                       | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT 绑定齐全；唯一生效的 Worker 配置 |
-| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（仅 Cloudflare Dashboard 侧 Build 消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy                         |
+| 配置文件                | 作用对象                             | 执行目录                                                 | 说明                                                                           |
+| ----------------------- | ------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                                | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT 绑定齐全；唯一生效的 Worker 配置           |
+| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（**只在 Dashboard 侧 Git 连接未断开时**才被消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy，Git 连接须断开（见「自动部署」） |
 
 **禁令：**
 

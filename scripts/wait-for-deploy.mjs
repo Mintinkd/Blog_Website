@@ -180,28 +180,48 @@ export async function waitForReady(options) {
   );
 }
 
-async function main(env = process.env) {
+async function main(env = process.env, deps = {}) {
   const config = parseDeployConfig(env);
-  console.log(
+  const log = deps.log ?? ((line) => console.log(line));
+  log(
     `[deploy-wait] base=${config.baseUrl} paths=${config.paths.join(",")} ` +
       `timeout=${config.timeoutMs / 1000}s interval=${config.intervalMs / 1000}s`
   );
-  const result = await waitForReady(config);
-  console.log(
+  const result = await waitForReady({ ...config, ...deps, log });
+  log(
     `[deploy-wait] ready after ${result.attempts} attempt(s), ${Math.round(
       result.elapsedMs / 1000
     )}s`
   );
+  return result;
+}
+
+/**
+ * CLI 入口：返回退出码而不是直接抛（便于单测断言「超时必须非 0」）。
+ * 配置非法也走同一条失败路径——CI 里配置写错应当立刻红，而不是静默跳过等待。
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @param {object} [deps] 传给 waitForReady 的可注入依赖（fetchImpl / now / sleep / log）
+ * @returns {Promise<number>} 0 = 就绪，1 = 超时或配置非法
+ */
+export async function runCli(env = process.env, deps = {}) {
+  try {
+    await main(env, deps);
+    return 0;
+  } catch (error) {
+    const log = deps.log ?? ((line) => console.error(line));
+    log(
+      `[deploy-wait] FAILED: ${error instanceof Error ? error.message : error}`
+    );
+    return 1;
+  }
 }
 
 const invokedDirectly =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  main().catch((error) => {
-    console.error(
-      `[deploy-wait] FAILED: ${error instanceof Error ? error.message : error}`
-    );
-    process.exitCode = 1;
+  runCli().then((code) => {
+    process.exitCode = code;
   });
 }

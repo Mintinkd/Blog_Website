@@ -5,7 +5,11 @@
  * 跨页始终有效。
  */
 export function initBackToTop(): void {
-  (window as any).__backToTopBound = true;
+  // 幂等：ClientRouter 的 astro:page-load 会反复触发初始化，
+  // 监听器只能挂一次（否则每次导航多一层 scroll 回调）。
+  const w = window as typeof window & { __backToTopBound?: boolean };
+  if (w.__backToTopBound) return;
+  w.__backToTopBound = true;
   const toggleBackToTop = () => {
     const btn = document.getElementById("back-to-top");
     if (btn) btn.classList.toggle("show", window.scrollY > 600);

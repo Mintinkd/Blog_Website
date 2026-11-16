@@ -67,13 +67,33 @@ async function setLocaleAndRefresh(locale: string): Promise<void> {
 /** 已绑定标记：重复调用不重复挂监听（单测与将来多次调用都安全） */
 let bound = false;
 
+/** 已注册的 document 监听（只为测试重置保留；生产页面绑一次就不再动） */
+const registered: Array<[string, EventListener]> = [];
+
+function on(type: string, handler: EventListener): void {
+  document.addEventListener(type, handler);
+  registered.push([type, handler]);
+}
+
+/**
+ * 仅供测试：解绑监听并清掉幂等标记（jsdom 里同一 document 跨用例复用）。
+ * 生产代码不得调用——真实页面里 rebind 会让事件委托叠层。
+ */
+export function __resetThemeLocaleForTests(): void {
+  for (const [type, handler] of registered) {
+    document.removeEventListener(type, handler);
+  }
+  registered.length = 0;
+  bound = false;
+}
+
 /** 挂上首屏同步、跨页恢复与主题/语言按钮的事件委托 */
 export function initThemeLocale(): void {
   if (bound) return;
   bound = true;
 
   // 事件委托：绑定在 document 上，页面切换（DOM 替换）后依然有效
-  document.addEventListener("click", (e) => {
+  on("click", (e) => {
     const t = e.target as HTMLElement;
     const btn = t.closest
       ? t.closest("#theme-toggle-btn, #locale-toggle-btn")
@@ -104,8 +124,8 @@ export function initThemeLocale(): void {
   })();
 
   // ClientRouter 导航后：html 属性被新文档同步清空，这里恢复（after-swap 尽早恢复，page-load 兜底）
-  document.addEventListener("astro:after-swap", () => syncThemeLocale());
-  document.addEventListener("astro:page-load", () => {
+  on("astro:after-swap", () => syncThemeLocale());
+  on("astro:page-load", () => {
     syncThemeLocale();
     void (async () => {
       try {

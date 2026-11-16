@@ -80,9 +80,19 @@ describe("hashIp 盐来源（#104）", () => {
   it("worker/src 里不再有硬编码盐字面量（静态守卫）", () => {
     const root = fileURLToPath(new URL("../src", import.meta.url).href);
     const files = collectSourceFiles(root);
-    const offenders = files.filter((file) => {
+    // 判据不是「出现 salt 字样」（注释说明历史格式、password.ts 的模板串都会误报），
+    // 而是「名字里带 SALT/SECRET 的常量被赋了一个**像盐**的字符串字面量」：
+    // 排除全大写环境变量名（`IP_HASH_SECRET_ENV = "IP_HASH_SECRET"` 这类是变量名不是值）。
+    // 另保留旧格式 `-salt-(blog|like)-<年份>` 的直接匹配做兜底。
+    const HARDCODED =
+      /(?:const|let|var)\s+\w*(?:SALT|SECRET)\w*\s*=\s*(["'`])([^"'`]{6,})\1/i;
+    const LEGACY = /-salt-(blog|like)-\d{4}/;
+    const offenders = files.flatMap((file) => {
       const src = readFileSync(file, "utf8");
-      return /-salt-(blog|like)-\d{4}/.test(src);
+      const hit = src.match(HARDCODED);
+      if (hit && !/^[A-Z0-9_]+$/.test(hit[2])) return [`${file}: ${hit[0]}`];
+      const legacy = src.match(LEGACY);
+      return legacy ? [`${file}: ${legacy[0]}`] : [];
     });
     expect(offenders).toEqual([]);
   });

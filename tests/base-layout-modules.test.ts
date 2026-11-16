@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  __resetThemeLocaleForTests,
   initThemeLocale,
   resolveLocale,
   resolveTheme,
@@ -33,6 +34,9 @@ beforeEach(() => {
   document.body.innerHTML = "";
   localStorage.clear();
   stubMatchMedia(false);
+  // 模块级幂等标记跨用例复用，必须显式清掉——否则第一个用例绑定后，
+  // 后续用例的 initThemeLocale() 都是空转，断言会在「没绑定」的状态下假通过。
+  __resetThemeLocaleForTests();
 });
 
 describe("resolveTheme / resolveLocale（#103 纯函数）", () => {
@@ -160,21 +164,46 @@ describe("拆分后的结构约束（#103）", () => {
     const lines = match![1].trim().split("\n").length;
     expect(lines).toBeLessThan(40);
 
-    const modules = [
-      "theme-locale",
-      "mobile-nav",
-      "dynamic-title",
-      "site-config",
-      "site-settings",
-      "motion-boot",
-      "back-to-top",
-      "hitokoto",
-      "fetch-proxy",
-      "img-proxy-fallback",
-      "favicon-light",
+    // 模块 → 入口函数：既要 import 到，也要真的被调用。
+    // 只断言 import 会被「导入了但忘了调用」骗过（review 指出）。
+    const modules: Array<[string, string]> = [
+      ["theme-locale", "initThemeLocale"],
+      ["mobile-nav", "initMobileNav"],
+      ["dynamic-title", "initDynamicTitle"],
+      ["site-config", "initSiteConfig"],
+      ["site-settings", "initSiteSettings"],
+      ["motion-boot", "initMotionBoot"],
+      ["back-to-top", "initBackToTop"],
+      ["hitokoto", "initHitokotoWidget"],
+      ["fetch-proxy", "initFetchWithProxy"],
+      ["img-proxy-fallback", "initImgProxyFallback"],
+      ["favicon-light", "initFaviconLight"],
     ];
-    for (const name of modules) {
-      expect(astro).toContain(`../../scripts/layout/${name}`);
+    for (const [file, fn] of modules) {
+      expect(astro).toContain(`../../scripts/layout/${file}`);
+      expect(astro, `${fn} 应被编排块调用`).toMatch(
+        new RegExp(`(^|\\s)${fn}\\(\\);`, "m")
+      );
+    }
+  });
+
+  it("BaseLayout 只有一个非内联 script 块，且不再残留业务逻辑", () => {
+    const astro = readFileSync(
+      resolve(process.cwd(), "src/components/layout/BaseLayout.astro"),
+      "utf8"
+    );
+    const moduleScripts =
+      astro.match(/<script>\n[\s\S]*?\n\s*<\/script>/g) ?? [];
+    expect(moduleScripts).toHaveLength(1);
+
+    // 这些是拆分前散在 BaseLayout 里的具体行为，现在都必须待在模块里
+    for (const leaked of [
+      'localStorage.setItem("theme"',
+      'localStorage.setItem("locale"',
+      'fetch("/api/v1/config")',
+      "scrollY > 600",
+    ]) {
+      expect(astro).not.toContain(leaked);
     }
   });
 

@@ -316,13 +316,22 @@ interface ResolutionDecision {
   blockedIps: string[];
   /** 判定完成时刻（Date.now()），用于判定是否超过 RESOLUTION_TTL_MS */
   checkedAt: number;
+  /**
+   * rebinding 判定的证据（#109 review：只写「因为 rebinding」等于没有可复现信息）。
+   * 两轮答案集都记下来，才看得出是「分裂解析」还是「备用解析器不可用」。
+   */
+  evidence?: {
+    primaryIps: string[];
+    secondaryIps: string[];
+    secondaryUnavailable: boolean;
+  };
 }
 
 /** #88 / H10：blocked 判定统一出口——结构化 JSON 日志，供日志查询/告警规则匹配 [ssrf-blocked] */
 async function logSsrfBlocked(
   host: string,
   hop: number,
-  decision: Pick<ResolutionDecision, "reason" | "blockedIps">,
+  decision: Pick<ResolutionDecision, "reason" | "blockedIps" | "evidence">,
   context?: ProxyLogContext
 ): Promise<void> {
   const payload: Record<string, unknown> = {
@@ -334,6 +343,7 @@ async function logSsrfBlocked(
     blocked_ips: decision.blockedIps,
     at: new Date().toISOString(),
   };
+  if (decision.evidence) payload.evidence = decision.evidence;
   // 不记录原始 client IP / 完整目标 URL（可能含敏感 query），只记哈希与主机名
   if (context?.clientIp)
     payload.client_ip_hash = await sha1Hex(context.clientIp);
@@ -346,13 +356,28 @@ function isIpLiteralHost(host: string): boolean {
   return /^[0-9.]+$/.test(h) || h.includes(":");
 }
 
-/** DoH 查询单个记录类型；成功且 Status=0 返回记录数据，其余情况返回 null */
+/**
+ * 单次 DoH 查询的结论。三态必须分开（#109 review）：
+ * - `ok`：Status=0，`ips` 为该记录类型下的地址集合（可能为空）
+ * - `deny`：Status=3（NXDOMAIN）——解析器**明确答复**「这个名字不存在」
+ * - `error`：传输层失败 / 非 2xx / 其它非 0 Status（SERVFAIL / REFUSED 等），结论不可用
+ *
+ * 把 `deny` 混进 `error` 会留一个降级口子：只要备用解析器对目标域名回 NXDOMAIN，
+ * 「双解析器复核」就退化成「主解析器单查」，rebinding 检测形同虚设。
+ */
+type DohAnswer =
+  { ok: true; ips: string[] } | { ok: false; kind: "deny" | "error" };
+
+/** Status 3 = NXDOMAIN；其余非 0（1 FORMERR / 2 SERVFAIL / 5 REFUSED…）算「结论不可用」 */
+const DNS_STATUS_NXDOMAIN = 3;
+
+/** DoH 查询单个记录类型，返回三态结论 */
 async function queryDoh(
   endpoint: string,
   host: string,
   type: "A" | "AAAA",
   signal: AbortSignal
-): Promise<string[] | null> {
+): Promise<DohAnswer> {
   try {
     const res = await fetch(
       `${endpoint}?name=${encodeURIComponent(host)}&type=${type}`,
@@ -361,24 +386,28 @@ async function queryDoh(
         signal,
       }
     );
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, kind: "error" };
     const data = (await res.json()) as {
       Status?: number;
       Answer?: { type?: number; data?: string }[];
     };
-    if (data.Status !== 0) return null;
+    if (data.Status === DNS_STATUS_NXDOMAIN) return { ok: false, kind: "deny" };
+    if (data.Status !== 0) return { ok: false, kind: "error" };
     const wantType = type === "A" ? 1 : 28;
-    return (data.Answer || [])
-      .filter((r) => r.type === wantType && typeof r.data === "string")
-      .map((r) => r.data as string);
+    return {
+      ok: true,
+      ips: (data.Answer || [])
+        .filter((r) => r.type === wantType && typeof r.data === "string")
+        .map((r) => r.data as string),
+    };
   } catch {
-    return null;
+    return { ok: false, kind: "error" };
   }
 }
 
 interface DohRound {
-  a: string[] | null;
-  aaaa: string[] | null;
+  a: DohAnswer;
+  aaaa: DohAnswer;
 }
 
 /** 单轮解析：同一解析器并发查 A + AAAA（任一失败即整轮失败，fail-closed） */
@@ -397,8 +426,20 @@ async function resolveRound(
   return { a, aaaa };
 }
 
-function flattenRound(round: DohRound): string[] {
-  return [...(round.a ?? []), ...(round.aaaa ?? [])];
+/** 一轮查询的地址集合；任一半结论不可用时返回 null */
+function roundIps(round: DohRound): string[] | null {
+  if (!round.a.ok || !round.aaaa.ok) return null;
+  return [...round.a.ips, ...round.aaaa.ips];
+}
+
+/**
+ * 一轮查询的失败性质：`deny` 优先于 `error`。
+ * 只要有一半明确答复「不存在」，这轮就不能再当「暂时查不到」处理。
+ */
+function roundFailure(round: DohRound): "deny" | "error" | null {
+  const failures = [round.a, round.aaaa].filter((x) => !x.ok);
+  if (failures.length === 0) return null;
+  return failures.some((x) => !x.ok && x.kind === "deny") ? "deny" : "error";
 }
 
 /** 地址集合比较（顺序无关，重复项视为同一集合） */
@@ -423,12 +464,14 @@ async function resolveAndCheckTarget(
   const done = (
     status: ResolutionDecision["status"],
     reason: BlockReason,
-    blockedIps: string[] = []
+    blockedIps: string[] = [],
+    evidence?: ResolutionDecision["evidence"]
   ): ResolutionDecision => ({
     status,
     reason,
     blockedIps,
     checkedAt: Date.now(),
+    ...(evidence ? { evidence } : {}),
   });
 
   if (isIpLiteralHost(host))
@@ -436,33 +479,57 @@ async function resolveAndCheckTarget(
       ? done("blocked", "literal")
       : done("ok", "literal");
 
-  const primary = await resolveRound(DOH_ENDPOINT, host, signal);
+  // #109：两个解析器**并发**查询。串行时最坏 3 轮 × 3s = 9s，撞上代理 10s 预算
+  // （robots 预检另占 5s），正常图片直接 504；并发后最坏 2 轮 × 3s = 6s。
+  const [primary, secondary] = await Promise.all([
+    resolveRound(DOH_ENDPOINT, host, signal),
+    resolveRound(SECONDARY_DOH_ENDPOINT, host, signal),
+  ]);
 
-  // 任一查询失败/超时，或解析结果为空：fail-closed，明确拒绝而非放行
-  if (primary.a === null || primary.aaaa === null)
-    return done("failed", "lookup_failed");
-  const ips = flattenRound(primary);
+  // 主解析器都拿不到结论：fail-closed，明确拒绝而非放行
+  if (roundFailure(primary) !== null) return done("failed", "lookup_failed");
+  const ips = roundIps(primary) ?? [];
   if (ips.length === 0) return done("failed", "empty");
 
   const blocked = ips.filter(isBlockedIp);
   if (blocked.length > 0) return done("blocked", "doh", blocked);
 
   // #109 / H10-R：第二解析器复核。答案集合不一致 → 视为 rebinding / 分裂解析并拒绝。
-  const secondary = await resolveRound(SECONDARY_DOH_ENDPOINT, host, signal);
-  if (secondary.a === null || secondary.aaaa === null) {
-    // 备用解析器不可用时退回主解析器再查一次：不一致同样拒绝（不能因为备用挂了就放行）
+  const secondaryFailure = roundFailure(secondary);
+
+  // 备用解析器**明确**答复「不存在」，而主解析器有记录：这是分裂解析的强证据，
+  // 直接拒绝，不再走任何降级路径（否则攻击者让备用回 NXDOMAIN 即可绕过复核）。
+  if (secondaryFailure === "deny") {
+    return done("blocked", "rebinding", [], {
+      primaryIps: ips,
+      secondaryIps: [],
+      secondaryUnavailable: false,
+    });
+  }
+
+  // 备用解析器暂时不可用（传输失败 / SERVFAIL / REFUSED）：退回主解析器再查一次，
+  // 两次不一致同样拒绝——不能因为备用挂了就放行。
+  if (secondaryFailure === "error") {
     const retry = await resolveRound(DOH_ENDPOINT, host, signal);
-    if (retry.a === null || retry.aaaa === null)
-      return done("failed", "lookup_failed");
-    const retryIps = flattenRound(retry);
-    if (!sameAddressSet(ips, retryIps))
-      return done("blocked", "rebinding", retryIps.filter(isBlockedIp));
+    if (roundFailure(retry) !== null) return done("failed", "lookup_failed");
+    const retryIps = roundIps(retry) ?? [];
+    if (!sameAddressSet(ips, retryIps)) {
+      return done("blocked", "rebinding", retryIps.filter(isBlockedIp), {
+        primaryIps: ips,
+        secondaryIps: retryIps,
+        secondaryUnavailable: true,
+      });
+    }
     return done("ok", "doh");
   }
 
-  const secondaryIps = flattenRound(secondary);
+  const secondaryIps = roundIps(secondary) ?? [];
   if (!sameAddressSet(ips, secondaryIps)) {
-    return done("blocked", "rebinding", secondaryIps.filter(isBlockedIp));
+    return done("blocked", "rebinding", secondaryIps.filter(isBlockedIp), {
+      primaryIps: ips,
+      secondaryIps,
+      secondaryUnavailable: false,
+    });
   }
   return done("ok", "doh");
 }

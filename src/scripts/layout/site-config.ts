@@ -5,9 +5,23 @@
  * 导航后 header / footer / hero 会被替换为 SSR 默认文案（"Blog"），
  * 不重应用就会出现 logo / 页脚 / hero 文案丢失。
  */
+/** 已绑定标记 + 会话级缓存（提到模块作用域，便于测试重置） */
+let bound = false;
+let cachedSiteConfig: any = null;
+
+/** 仅供测试：解绑并清掉缓存（jsdom 里同一 document / 模块实例跨用例复用） */
+export function __resetSiteConfigForTests(): void {
+  if (listener) document.removeEventListener("astro:page-load", listener);
+  listener = null;
+  cachedSiteConfig = null;
+  bound = false;
+}
+
+let listener: EventListener | null = null;
+
 export function initSiteConfig(): void {
-  // 替换为 SSR 默认文案（"Blog"），不重应用就会出现 logo/页脚/hero 文案丢失
-  let cachedSiteConfig: any = null;
+  if (bound) return;
+  bound = true;
   async function applySiteConfig() {
     try {
       if (!cachedSiteConfig) {
@@ -62,5 +76,6 @@ export function initSiteConfig(): void {
         heroDesc.textContent = cfg.site_description;
     } catch {}
   }
-  document.addEventListener("astro:page-load", () => applySiteConfig());
+  listener = () => applySiteConfig();
+  document.addEventListener("astro:page-load", listener);
 }

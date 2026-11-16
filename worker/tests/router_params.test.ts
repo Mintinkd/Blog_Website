@@ -101,16 +101,30 @@ describe("matchRoute 分型行为（issue #100）", () => {
     }
   });
 
-  // issue #108 / L10：method 分桶的结构断言——匹配只在该 method 的桶里找，
-  // 不会跨 method 串味（#100 的 routesByMethod Map 已实现，本票仅补断言）。
-  it("只匹配同 method 的路由，不跨桶串味（含大小写敏感）", () => {
+  // issue #108 / L10：method 分桶的结构断言（#100 的 routesByMethod Map 已实现，本票仅补断言）。
+  it("同一路径在不同 method 桶里各自命中自己的 handler（分桶真生效）", () => {
+    // 只有「同一 path 同时注册在多个桶」才能区分「按 method 分桶」与「跨 method 顺序匹配」：
+    // 若实现退化成单列表顺序匹配，DELETE 会拿到 PUT 的 handler。
+    const put = matchRoute("PUT", "/articles/1");
+    const del = matchRoute("DELETE", "/articles/1");
+
+    expect(put).not.toBeNull();
+    expect(del).not.toBeNull();
+    expect(del!.handler).not.toBe(put!.handler);
+    // 两者都要求登录，参数也应是同一个 id
+    expect(put!.requireAuth).toBe(true);
+    expect(del!.params).toEqual({ id: "1" });
+  });
+
+  it("路由桶只收注册过的 method；OPTIONS 预检在进 router 之前就被中间件处理", () => {
     expect(matchRoute("GET", "/articles")).not.toBeNull();
+    // 未注册的 method 落空桶（不是「路径存在但 method 不对」→ 仍是 null）
+    expect(matchRoute("PATCH", "/articles")).toBeNull();
     expect(matchRoute("DELETE", "/articles")).toBeNull();
-    expect(matchRoute("PUT", "/articles")).toBeNull();
-    // method 来自 request.method，按原样取桶：小写不是合法 HTTP method，落空桶
+    // method 大小写敏感：request.method 恒为大写，小写不是合法 HTTP method
     expect(matchRoute("get", "/articles")).toBeNull();
-    // 同一路径不同 method 各自命中自己的桶
-    expect(matchRoute("POST", "/articles/1/like")).not.toBeNull();
-    expect(matchRoute("GET", "/articles/1/like")).toBeNull();
+    // OPTIONS 由 worker/src/middleware/cors.ts 的 handlePreflight 直接返回，
+    // 不会走到 matchRoute（这里断言 null 是为了把「预检不进路由」写死）
+    expect(matchRoute("OPTIONS", "/articles")).toBeNull();
   });
 });

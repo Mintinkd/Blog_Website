@@ -29,6 +29,10 @@ import globals from "globals";
  */
 const TYPESCRIPT_KEY_RULES = {
   "no-unused-vars": "off",
+  // 只查「用到的参数之后的未使用参数」：router handler 统一是 (request, env, ctx, params)
+  // 的固定位置签名，大量 handler 只用到前两个——改成 args:"all" 会要求 39 处改成 _前缀，
+  // 换来的只是签名可读性下降。真正的前置死参（如 mediaEmbed 的 title）由 astro check
+  // 的 ts(6133) 兜住（build 输出里以后 hint 形式列出）。
   "@typescript-eslint/no-unused-vars": [
     "error",
     {
@@ -80,6 +84,7 @@ export default [
       "no-unused-vars": [
         "error",
         {
+          // 口径与 TS 块一致（after-used）：脚本里的 Playwright 回调也常带前置未用参数
           args: "after-used",
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",

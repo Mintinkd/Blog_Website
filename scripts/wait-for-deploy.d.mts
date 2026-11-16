@@ -28,3 +28,9 @@ export declare function parseDeployConfig(
 export declare function waitForReady(
   options: WaitForReadyOptions
 ): Promise<{ attempts: number; elapsedMs: number }>;
+
+/** CLI 入口：0 = 就绪，1 = 超时 / 配置非法（不抛，便于断言退出码） */
+export declare function runCli(
+  env?: Record<string, string | undefined>,
+  deps?: Partial<WaitForReadyOptions>
+): Promise<number>;

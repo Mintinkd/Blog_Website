@@ -20,7 +20,7 @@ describe("ESLint 门禁契约（#102）", () => {
       scripts: Record<string, string>;
       devDependencies: Record<string, string>;
     };
-    expect(root.scripts.lint).toBe("eslint .");
+    expect(root.scripts.lint).toBe("eslint . --max-warnings=0");
     expect(root.devDependencies.eslint).toMatch(/^\^?9/);
     expect(
       root.devDependencies["@typescript-eslint/eslint-plugin"]
@@ -31,6 +31,8 @@ describe("ESLint 门禁契约（#102）", () => {
       scripts: Record<string, string>;
     };
     expect(worker.scripts.lint).toContain("../eslint.config.mjs");
+    // 与根包同口径：warning 也算失败（否则 `--max-warnings` 默认不限，告警会烂在 CI 里）
+    expect(worker.scripts.lint).toContain("--max-warnings=0");
   });
 
   it("关键规则为 error 级：未使用变量（TS 版）/ 重复声明 / 未定义标识符", () => {

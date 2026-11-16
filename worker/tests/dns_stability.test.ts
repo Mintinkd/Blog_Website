@@ -28,6 +28,14 @@ function dohAnswer(a: string[], aaaa: string[] = []): Response {
   );
 }
 
+/** 非 0 Status 的 DoH 答复：3 = NXDOMAIN（明确不存在）、2 = SERVFAIL（暂时不可用） */
+function dohStatus(status: number): Response {
+  return new Response(JSON.stringify({ Status: status }), {
+    status: 200,
+    headers: { "Content-Type": "application/dns-json" },
+  });
+}
+
 interface StubOptions {
   /** 主解析器答案（缺失则该查询失败） */
   primary?: (type: string) => Response | "throw";
@@ -179,5 +187,53 @@ describe("双解析器一致性（#109）", () => {
 
     const result = await fetchWithValidatedRedirects(url, {});
     expect(result.kind).toBe("resolution_failed");
+  });
+
+  it("备用解析器明确答复 NXDOMAIN → 直接拒绝，不再复检主解析器（无降级口子）", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let primaryARounds = 0;
+    installStub({
+      primary: (t) => {
+        if (t !== "A") return dohAnswer([]);
+        primaryARounds += 1;
+        return dohAnswer(["93.184.216.34"]);
+      },
+      secondary: () => dohStatus(3),
+    });
+
+    const result = await fetchWithValidatedRedirects(url, {});
+
+    expect(result.kind).toBe("blocked");
+    // 关键：主解析器只被查了 1 轮。若把 NXDOMAIN 归进「备用不可用」，
+    // 这里会退回复检（2 轮）并可能放行——那正是被堵掉的绕过路径。
+    expect(primaryARounds).toBe(1);
+    const payload = JSON.parse(
+      warn.mock.calls
+        .map((c) => String(c[0]))
+        .join("\n")
+        .split("[ssrf-blocked] ")[1]
+    );
+    expect(payload.reason).toBe("rebinding");
+    expect(payload.evidence.secondaryUnavailable).toBe(false);
+    expect(payload.evidence.primaryIps).toEqual(["93.184.216.34"]);
+    expect(payload.evidence.secondaryIps).toEqual([]);
+  });
+
+  it("备用解析器回 SERVFAIL（结论不可用）→ 仍按不可用处理并复检主解析器", async () => {
+    let primaryARounds = 0;
+    installStub({
+      primary: (t) => {
+        if (t !== "A") return dohAnswer([]);
+        primaryARounds += 1;
+        return dohAnswer(["93.184.216.34"]);
+      },
+      secondary: () => dohStatus(2),
+    });
+
+    const result = await fetchWithValidatedRedirects(url, {});
+
+    // 答案稳定：放行，但要能看出确实走了复检（SERVFAIL ≠ NXDOMAIN）
+    expect(result.kind).toBe("ok");
+    expect(primaryARounds).toBe(2);
   });
 });

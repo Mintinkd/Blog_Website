@@ -279,7 +279,9 @@ export async function handleServeMedia(
   params: Record<string, string>
 ): Promise<Response> {
   // issue #100 / M20：通配参数改为具名 path，不再依赖数字下标的旧约定
-  const key = params.path || params.key || "";
+  // 路由是 ${API_PREFIX}/media/serve/*path，参数名恒为 `path`；
+  // 不再保留 `params.key` 回退（旧名已随 #100 具名通配改造消失，留着只是死分支）。
+  const key = params.path || "";
   // issue #105 / L6：MEDIA 命名空间里还有 backup:*（全库快照）与代理缓存，
   // 只放行 media/ 下的安全 key；拒绝与「不存在」同形（404），不给存在性 oracle。
   if (!isServableMediaKey(key)) return notFound("Media not found");

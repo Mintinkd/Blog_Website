@@ -322,9 +322,11 @@ describe("fetchWithValidatedRedirects 解析后 IP 复核", () => {
     );
 
     expect(result.kind).toBe("blocked");
-    // 首跳 4 次（主/备 × A/AAAA）；第二跳主解析器即命中 metadata → 直接拒绝，
-    // 不再做第二解析器复核，故只多 2 次（A + AAAA）＝ 6。
-    expect(dohCalls.length).toBe(6);
+    // 每跳 4 次（主/备 × A/AAAA）。#109 review 后主备**并发**发出，即使主解析器
+    // 已命中 metadata 也会带上备用那一对（2 次/跳）：首跳 4 + 第二跳 4 = 8。
+    // 代价是多 2 次 DoH（仅在「主解析器已判拒绝」这条冷路径上），换的是最坏延时
+    // 从 3 轮串行 9s 降到 2 轮 6s。
+    expect(dohCalls.length).toBe(8);
   });
 });
 

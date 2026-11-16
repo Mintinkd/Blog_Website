@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PATHS,
   parseDeployConfig,
+  runCli,
   waitForReady,
 } from "../scripts/wait-for-deploy.mjs";
 
@@ -211,6 +212,24 @@ describe("waitForReady（#106）", () => {
 
     // 每轮都有可读日志（attempt 序号 + 各路径状态）
     expect(logs.some((l) => /attempt 1/.test(l))).toBe(true);
+    // 日志行必须逐条路径可辨（否则多路径时无法判断是谁没就绪）
+    expect(logs[0]).toContain("/ -> ");
+    expect(logs[0]).toContain("/api/v1/health -> ");
+
+    // 错误消息要带上每条路径的**末次**状态，而不是笼统一句「超时」
+    const clock2 = fakeClock();
+    await expect(
+      waitForReady({
+        baseUrl: "https://example.test",
+        paths: ["/", "/api/v1/health"],
+        timeoutMs: 12_000,
+        intervalMs: 5_000,
+        fetchImpl: roundAware(makeFetch([[{ status: 502 }, { status: 503 }]])),
+        now: clock2.now,
+        sleep: clock2.sleep,
+        log: () => {},
+      })
+    ).rejects.toThrow(/\/ -> 502[\s\S]*\/api\/v1\/health -> 503/);
   });
 
   it("网络异常按未就绪处理，继续重试而不是直接崩", async () => {
@@ -256,5 +275,63 @@ describe("waitForReady（#106）", () => {
 
     // 12s / 5s → 最多 3 轮（0s, 5s, 10s），不会无限跑
     expect(fetch.calls.length).toBeLessThanOrEqual(6);
+  });
+});
+
+/**
+ * CLI 退出码（issue #106 验收「失败有非零退出码」）：
+ * 只看 waitForReady 抛异常不够——CI 里被 catch 掉、进程仍退 0 就等于门禁没生效。
+ */
+describe("runCli 退出码（#106）", () => {
+  const okRound = [
+    { status: 200 },
+    { status: 200, body: { status: "ok", db: "connected" } },
+  ];
+
+  it("全部探针就绪 → 返回 0", async () => {
+    const fetch = makeFetch([okRound]);
+    const code = await runCli(
+      { DEPLOY_BASE_URL: "https://example.test" },
+      {
+        fetchImpl: roundAware(fetch),
+        now: fakeClock().now,
+        sleep: fakeClock().sleep,
+        log: () => {},
+      }
+    );
+    expect(code).toBe(0);
+  });
+
+  it("超时 → 返回 1，且日志里有 FAILED 与末次状态", async () => {
+    const fetch = makeFetch([[{ status: 502 }, { status: 503 }]]);
+    const clock = fakeClock();
+    const logs: string[] = [];
+    const code = await runCli(
+      {
+        DEPLOY_BASE_URL: "https://example.test",
+        DEPLOY_TIMEOUT_SEC: "12",
+        DEPLOY_INTERVAL_SEC: "5",
+      },
+      {
+        fetchImpl: roundAware(fetch),
+        now: clock.now,
+        sleep: clock.sleep,
+        log: (line: string) => logs.push(line),
+      }
+    );
+
+    expect(code).toBe(1);
+    expect(logs.join("\n")).toContain("FAILED");
+    expect(logs.join("\n")).toMatch(/\/ -> 502/);
+  });
+
+  it("配置非法（超时写成字符串）→ 返回 1，不静默跳过", async () => {
+    const logs: string[] = [];
+    const code = await runCli(
+      { DEPLOY_BASE_URL: "https://example.test", DEPLOY_TIMEOUT_SEC: "abc" },
+      { log: (line: string) => logs.push(line) }
+    );
+    expect(code).toBe(1);
+    expect(logs.join("\n")).toContain("FAILED");
   });
 });
