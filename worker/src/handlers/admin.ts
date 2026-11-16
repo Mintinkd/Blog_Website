@@ -253,10 +253,94 @@ function isPrimitiveValue(v: unknown): boolean {
   );
 }
 
+/** #86 / H5：KV 备份键前缀与 TTL（7 天） */
+const BACKUP_KEY_PREFIX = "backup:";
+const BACKUP_TTL_SECONDS = 7 * 24 * 60 * 60;
+/** #86 / H5：异常规模阈值——某表新行数 > 10× 现有行数（现有 0 行时基线取 10）需 confirm */
+const IMPORT_GROWTH_FACTOR = 10;
+const IMPORT_ZERO_BASELINE = 10;
+
+interface TableCounts {
+  /** 每张表当前行数（仅统计本次导入涉及的表） */
+  existing: Record<string, number>;
+  /** 每张表将插入行数（阶段 1 校验后） */
+  inserting: Record<string, number>;
+  totalInserting: number;
+  /** 是否触发异常规模阈值 */
+  needsConfirm: boolean;
+  /** 触发阈值的表及原因，供日志/诊断；不回显 SQL */
+  reasons: string[];
+}
+
+/**
+ * #86 / H5：统计现有行数与将插入行数，判定是否需要二次确认。
+ * 只读，不改变数据；现有 0 行表用基线 10 避免「空库导入任意行数都需确认」的过度告警。
+ */
+async function assessImportScale(
+  env: Env,
+  byTable: Map<string, Array<Record<string, unknown>>>
+): Promise<TableCounts> {
+  const existing: Record<string, number> = {};
+  const inserting: Record<string, number> = {};
+  const reasons: string[] = [];
+  let totalInserting = 0;
+  let needsConfirm = false;
+
+  for (const [table, rows] of byTable) {
+    const result = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM ${table}`
+    ).all();
+    const countRow = result.results?.[0] as { count?: number } | undefined;
+    const oldCount = Number(countRow?.count ?? 0);
+    existing[table] = oldCount;
+    inserting[table] = rows.length;
+    totalInserting += rows.length;
+
+    const baseline = oldCount === 0 ? IMPORT_ZERO_BASELINE : oldCount;
+    if (rows.length > baseline * IMPORT_GROWTH_FACTOR) {
+      needsConfirm = true;
+      reasons.push(
+        `${table}: ${rows.length} > ${baseline * IMPORT_GROWTH_FACTOR}`
+      );
+    }
+  }
+  if (totalInserting === 0) {
+    needsConfirm = true;
+    reasons.push("empty import: 0 rows");
+  }
+  return { existing, inserting, totalInserting, needsConfirm, reasons };
+}
+
+/**
+ * #86 / H5：导入前把当前全量数据写入 KV（TTL 7 天），返回备份键。
+ * 只备份本次导入涉及的表；列清单复用导入白名单，避免把密钥/派生表带入备份。
+ */
+async function backupBeforeImport(
+  env: Env,
+  byTable: Map<string, Array<Record<string, unknown>>>
+): Promise<string> {
+  const snapshot: Record<string, unknown[]> = {};
+  for (const table of byTable.keys()) {
+    const cols = IMPORTABLE_TABLES[table].columns.join(", ");
+    const result = await env.DB.prepare(`SELECT ${cols} FROM ${table}`).all();
+    snapshot[table] = result.results as unknown[];
+  }
+  const key = `${BACKUP_KEY_PREFIX}${new Date().toISOString()}.${crypto.randomUUID().slice(0, 8)}`;
+  await env.MEDIA.put(
+    key,
+    JSON.stringify({ created_at: new Date().toISOString(), tables: snapshot }),
+    { expirationTtl: BACKUP_TTL_SECONDS }
+  );
+  return key;
+}
+
 export async function handleImport(
   request: Request,
   env: Env
 ): Promise<Response> {
+  const url = new URL(request.url);
+  const dryRun = url.searchParams.get("dry_run") === "1";
+  const confirmed = url.searchParams.get("confirm") === "1";
   try {
     const raw = (await request.json()) as { export_data?: unknown };
     if (!isPlainObject(raw) || !isPlainObject(raw.export_data)) {
@@ -331,8 +415,36 @@ export async function handleImport(
       validated.push({ table, rows });
     }
 
-    // ── 阶段 2：入库（列名只取自白名单常量；空表跳过，保持「提供即替换」语义） ──
+    // ── 阶段 1.5：#86 / H5 刹车（dry-run / 异常规模确认 / KV 备份） ──
     const byTable = new Map(validated.map((v) => [v.table, v.rows]));
+    const scale = await assessImportScale(env, byTable);
+
+    if (dryRun) {
+      // 只读：返回将要删除/插入的行数，不写 KV、不执行任何 DELETE/INSERT
+      return successResponse(
+        {
+          dry_run: true,
+          would_delete: scale.existing,
+          would_insert: scale.inserting,
+          total_inserting: scale.totalInserting,
+          needs_confirm: scale.needsConfirm,
+          backup_key: null,
+        },
+        "Dry run: no changes applied"
+      );
+    }
+
+    if (scale.needsConfirm && !confirmed) {
+      return error(
+        ErrorCodes.VALIDATION_FAILED,
+        "导入规模异常（空导入或超过现有行数 10 倍），请显式带 confirm=1 重试"
+      );
+    }
+
+    // 备份当前全量数据到 KV（7 天 TTL），失败即中止导入——宁可不写也不留无备份的破坏性操作
+    const backupKey = await backupBeforeImport(env, byTable);
+
+    // ── 阶段 2：入库（列名只取自白名单常量；空表跳过，保持「提供即替换」语义） ──
     const imported: Record<string, number> = {};
     const skippedSecretRows: string[] = [];
 
@@ -397,13 +509,16 @@ export async function handleImport(
         ? `；已跳过密钥行：${skippedSecretRows.join(", ")}`
         : "";
     return successResponse(
-      { imported, skipped_secret_rows: skippedSecretRows },
+      {
+        imported,
+        skipped_secret_rows: skippedSecretRows,
+        backup_key: backupKey,
+      },
       "Data imported successfully" + note
     );
   } catch (e) {
-    return error(
-      ErrorCodes.SERVER_ERROR,
-      "Import failed: " + (e instanceof Error ? e.message : "Unknown error")
-    );
+    // #86 / H5：不回显内部异常原文（可能含 SQL 表名 / 语句），只记服务端日志
+    console.error("Import failed:", e instanceof Error ? e.message : String(e));
+    return error(ErrorCodes.SERVER_ERROR, "Import failed: internal error", 500);
   }
 }

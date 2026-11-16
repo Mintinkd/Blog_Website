@@ -173,7 +173,16 @@ async function runImport(exportData: Record<string, unknown[]>): Promise<{
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ export_data: exportData }),
   });
-  const res = await handleImport(request, makeEnv(db));
+  // #86：import 现在先写 KV 备份；补一个 no-op MEDIA KV（不参与本文件的 URL 校验断言）
+  const env = {
+    ...makeEnv(db),
+    MEDIA: {
+      put: () => Promise.resolve(),
+      get: () => Promise.resolve(null),
+      delete: () => Promise.resolve(),
+    },
+  } as unknown as Env;
+  const res = await handleImport(request, env);
   return { res, statements };
 }
 

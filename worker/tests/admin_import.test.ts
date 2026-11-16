@@ -19,9 +19,17 @@ interface RecordedStatement {
   binds: unknown[];
 }
 
-/** 记录全部 prepare/bind 序列的假 D1（prepare 顺序即真实执行顺序；bind 写入同一记录对象） */
-function recordingDb(): { db: unknown; statements: RecordedStatement[] } {
+/**
+ * 记录全部 prepare/bind 序列的假 D1（prepare 顺序即真实执行顺序；bind 写入同一记录对象）。
+ * #86：新增 all()（COUNT 查询返回现有行数，其余返回空）与 MEDIA KV（备份 put）。
+ * 所有读值默认「现有 100 行」——让常规导入不触发异常规模阈值，避免影响 #23 基线断言。
+ */
+function recordingDb(options: { existingCount?: number } = {}): {
+  db: unknown;
+  statements: RecordedStatement[];
+} {
   const statements: RecordedStatement[] = [];
+  const existingCount = options.existingCount ?? 100;
   const prepare = (sql: string) => {
     const stmt: RecordedStatement = { sql, binds: [] };
     statements.push(stmt);
@@ -30,6 +38,12 @@ function recordingDb(): { db: unknown; statements: RecordedStatement[] } {
         stmt.binds = binds;
         return api;
       },
+      all: () =>
+        Promise.resolve({
+          results: /COUNT\(\*\)/i.test(sql)
+            ? [{ count: existingCount }]
+            : ([] as unknown[]),
+        }),
       run: () => Promise.resolve({ success: true, meta: { last_row_id: 0 } }),
     };
     return api;
@@ -37,23 +51,58 @@ function recordingDb(): { db: unknown; statements: RecordedStatement[] } {
   return { db: { prepare }, statements };
 }
 
-function makeEnv(db: unknown): Env {
-  return { DB: db } as unknown as Env;
+/** 记录 put 调用的假 MEDIA KV（#86 备份） */
+function recordingMedia(): {
+  media: Env["MEDIA"];
+  puts: Array<{ key: string; value: string; options?: unknown }>;
+} {
+  const puts: Array<{ key: string; value: string; options?: unknown }> = [];
+  const media = {
+    put: (key: string, value: string, options?: unknown) => {
+      puts.push({ key, value, options });
+      return Promise.resolve();
+    },
+    get: () => Promise.resolve(null),
+    delete: () => Promise.resolve(),
+  } as unknown as Env["MEDIA"];
+  return { media, puts };
 }
 
-/** 以给定 export_data 发起导入，返回响应与全部 SQL 语句（含绑定值） */
-async function runImport(tables: Record<string, unknown[]>): Promise<{
+function makeEnv(db: unknown, media?: Env["MEDIA"]): Env {
+  return { DB: db, MEDIA: media ?? recordingMedia().media } as unknown as Env;
+}
+
+/** 以给定 export_data 发起导入，返回响应、SQL 语句与 KV 备份记录 */
+async function runImport(
+  tables: Record<string, unknown[]>,
+  options: {
+    dryRun?: boolean;
+    confirm?: boolean;
+    existingCount?: number;
+  } = {}
+): Promise<{
   res: Response;
   statements: RecordedStatement[];
+  puts: Array<{ key: string; value: string; options?: unknown }>;
 }> {
-  const { db, statements } = recordingDb();
-  const request = new Request("https://example.com/api/v1/admin/import", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ export_data: tables }),
+  const { db, statements } = recordingDb({
+    existingCount: options.existingCount,
   });
-  const res = await handleImport(request, makeEnv(db));
-  return { res, statements };
+  const { media, puts } = recordingMedia();
+  const params = new URLSearchParams();
+  if (options.dryRun) params.set("dry_run", "1");
+  if (options.confirm) params.set("confirm", "1");
+  const query = params.toString();
+  const request = new Request(
+    `https://example.com/api/v1/admin/import${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ export_data: tables }),
+    }
+  );
+  const res = await handleImport(request, makeEnv(db, media));
+  return { res, statements, puts };
 }
 
 async function bodyOf(res: Response): Promise<{
@@ -342,5 +391,119 @@ describe("handleImport FK 安全顺序（issue #23 / #12 基线）", () => {
         .filter((s) => s.sql.startsWith("INSERT"))
         .map((s) => tableOf(s.sql))
     ).toEqual(INSERT_ORDER);
+  });
+});
+
+/**
+ * issue #86（H5）：全量导入三道刹车——dry-run / KV 备份 / 异常规模二次确认。
+ * 复用上方 recordingDb / recordingMedia 接缝，期望值取自票面字面量。
+ */
+describe("handleImport 破坏性操作刹车（issue #86 / H5）", () => {
+  it("dry_run=1 只返回将要删除/插入行数，不执行任何 DELETE/INSERT、不写 KV", async () => {
+    const { res, statements, puts } = await runImport(minimalBackup, {
+      dryRun: true,
+      existingCount: 3,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await bodyOf(res);
+    expect(body.data).toMatchObject({
+      dry_run: true,
+      total_inserting: 9,
+      needs_confirm: false,
+      backup_key: null,
+    });
+    expect(body.data?.would_delete).toMatchObject({ articles: 3 });
+    expect(statements.some((s) => /^\s*(DELETE|INSERT)\b/i.test(s.sql))).toBe(
+      false
+    );
+    expect(puts).toEqual([]);
+  });
+
+  it("正常导入前写 KV 备份（key backup:<ISO>，TTL 7 天），响应返回 backup_key", async () => {
+    const { res, puts } = await runImport({
+      site_config: minimalBackup.site_config,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await bodyOf(res);
+    expect(body.data?.backup_key).toEqual(
+      expect.stringMatching(/^backup:\d{4}-\d{2}-\d{2}T/)
+    );
+    expect(puts).toHaveLength(1);
+    expect(puts[0].key).toBe(body.data?.backup_key);
+    expect(puts[0].options).toMatchObject({ expirationTtl: 7 * 24 * 60 * 60 });
+    expect(JSON.parse(puts[0].value).tables.site_config).toBeDefined();
+  });
+
+  it("空导入（0 行）无 confirm 被拒 400，带 confirm=1 放行", async () => {
+    const denied = await runImport({});
+    expect(denied.res.status).toBe(400);
+    expect((await bodyOf(denied.res)).message).toContain("confirm=1");
+    expect(denied.puts).toEqual([]); // 被拒时连备份都不写
+
+    const allowed = await runImport({}, { confirm: true });
+    expect(allowed.res.status).toBe(200);
+    expect(allowed.puts).toHaveLength(1);
+  });
+
+  it("超量导入（>10× 现有行数）无 confirm 被拒，带 confirm 放行", async () => {
+    const big: Record<string, unknown[]> = {
+      categories: Array.from({ length: 101 }, (_, i) => ({
+        id: i + 1,
+        name: `C${i}`,
+        slug: `c${i}`,
+      })),
+    };
+    const denied = await runImport(big, { existingCount: 10 });
+    expect(denied.res.status).toBe(400);
+
+    const allowed = await runImport(big, { existingCount: 10, confirm: true });
+    expect(allowed.res.status).toBe(200);
+  });
+
+  it("10× 边界值本身不触发确认（101 > 100 触发，100 不触发）", async () => {
+    const exact: Record<string, unknown[]> = {
+      categories: Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `C${i}`,
+        slug: `c${i}`,
+      })),
+    };
+    expect((await runImport(exact, { existingCount: 10 })).res.status).toBe(
+      200
+    );
+  });
+
+  it("dry-run 也报告 needs_confirm=true（供调用方预判）", async () => {
+    const { res } = await runImport({}, { dryRun: true });
+    expect(await bodyOf(res)).toMatchObject({
+      data: { needs_confirm: true, total_inserting: 0 },
+    });
+  });
+
+  it("备份写失败时中止导入（不留无备份的破坏性操作，且无 DELETE/INSERT）", async () => {
+    const { db, statements } = recordingDb();
+    const failingMedia = {
+      put: () => Promise.reject(new Error("KV quota exceeded")),
+      get: () => Promise.resolve(null),
+      delete: () => Promise.resolve(),
+    } as unknown as Env["MEDIA"];
+    const request = new Request("https://example.com/api/v1/admin/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        export_data: { site_config: minimalBackup.site_config },
+      }),
+    });
+    const res = await handleImport(request, makeEnv(db, failingMedia));
+    expect(res.status).toBe(500);
+    const body = await bodyOf(res);
+    expect(body.message).not.toContain("KV quota");
+    expect(body.message).not.toMatch(/INSERT|DELETE|SELECT/);
+    // 备份失败在阶段 2 之前：只有只读的 COUNT/SELECT（备份读取），无任何写
+    expect(statements.some((s) => /^\s*(DELETE|INSERT)\b/i.test(s.sql))).toBe(
+      false
+    );
   });
 });
