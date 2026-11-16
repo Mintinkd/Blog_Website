@@ -78,7 +78,7 @@ function makeD1(opts: FakeOptions = {}): {
         return { results: [] as unknown[] };
       },
       async first() {
-        if (/FROM articles\b/i.test(sql)) return { id: "a1" };
+        if (/FROM articles\b/i.test(sql)) return { id: 1 };
         if (/FROM article_likes\b/i.test(sql)) {
           const ipHash = String(stmt.binds[1]);
           if (opts.existingLike) {
@@ -122,7 +122,7 @@ function makeEnv(db: unknown): Env {
 }
 
 function likeRequest(): Request {
-  return new Request("https://example.com/api/v1/articles/a1/like", {
+  return new Request("https://example.com/api/v1/articles/1/like", {
     method: "POST",
     headers: { "CF-Connecting-IP": "203.0.113.7" },
   });
@@ -139,7 +139,7 @@ describe("handleToggleLike 原子化（#72 / M9）", () => {
       likeRequest(),
       makeEnv(fake.db),
       {} as ExecutionContext,
-      { article_id: "a1" }
+      { article_id: "1" }
     );
 
     expect(res.status).toBe(200);
@@ -166,7 +166,7 @@ describe("handleToggleLike 原子化（#72 / M9）", () => {
       likeRequest(),
       makeEnv(fake.db),
       {} as ExecutionContext,
-      { article_id: "a1" }
+      { article_id: "1" }
     );
 
     expect(res.status).toBe(200);
@@ -191,7 +191,7 @@ describe("handleToggleLike 原子化（#72 / M9）", () => {
       likeRequest(),
       makeEnv(fake.db),
       {} as ExecutionContext,
-      { article_id: "a1" }
+      { article_id: "1" }
     );
 
     expect(res.status).toBeGreaterThanOrEqual(400);

@@ -2,6 +2,7 @@ import { Env } from "../index";
 import {
   successResponse,
   error,
+  notFound,
   serverError,
   ErrorCodes,
 } from "../utils/response";
@@ -16,6 +17,20 @@ async function hashIp(ip: string): Promise<string> {
     .join("");
 }
 
+/**
+ * issue #107 / L9：id 契约与 `article.ts` 的 `^[1-9]\d*$` 同口径。
+ * 非数字 id 在路由层就匹配不上（#100 / M20 把 `:id` 编译为 `\d+` → 404），
+ * 这里只拦「纯数字但违契约」的情形（0 / 前导零 / 超安全整数）→ 400。
+ */
+function isValidArticleId(id: string | undefined): boolean {
+  if (!id) return false;
+  return /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id));
+}
+
+function invalidArticleId(): Response {
+  return error(ErrorCodes.PARAM_ERROR, "Invalid article id");
+}
+
 export async function handleToggleLike(
   request: Request,
   env: Env,
@@ -23,13 +38,15 @@ export async function handleToggleLike(
   params: Record<string, string>
 ): Promise<Response> {
   const { article_id } = params;
+  if (!isValidArticleId(article_id)) return invalidArticleId();
   const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const ip_hash = await hashIp(ip);
 
   const article = await env.DB.prepare("SELECT id FROM articles WHERE id = ?")
     .bind(article_id)
     .first();
-  if (!article) return error(ErrorCodes.NOT_FOUND, "Article not found");
+  // issue #107 / L9：资源不存在统一 404（此前误用 `error()` 的默认 400）。
+  if (!article) return notFound("Article not found");
 
   const existing = await env.DB.prepare(
     "SELECT id FROM article_likes WHERE article_id = ? AND ip_hash = ?"
@@ -72,6 +89,7 @@ export async function handleLikeStatus(
   params: Record<string, string>
 ): Promise<Response> {
   const { article_id } = params;
+  if (!isValidArticleId(article_id)) return invalidArticleId();
   const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const ip_hash = await hashIp(ip);
 
