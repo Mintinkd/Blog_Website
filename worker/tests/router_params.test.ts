@@ -100,4 +100,17 @@ describe("matchRoute 分型行为（issue #100）", () => {
       expect(matchRoute(method, "/articles/1")).toBeNull();
     }
   });
+
+  // issue #108 / L10：method 分桶的结构断言——匹配只在该 method 的桶里找，
+  // 不会跨 method 串味（#100 的 routesByMethod Map 已实现，本票仅补断言）。
+  it("只匹配同 method 的路由，不跨桶串味（含大小写敏感）", () => {
+    expect(matchRoute("GET", "/articles")).not.toBeNull();
+    expect(matchRoute("DELETE", "/articles")).toBeNull();
+    expect(matchRoute("PUT", "/articles")).toBeNull();
+    // method 来自 request.method，按原样取桶：小写不是合法 HTTP method，落空桶
+    expect(matchRoute("get", "/articles")).toBeNull();
+    // 同一路径不同 method 各自命中自己的桶
+    expect(matchRoute("POST", "/articles/1/like")).not.toBeNull();
+    expect(matchRoute("GET", "/articles/1/like")).toBeNull();
+  });
 });
