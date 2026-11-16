@@ -36,6 +36,10 @@ jobs:
       - name: Check CORS Origins drift
         run: npm run gen:cors && git diff --exit-code -- src/generated/cors-origins.ts worker/src/generated/cors-origins.ts
 
+      # issue #92 / M6 + #99 / M19：富文本白名单单一源生成物不得漂移
+      - name: Check Rich Text Policy drift
+        run: npm run gen:rich-text && git diff --exit-code -- worker/src/generated/rich-text-policy.ts
+
       - name: Install dependencies
         run: npm ci
 

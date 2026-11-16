@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "sanitize-html": "2.17.5",
     "wrangler": "^4.160.1"
   },
   "devDependencies": {

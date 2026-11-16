@@ -154,6 +154,9 @@
 │   ├── generate-headers.mjs      # public/_headers 生成器（prebuild 自动执行；CI 漂移断言）
 │   ├── patch-csp.mjs             # 构建后 CSP 收紧（astro:build:done 自动调用；以安全头模块为源构造 + 注入内联脚本 sha256 + 残留断言；同目录 .d.mts）
 │   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
+│   ├── generate-cors-origins.mjs # CORS 白名单生成器（cors.origins.json → 双端生成物）
+│   ├── generate-rich-text-policy.mjs # 富文本白名单生成器（rich-text-policy.json → worker 生成物，issue #92 / #99）
+│   ├── migrate-reading-time.mjs # reading_time 加列幂等迁移（CI 自动执行，issue #90）
 │   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
 │   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
 │   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（CI 构建前执行；服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
@@ -218,6 +221,8 @@
 ├── astro.config.mjs
 ├── package.json
 ├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
+├── cors.origins.json            # CORS Origin 白名单描述符（手写单源，issue #85 / H4）
+├── rich-text-policy.json        # 富文本标签/属性/scheme 白名单描述符（手写单源，issue #92 / #99）
 ├── wrangler.jsonc                # 根目录Workers+Assets部署配置
 ├── tsconfig.json
 ├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
@@ -486,6 +491,7 @@ D1 (SQLite) 共 13 张表：
 - **数据安全**：这些设置不含任何密钥，`/settings/public` 白名单投影作为公开接口供前台拉取；全量读取（`/settings`、`/settings/all`）与写 / 导出 / 导入 / 恢复均为 admin 专属。
 - **合法性单源（issue #27 / ADR 0001）**：读侧回落与写侧拒绝共享同一套校验规则 —— 手写单源为仓库根 `settings.rules.json`（规则描述符），`npm run gen:settings` 从其生成 `src/generated/settings-rules.ts` 与 `worker/src/generated/settings-rules.ts` 两份字节一致的规则模块，两侧校验逻辑只消费生成物；生成物禁止手工编辑，CI 以「重新生成 → diff 必须为空」的漂移断言最早门禁守护，漂移修复流程为改描述符 → 重跑生成 → 一并提交。
 - **CORS 白名单单源（issue #85 / H4）**：Worker（`worker/src/middleware/cors.ts`）与同源 API 代理（`src/utils/api-proxy.ts`）共用一份 Origin 白名单 —— 手写单源为仓库根 `cors.origins.json`，`npm run gen:cors` 生成两端 `src/generated/cors-origins.ts` / `worker/src/generated/cors-origins.ts` 字节一致的模块。代理不再无条件写 `Access-Control-Allow-Origin: *`（此前会把 Worker 已收紧的白名单重新放开），改为白名单精确回显 + `Vary: Origin`；OPTIONS 预检补安全头，代理 fetch 加 10s 超时。CI 漂移断言同设置白名单。新增 Origin 只改 `cors.origins.json` 并重跑生成。
+- **富文本白名单单源（issue #92 / M6 + #99 / M19）**：Worker 消毒器（`worker/src/utils/sanitizer.ts`）与前端正文策略（`src/utils/markdownPolicy.ts`）共用一份标签 / 属性 / scheme 白名单 —— 手写单源为仓库根 `rich-text-policy.json`，`npm run gen:rich-text` 生成 `worker/src/generated/rich-text-policy.ts`；前端 markdownPolicy.ts 与描述符的一致性由 `tests/rich-text-policy.test.ts` 交叉守卫。Worker 消毒器从旧正则黑名单改为 `sanitize-html` 白名单消毒（5 类已知 XSS 绕过全部封堵，见 `worker/tests/sanitizer_whitelist.test.ts`），对外签名不变。新增标签 / 属性只改 `rich-text-policy.json` → 重跑生成 → 同步前端 markdownPolicy.ts → 一并提交；CI 漂移断言同设置白名单。
 
 ### 外链内容智能代理
 
@@ -617,7 +623,7 @@ npx wrangler dev
 
 Worker 本地运行在 `http://localhost:8787`
 
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是三份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002、CORS 白名单 `npm run gen:cors` issue #85 / H4，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
+> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是四份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002、CORS 白名单 `npm run gen:cors` issue #85 / H4、富文本白名单 `npm run gen:rich-text` issue #92 / #99，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
 
 ### 初始化数据库
 

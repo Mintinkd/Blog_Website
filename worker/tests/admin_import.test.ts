@@ -389,7 +389,10 @@ describe("handleImport 内容净化（issue #23 / #12 基线）", () => {
       s.sql.startsWith("INSERT INTO articles")
     );
     expect(articleInsert).toBeDefined();
-    expect(articleInsert!.binds).toContain("<img src=x >ok");
+    // issue #92 / M6：白名单消毒器把危险属性整条剥除（onerror 消失），
+    // 并将属性值规范化为双引号；旧正则黑名单只留半截 `src=x `。
+    expect(articleInsert!.binds).toContain('<img src="x" />ok');
+    expect(articleInsert!.binds.join(" ")).not.toMatch(/onerror/i);
     expect(articleInsert!.binds).toContain("<p>hi</p>");
     expect(articleInsert!.binds).not.toContain("<script>bad()</script>");
 
@@ -397,7 +400,9 @@ describe("handleImport 内容净化（issue #23 / #12 基线）", () => {
       s.sql.startsWith("INSERT INTO comments")
     );
     expect(commentInsert).toBeDefined();
-    expect(commentInsert!.binds).toContain('<a href="x()">c</a>');
+    // javascript: scheme 被整条剥除（旧黑名单只去掉 scheme 留 `href="x()"`）
+    expect(commentInsert!.binds).toContain("<a>c</a>");
+    expect(commentInsert!.binds.join(" ")).not.toMatch(/javascript/i);
   });
 });
 
