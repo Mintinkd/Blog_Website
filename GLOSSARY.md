@@ -91,6 +91,20 @@ _Avoid_: 自动保存、服务端草稿
 同一文章同一时间仅允许一位作者进入编辑的租约；10 分钟心跳续期，保存前校验，显式关闭 / 保存 / 放弃时释放。
 _Avoid_: 编辑占用、互斥锁
 
+## 富文本消毒
+
+**正文白名单**：
+允许进入文章正文与评论的 HTML 标签 / 属性 / URL scheme 清单，单一事实源为仓库根 `rich-text-policy.json`；前端 `markdownPolicy.ts`（DOMPurify / sanitize-html）与 Worker `sanitizer.ts`（生成物）各自消费，交叉测试 + CI 漂移门禁守卫一致性。
+_Avoid_: 消毒黑名单、双份白名单
+
+**搜索高亮白名单**：
+独立于正文白名单的兜底层，仅允许 `<mark>` 标签（`HIGHLIGHT_TAGS` 常量）；正文白名单不含 mark，两层不互相合并。用于渲染搜索结果的高亮片段，防后端高亮标记被未来改动放大成 XSS。
+_Avoid_: 正文白名单的一部分、通用 HTML 消毒
+
+**DOM clobbering 防护**：
+`ARTICLE_BODY_FORBIDDEN_IDS` 在前端 DOMPurify 渲染层丢弃会遮蔽 DOM API 的 `id`；Worker 入库消毒不复现该规则，因正文交付前台会再过一次 DOMPurify 兜底，属分层边界而非双份清单。
+_Avoid_: Worker 侧重复维护同一份 id 表
+
 ## 阅读
 
 **阅读量**：
