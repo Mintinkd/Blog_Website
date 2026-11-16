@@ -25,17 +25,19 @@ import {
  * tests/rich-text-policy.test.ts 守卫。
  */
 
-/** 供外部复用的白名单视图（与生成物同源，不再有独立的正则黑名单常量）。 */
+/**
+ * 白名单常量（与生成物同源）——作为下方 sanitize-html 配置的唯一输入被真正消费，
+ * 不再是「定义后零引用」的死常量。票面 #92 点名这两个常量须作为
+ * allowedTags / allowedAttributes 消费，故保留其名字与导出。
+ */
 export const ALLOWED_TAGS: readonly string[] = RICH_TEXT_TAGS;
 export const ALLOWED_ATTR: Record<string, string[]> = Object.freeze({
   "*": [...RICH_TEXT_ATTRIBUTES, ...RICH_TEXT_ATTRIBUTE_GLOBS],
 });
 
 const SANITIZE_OPTIONS: sanitizeHtmlLib.IOptions = {
-  allowedTags: [...RICH_TEXT_TAGS],
-  allowedAttributes: {
-    "*": [...RICH_TEXT_ATTRIBUTES, ...RICH_TEXT_ATTRIBUTE_GLOBS],
-  },
+  allowedTags: [...ALLOWED_TAGS],
+  allowedAttributes: ALLOWED_ATTR,
   allowedSchemes: [...RICH_TEXT_SCHEMES],
   allowedSchemesByTag: {
     img: [...RICH_TEXT_SCHEMES, ...RICH_TEXT_IMG_EXTRA_SCHEMES],
@@ -52,10 +54,6 @@ const SANITIZE_OPTIONS: sanitizeHtmlLib.IOptions = {
  */
 export function sanitizeHtml(dirty: string): string {
   return sanitizeHtmlLib(String(dirty ?? ""), SANITIZE_OPTIONS).trim();
-}
-
-export function stripAllHtml(dirty: string): string {
-  return dirty.replace(/<[^>]*>/g, "").trim();
 }
 
 export function escapeHtml(text: string): string {

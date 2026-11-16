@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeHtml } from "../src/utils/sanitizer";
+import {
+  ALLOWED_ATTR,
+  ALLOWED_TAGS,
+  sanitizeHtml,
+} from "../src/utils/sanitizer";
 import {
   RICH_TEXT_TAGS,
   RICH_TEXT_ATTRIBUTES,
@@ -122,6 +126,18 @@ describe("白名单常量被真正消费（issue #92 / M6）", () => {
     expect(RICH_TEXT_ATTRIBUTES).toContain("href");
     expect(RICH_TEXT_SCHEMES).toContain("https");
     expect(RICH_TEXT_FORBID_CONTENT_TAGS).toContain("svg");
+  });
+
+  it("ALLOWED_TAGS / ALLOWED_ATTR 被真正作为消毒配置消费", () => {
+    // 白名单内的标签/属性保留，白名单外的丢弃——证明导出常量不是零引用死常量。
+    expect(ALLOWED_TAGS).toContain("strong");
+    expect(ALLOWED_ATTR["*"]).toContain("title");
+    const out = sanitizeHtml(
+      '<strong title="ok">保留</strong><marquee>丢弃</marquee>'
+    );
+    expect(out).toContain('<strong title="ok">保留</strong>');
+    expect(out).not.toMatch(/marquee/i);
+    expect(ALLOWED_TAGS).not.toContain("marquee");
   });
 
   it("消毒器不再使用正则黑名单：script 内容整段丢弃而非仅剥标签", () => {
