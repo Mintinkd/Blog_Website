@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   createArticle,
   updateArticle,
@@ -99,6 +102,39 @@ describe("slugExists 单点（issue #101）", () => {
     const fake = makeWriteDb(null);
     expect(await slugExists({ DB: fake.db } as unknown as Env, "free")).toBe(
       false
+    );
+  });
+});
+
+describe("取文章 tags 单点（issue #101 / 与 M1 协同）", () => {
+  it("全 worker 只有 article_service 的 loadArticleTags 逐篇取标签，其余为列表批量/过滤语义", () => {
+    const ROOT = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      ".."
+    );
+    const srcDir = path.join(ROOT, "src");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith(".ts")) files.push(full);
+      }
+    };
+    walk(srcDir);
+    // 逐篇取标签的 SQL（article_tags at ON t.id = at.tag_id + WHERE at.article_id = ?）
+    // 只应出现在 article_service.ts 的 loadArticleTags / listArticles 的 group_concat 子查询中。
+    const offenders = files.filter((f) => {
+      if (!f.endsWith("article_service.ts")) {
+        const src = readFileSync(f, "utf8");
+        return /JOIN article_tags at[\s\S]{0,120}WHERE at\.article_id = \?/i.test(
+          src
+        );
+      }
+      return false;
+    });
+    expect(offenders, `逐篇取标签 SQL 泄漏到: ${offenders.join(", ")}`).toEqual(
+      []
     );
   });
 });

@@ -1,6 +1,23 @@
 import { Env } from "../index";
 
 /**
+ * 按 username 查 id + display_name —— 编辑锁写入 holder_name 用（issue #101 / M21）。
+ * 与 getUserIdByUsername 同属「按 username 取用户信息」入口，避免 edit_lock
+ * 再内联一份 `SELECT id, display_name FROM users WHERE username = ?`。
+ */
+export async function getUserInfoByUsername(
+  env: Env,
+  username: string
+): Promise<{ id: number; display_name: string } | null> {
+  const row = await env.DB.prepare(
+    "SELECT id, display_name FROM users WHERE username = ?"
+  )
+    .bind(username)
+    .first<{ id: number; display_name: string }>();
+  return row ? { id: row.id, display_name: row.display_name } : null;
+}
+
+/**
  * 按 username 查 user id —— 全 Worker 唯一入口（issue #101 / M21）。
  *
  * 背景：此前 11 处 handler/service 各自内联同一条

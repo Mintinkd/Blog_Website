@@ -1,20 +1,15 @@
-import { Env } from '../index';
-import { EditLock, EditLockStatus } from '../models/article';
-import type { AuthResult } from '../middleware/auth';
+import { Env } from "../index";
+import { EditLock, EditLockStatus } from "../models/article";
+import type { AuthResult } from "../middleware/auth";
+import { getUserInfoByUsername } from "./user_service";
 
 const LOCK_TTL = 1800;
 
-async function getUserIdByUsername(env: Env, username: string): Promise<number | null> {
-  const row = await env.DB.prepare('SELECT id, display_name FROM users WHERE username = ?').bind(username).first<{ id: number; display_name: string }>();
-  return row?.id || null;
-}
-
-async function getUserInfoByUsername(env: Env, username: string): Promise<{ id: number; display_name: string } | null> {
-  const row = await env.DB.prepare('SELECT id, display_name FROM users WHERE username = ?').bind(username).first<{ id: number; display_name: string }>();
-  return row ? { id: row.id, display_name: row.display_name } : null;
-}
-
-export async function acquireLock(env: Env, articleId: number, authResult: AuthResult): Promise<{ success: boolean; lock?: EditLock; conflict?: EditLockStatus }> {
+export async function acquireLock(
+  env: Env,
+  articleId: number,
+  authResult: AuthResult
+): Promise<{ success: boolean; lock?: EditLock; conflict?: EditLockStatus }> {
   const key = `edit_lock:${articleId}`;
   const userInfo = await getUserInfoByUsername(env, authResult.username);
   if (!userInfo) return { success: false };
@@ -33,7 +28,9 @@ export async function acquireLock(env: Env, articleId: number, authResult: AuthR
         acquired_at: lock.acquired_at,
         expires_at: expires.toISOString(),
       };
-      await env.EDIT_LOCK.put(key, JSON.stringify(renewedLock), { expirationTtl: LOCK_TTL });
+      await env.EDIT_LOCK.put(key, JSON.stringify(renewedLock), {
+        expirationTtl: LOCK_TTL,
+      });
       return { success: true, lock: renewedLock };
     }
 
@@ -57,20 +54,27 @@ export async function acquireLock(env: Env, articleId: number, authResult: AuthR
     expires_at: expires.toISOString(),
   };
 
-  await env.EDIT_LOCK.put(key, JSON.stringify(lock), { expirationTtl: LOCK_TTL });
+  await env.EDIT_LOCK.put(key, JSON.stringify(lock), {
+    expirationTtl: LOCK_TTL,
+  });
   return { success: true, lock };
 }
 
-export async function releaseLock(env: Env, articleId: number, authResult: AuthResult): Promise<{ success: boolean; forbidden?: boolean }> {
+export async function releaseLock(
+  env: Env,
+  articleId: number,
+  authResult: AuthResult
+): Promise<{ success: boolean; forbidden?: boolean }> {
   const key = `edit_lock:${articleId}`;
   const existing = await env.EDIT_LOCK.get(key);
 
   if (!existing) return { success: true };
 
   const lock: EditLock = JSON.parse(existing);
-  const userId = await getUserIdByUsername(env, authResult.username);
+  const userId =
+    (await getUserInfoByUsername(env, authResult.username))?.id ?? null;
 
-  if (authResult.role !== 'admin' && lock.holder_id !== userId) {
+  if (authResult.role !== "admin" && lock.holder_id !== userId) {
     return { success: false, forbidden: true };
   }
 
@@ -78,12 +82,21 @@ export async function releaseLock(env: Env, articleId: number, authResult: AuthR
   return { success: true };
 }
 
-export async function getLockStatus(env: Env, articleId: number): Promise<EditLockStatus> {
+export async function getLockStatus(
+  env: Env,
+  articleId: number
+): Promise<EditLockStatus> {
   const key = `edit_lock:${articleId}`;
   const existing = await env.EDIT_LOCK.get(key);
 
   if (!existing) {
-    return { is_locked: false, holder_id: null, holder_name: null, acquired_at: null, expires_at: null };
+    return {
+      is_locked: false,
+      holder_id: null,
+      holder_name: null,
+      acquired_at: null,
+      expires_at: null,
+    };
   }
 
   const lock: EditLock = JSON.parse(existing);
@@ -96,7 +109,11 @@ export async function getLockStatus(env: Env, articleId: number): Promise<EditLo
   };
 }
 
-export async function forceReleaseLock(env: Env, articleId: number, authResult: AuthResult): Promise<{ success: boolean; previous_holder?: string }> {
+export async function forceReleaseLock(
+  env: Env,
+  articleId: number,
+  authResult: AuthResult
+): Promise<{ success: boolean; previous_holder?: string }> {
   const key = `edit_lock:${articleId}`;
   const existing = await env.EDIT_LOCK.get(key);
   let previous_holder: string | undefined;

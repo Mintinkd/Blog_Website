@@ -214,8 +214,9 @@
 │       │   ├── admin.ts
 │       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布 / 明细 / 质量 / 趋势，#55–#58）
 │       ├── services/
-│       │   ├── article_service.ts
-│       │   ├── edit_lock_service.ts
+│       │   ├── user_service.ts          # 按 username 取 id / id+display_name 单点（#101 / M21）
+│       │   ├── article_service.ts       # 文章列表/详情/写入 + slugExists + loadArticleTags（#89/#101）
+│       │   ├── edit_lock_service.ts     # 编辑锁（用户查询委托 user_service，#101）
 │       │   ├── analytics_service.ts      # dayKey / 清理 / HMAC 密钥 / recordArticleView（#53、#55）
 │       │   └── analytics_dimensions.ts   # Tier 0 维度桶映射 / upsert / 小样本保护（#56）
 │       ├── models/              # 数据模型

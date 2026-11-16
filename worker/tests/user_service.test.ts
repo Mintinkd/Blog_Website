@@ -13,7 +13,7 @@ interface Recorded {
   binds: unknown[];
 }
 
-function makeEnv(id: number | null) {
+function makeEnv(row: { id: number; display_name?: string } | null) {
   const statements: Recorded[] = [];
   const db = {
     prepare(sql: string) {
@@ -25,7 +25,7 @@ function makeEnv(id: number | null) {
         },
         async first<T>() {
           statements.push({ sql, binds: stmt.binds });
-          return id === null ? null : ({ id } as T);
+          return row === null ? null : ({ ...row } as T);
         },
       };
       return stmt;
@@ -38,7 +38,7 @@ describe("getUserIdByUsername 单点（issue #101）", () => {
   it("命中返回 id，缺号返回 null", async () => {
     const { getUserIdByUsername } =
       await import("../src/services/user_service");
-    const hit = makeEnv(42);
+    const hit = makeEnv({ id: 42 });
     expect(await getUserIdByUsername(hit.env, "alice")).toBe(42);
     expect(hit.statements).toHaveLength(1);
     expect(hit.statements[0].sql).toMatch(
@@ -48,5 +48,20 @@ describe("getUserIdByUsername 单点（issue #101）", () => {
 
     const miss = makeEnv(null);
     expect(await getUserIdByUsername(miss.env, "nobody")).toBeNull();
+  });
+
+  it("getUserInfoByUsername 返回 id + display_name（编辑锁持有者名称）", async () => {
+    const { getUserInfoByUsername } =
+      await import("../src/services/user_service");
+    const fake = makeEnv({ id: 7, display_name: "作者" });
+    expect(await getUserInfoByUsername(fake.env, "owner")).toEqual({
+      id: 7,
+      display_name: "作者",
+    });
+    expect(fake.statements[0].binds).toEqual(["owner"]);
+    expect(fake.statements[0].sql).toMatch(/display_name/);
+
+    const miss = makeEnv(null);
+    expect(await getUserInfoByUsername(miss.env, "nobody")).toBeNull();
   });
 });
