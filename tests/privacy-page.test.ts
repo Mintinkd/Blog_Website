@@ -161,18 +161,40 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
     expect(spec).toContain("Tier 0 已落地");
   });
 
-  it("README 部署段含可直接执行的 D1 迁移清单与纯新增 SQL 文件", () => {
+  it("README 部署段含 CI 自动 D1 迁移说明与纯新增 SQL 文件", () => {
     const readme = read("README.md");
-    expect(readme).toMatch(/数据库迁移是手动步骤/);
+    // 迁移已由 CI 自动执行（原「手动步骤」口径作废）：README 须说明自动流程、
+    // 核对脚本与 token D1 权限要求；可执行明细见 worker/schema-verify.sql。
+    expect(readme).toMatch(/数据库迁移由 CI 自动执行/);
     expect(readme).toContain("wrangler d1 execute blog-db --remote");
-    expect(readme).toContain("sqlite_master");
-    expect(readme).toContain("idx_view_token%");
+    expect(readme).toContain("verify-d1-migrations.mjs");
+    expect(readme).toContain("编辑权限");
     expect(readme).toContain("schema-tier0-incremental.sql");
+
+    const verifySql = read("worker/schema-verify.sql");
+    expect(verifySql).toContain("sqlite_master");
+    expect(verifySql).toContain("idx_view_token_expires");
 
     const ddl = read("worker/schema-tier0-incremental.sql");
     expect(ddl.match(/CREATE TABLE IF NOT EXISTS/g)).toHaveLength(3);
     expect(ddl.match(/CREATE INDEX IF NOT EXISTS/g)).toHaveLength(2);
     expect(ddl).not.toMatch(/^(DROP|DELETE|UPDATE|ALTER)\s/im);
+  });
+
+  it("CI 流程与 README 一致：D1 迁移在部署前、L8 sleep120 二次部署已移除", () => {
+    const workflow = read(".github/workflows/deploy.yml");
+    const readme = read("README.md");
+    const applyAt = workflow.indexOf("name: Apply D1 migrations");
+    const verifyAt = workflow.indexOf("name: Verify D1 migrations");
+    const deployAt = workflow.indexOf("name: Deploy to Cloudflare Pages");
+    expect(applyAt).toBeGreaterThan(-1);
+    expect(verifyAt).toBeGreaterThan(applyAt);
+    expect(deployAt).toBeGreaterThan(verifyAt); // 迁移+核对在部署之前
+    // 只查实际执行的 run/name 语句；注释里提到「sleep 120 已删除」不算回归。
+    expect(workflow).not.toMatch(/^\s*run:\s*sleep\s+\d+/m);
+    expect(workflow).not.toMatch(/^\s*- name: Re-deploy/m);
+    expect(readme).toMatch(/L8 已清理/);
+    expect(readme).not.toMatch(/等待 120 秒待 Git 集成/);
   });
 
   it("spec §4.2 注明计数写库失败时的降级口径", () => {

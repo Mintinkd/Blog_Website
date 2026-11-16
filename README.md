@@ -658,25 +658,20 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 ## 部署
 
-> **⚠️ 数据库迁移是手动步骤**：GitHub Actions 不执行 D1 迁移（CI 无生产库凭证）。凡本次推送包含 `worker/schema.sql` 变更，部署完成后必须按上文「初始化数据库 / 增量 DDL」段在**生产** D1 执行对应语句，并核对新对象确实存在：
+> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。
 >
-> ```bash
-> cd worker
-> npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
-> npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
-> npx wrangler d1 execute blog-db --remote --command "SELECT type, name FROM sqlite_master WHERE name LIKE 'analytics%' OR name LIKE 'idx_view_token%' OR name LIKE 'idx_dim_daily%' OR name LIKE 'idx_%uploaded_by' OR name LIKE 'idx_comments_article_id_status' OR name LIKE 'idx_friend_links_is_active' ORDER BY type, name"
-> ```
+> **新增迁移**：把新语句写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。**禁止**把全量 `schema.sql` 当迁移跑（含 `ALTER TABLE ADD COLUMN`，重复执行报 `duplicate column`）。
 >
-> 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）。代码侧已加计数容错，但**迁移仍须手动执行**，不可跳过。
+> 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）——CI 自动迁移 + 对象核对正是为防止此类漏跑。手动应急命令见上文「初始化数据库 / 增量 DDL」段。
 
 ### GitHub Secrets 配置
 
 在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：
 
-| Secret                  | 说明                 |
-| ----------------------- | -------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID   |
+| Secret                  | 说明                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（需 Pages + Workers + **D1 编辑**权限；D1 用于 CI 自动迁移） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                |
 
 ### Cloudflare 资源
 
@@ -696,9 +691,11 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
 1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
-2. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
-3. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
-4. 等待 120 秒待 Git 集成自动部署落定，再对 Pages 与 Worker 各执行一次覆盖部署——即使 Cloudflare 侧 Git 自动部署未关闭，最终生效的也始终是本次构建产物
+2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
+3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
+4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
+
+> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除。Pages Git 自动部署须在 Dashboard 关闭（见上文「自动部署」），由 Actions 单点管理，不再用固定等待掩盖隐式时序。
 
 ### Cloudflare 平台注入护栏
 

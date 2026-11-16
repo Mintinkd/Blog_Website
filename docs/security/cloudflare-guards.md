@@ -80,6 +80,14 @@ Cloudflare 自定义域会在 HTML 上追加两项与本站策略冲突的内容
    - Application → Speculation Rules 不再加载 `/cdn-cgi/speculation`；
 5. `cd worker && npm test`（`worker/tests/cloudflare_guards.test.ts`）。
 
+## zone 级 CORS 残留（需人工清理）
+
+`zenfishlog.dpdns.org` zone 上曾有一条 Response Header Transform Rule 给全站硬加 `Access-Control-Allow-Origin: *`。这是 **zone 边缘层**注入，与本仓库的 origin CORS 白名单（`worker/src/middleware/cors.ts`）无关：origin 收紧后边缘头仍在，等于白名单被全站绕过；API token 无 zone 写权限，wrangler / CI 都改不了。
+
+- **诊断**：`curl -sS -D - -o /dev/null https://blog.zenfishlog.dpdns.org/ | grep -i access-control-allow-origin` —— 仍有输出即未清理。
+- **清理**：运行交互式向导 `bash scripts/fix-edge-cors.sh`。它先自动 curl 诊断，再带你到 Cloudflare Dashboard → Rules Overview 找到那条加 ACAO 的 Response Header Transform Rule 删除 / 停用，最后自动复验头已消失。脚本不捕获任何秘密值、不写 `.env` / GitHub secret；只有人工删除那一步无法代劳。
+- **背景**：#42 母票安全加固的未闭环项；2026-11-16 实测该头仍在，wizard 由此产生。
+
 ## 维护
 
 - 新增预渲染 HTML 路由：同步 `HTML_ROUTE_PATTERNS`（生成物随之更新，CI 漂移断言会提醒未重跑生成）；
