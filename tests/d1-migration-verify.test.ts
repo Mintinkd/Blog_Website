@@ -52,10 +52,31 @@ describe("D1 迁移核对", () => {
     expect(parseWranglerJson(raw)).toEqual([{ name: "a" }, { name: "b" }]);
   });
 
+  it("parseWranglerJson 容忍 wrangler 进度行混入 stdout（CI 实测）", () => {
+    // 2026-11-16 CI 实测：wrangler 把「├ Checking if file needs uploading」
+    // 这类进度行打印到 stdout，JSON 数组被夹在中间；不能对整个 stdout 直接 JSON.parse。
+    const payload = JSON.stringify([
+      { results: [{ name: "analytics_view_token" }], success: true, meta: {} },
+    ]);
+    const withProgress = [
+      "├ Checking if file needs uploading",
+      "└ Uploaded bundle",
+      payload,
+    ].join("\n");
+    expect(parseWranglerJson(withProgress)).toEqual([
+      { name: "analytics_view_token" },
+    ]);
+    // 进度行里含方括号也不能误裁（取最后一个完整 JSON 数组）
+    expect(
+      parseWranglerJson(`[done] step\n${payload}\n[trailing note]`)
+    ).toEqual([{ name: "analytics_view_token" }]);
+  });
+
   it("parseWranglerJson 对空/坏 JSON 抛错（fail-closed，不静默通过）", () => {
     expect(() => parseWranglerJson("")).toThrow();
     expect(() => parseWranglerJson("not json")).toThrow();
     expect(() => parseWranglerJson("[]")).toThrow();
+    expect(() => parseWranglerJson("├ progress only, no JSON")).toThrow();
   });
 
   it("findMissingObjects 找出缺失对象；全部存在时返回空数组", () => {

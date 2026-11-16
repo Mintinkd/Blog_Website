@@ -36,17 +36,42 @@ export const EXPECTED_D1_OBJECTS = [
   "idx_friend_links_is_active",
 ];
 
-/** wrangler d1 execute --json 输出解析：取第一组 results，坏输入抛错（fail-closed）。 */
+/**
+ * wrangler d1 execute --json 输出解析：取第一组 results，坏输入抛错（fail-closed）。
+ *
+ * CI 实测（2026-11-16）：wrangler 会把进度行（「├ Checking if file needs uploading」
+ * 等）也打印到 stdout，JSON 数组夹在中间，直接 JSON.parse(整段) 必炸。
+ * 容忍前导/尾随噪声：逐个尝试以每个 `[` 开头、截到最后一个 `]` 的子串做 JSON.parse，
+ * 取第一个满足「非空数组且首项含 results[]」的结果；全失败则抛错。
+ */
 export function parseWranglerJson(raw) {
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error("wrangler --json 返回空数组");
+  const text = String(raw ?? "");
+  const opens = [...text.matchAll(/\[/g)].map((m) => m.index);
+  const closes = [...text.matchAll(/\]/g)].map((m) => m.index);
+  if (opens.length === 0 || closes.length === 0) {
+    throw new Error("wrangler 输出中找不到 JSON 数组");
   }
-  const results = parsed[0]?.results;
-  if (!Array.isArray(results)) {
-    throw new Error("wrangler --json 首项无 results 数组");
+
+  let lastError;
+  // 对每个 `[` × 每个 `]` 组合尝试（从长到短，优先取完整数组）；
+  // 文本只有几 KB，O(n²) 可接受，换来对进度行/前后噪声的完全容忍。
+  for (const from of opens) {
+    for (let ci = closes.length - 1; ci >= 0; ci--) {
+      const end = closes[ci];
+      if (end <= from) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(text.slice(from, end + 1));
+      } catch (e) {
+        lastError = e;
+        continue;
+      }
+      if (!Array.isArray(parsed) || parsed.length === 0) continue;
+      if (!Array.isArray(parsed[0]?.results)) continue;
+      return parsed[0].results;
+    }
   }
-  return results;
+  throw lastError ?? new Error("wrangler --json 输出中未找到有效 results 数组");
 }
 
 /** 对比 sqlite_master 的 name 集合与预期清单，返回缺失项（顺序按预期清单）。 */
