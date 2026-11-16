@@ -753,8 +753,9 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
 3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
+5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。
 
-> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除。Pages Git 自动部署须在 Dashboard 关闭（见上文「自动部署」），由 Actions 单点管理，不再用固定等待掩盖隐式时序。
+> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署须在 Dashboard 关闭（见上文「自动部署」），由 Actions 单点管理。
 
 ### Cloudflare 平台注入护栏
 

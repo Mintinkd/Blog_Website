@@ -171,6 +171,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # issue #106 / L8：部署后轮询线上就绪，替代旧的「固定 sleep + 二次覆盖部署」。
+      # 两条探针覆盖两条链路：`/`（Pages 产物）与 `/api/v1/health`（API Worker，
+      # 要求 200 且 status=ok、db 非 error）。就绪即返回；超时打印每条的末次状态并非零退出。
+      - name: Wait for deployment readiness
+        env:
+          DEPLOY_BASE_URL: https://blog.zenfishlog.dpdns.org
+          DEPLOY_TIMEOUT_SEC: "180"
+          DEPLOY_INTERVAL_SEC: "5"
+        run: node scripts/wait-for-deploy.mjs
+
       # L8：原「sleep 120 + 二次覆盖部署」已删除。README「自动部署」要求关闭
       # Pages Git 自动部署、统一由 Actions 管理；若 Git 集成仍开着，上面的单次
       # deploy 后可能再被 Git 集成产物覆盖——这种情况应在 Dashboard 关闭集成，

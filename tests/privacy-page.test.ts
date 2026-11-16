@@ -195,6 +195,14 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
     expect(workflow).not.toMatch(/^\s*- name: Re-deploy/m);
     expect(readme).toMatch(/L8 已清理/);
     expect(readme).not.toMatch(/等待 120 秒待 Git 集成/);
+
+    // issue #106 / L8：部署后必须轮询就绪（替代固定等待），且 README 同步该步骤。
+    const workerDeployAt = workflow.indexOf("name: Deploy Worker");
+    const readinessAt = workflow.indexOf("name: Wait for deployment readiness");
+    expect(workerDeployAt).toBeGreaterThan(deployAt);
+    expect(readinessAt).toBeGreaterThan(workerDeployAt);
+    expect(workflow).toContain("node scripts/wait-for-deploy.mjs");
+    expect(readme).toContain("wait-for-deploy.mjs");
   });
 
   it("spec §4.2 注明计数写库失败时的降级口径", () => {
