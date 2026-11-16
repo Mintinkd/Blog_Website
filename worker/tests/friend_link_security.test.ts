@@ -36,6 +36,8 @@ function recordingDb(role?: "admin" | "editor"): {
   statements: Array<{ sql: string; binds: unknown[] }>;
 } {
   const statements: Array<{ sql: string; binds: unknown[] }> = [];
+  // #87：admin import 改走 D1 batch()，假 D1 需提供同形接口
+  const records = new WeakMap<object, { sql: string; binds: unknown[] }>();
   const prepare = (sql: string) => {
     const stmt = { sql, binds: [] as unknown[] };
     statements.push(stmt);
@@ -67,9 +69,12 @@ function recordingDb(role?: "admin" | "editor"): {
           meta: { last_row_id: 1, changes: 1 },
         }),
     };
+    records.set(api, stmt);
     return api;
   };
-  return { db: { prepare }, statements };
+  const batch = (stmts: unknown[]) =>
+    Promise.resolve(stmts.map((s) => records.get(s as object) ?? null));
+  return { db: { prepare, batch }, statements };
 }
 
 function makeEnv(db: unknown): Env {

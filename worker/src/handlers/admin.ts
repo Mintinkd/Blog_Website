@@ -312,13 +312,14 @@ async function assessImportScale(
 }
 
 /**
- * #86 / H5：导入前把当前全量数据写入 KV（TTL 7 天），返回备份键。
+ * #86 / H5：导入前把当前全量数据写入 KV（TTL 7 天），返回备份键与内存快照。
  * 只备份本次导入涉及的表；列清单复用导入白名单，避免把密钥/派生表带入备份。
+ * #87 / H9：快照同时用于 batch 失败时的自动回滚，不再只落 KV 后丢弃。
  */
 async function backupBeforeImport(
   env: Env,
   byTable: Map<string, Array<Record<string, unknown>>>
-): Promise<string> {
+): Promise<{ key: string; snapshot: Record<string, unknown[]> }> {
   const snapshot: Record<string, unknown[]> = {};
   for (const table of byTable.keys()) {
     const cols = IMPORTABLE_TABLES[table].columns.join(", ");
@@ -331,7 +332,149 @@ async function backupBeforeImport(
     JSON.stringify({ created_at: new Date().toISOString(), tables: snapshot }),
     { expirationTtl: BACKUP_TTL_SECONDS }
   );
-  return key;
+  return { key, snapshot };
+}
+
+/** #87 / H9：单次 D1 batch 的语句上限（保守值，避免单批过大；跨批失败由快照回滚） */
+export const MAX_IMPORT_BATCH_STATEMENTS = 200;
+
+type PreparedWrite = ReturnType<ReturnType<Env["DB"]["prepare"]>["bind"]>;
+
+/**
+ * #87 / H9：按 FK 顺序构造 DELETE 语句。
+ * - 正常导入沿用「提供即替换」语义：只删除本次提供了非空行的表；
+ * - 回滚时 force=true：删除所有本次触及的表（含空快照表），以清空已导入的行。
+ */
+function buildDeleteStatements(
+  env: Env,
+  touchedTables: Set<string>,
+  rowsByTable?: Map<string, Array<Record<string, unknown>>>
+): PreparedWrite[] {
+  const statements: PreparedWrite[] = [];
+  for (const table of DELETE_ORDER) {
+    if (!touchedTables.has(table)) continue;
+    if (rowsByTable && (rowsByTable.get(table)?.length ?? 0) === 0) continue;
+    const skipKeys = IMPORTABLE_TABLES[table].skipKeys;
+    if (skipKeys) {
+      // 密钥行所在的表：只清理非密钥行，本机密钥/凭据保留
+      statements.push(
+        env.DB.prepare(
+          `DELETE FROM ${table} WHERE key NOT IN (${skipKeys.map(() => "?").join(", ")})`
+        ).bind(...skipKeys)
+      );
+    } else {
+      statements.push(env.DB.prepare(`DELETE FROM ${table}`));
+    }
+  }
+  return statements;
+}
+
+/**
+ * #87 / H9：按 FK 顺序构造 INSERT 语句，供导入与回滚共用。
+ * 导入路径做净化 + 密钥行跳过；回滚路径直接重放本机快照（含本机密钥行）。
+ */
+function buildInsertStatements(
+  env: Env,
+  rowsByTable: Map<string, Array<Record<string, unknown>>>,
+  options: { sanitize: boolean; skipSecrets: boolean }
+): {
+  statements: PreparedWrite[];
+  imported: Record<string, number>;
+  skippedSecretRows: string[];
+} {
+  const statements: PreparedWrite[] = [];
+  const imported: Record<string, number> = {};
+  const skippedSecretRows: string[] = [];
+
+  for (const table of INSERT_ORDER) {
+    const descriptor = IMPORTABLE_TABLES[table];
+    const rawRows = rowsByTable.get(table);
+    if (!rawRows || rawRows.length === 0) continue;
+
+    const writable = rawRows
+      .map((row) => {
+        if (!options.sanitize || !descriptor.sanitizeColumns) return row;
+        const out = { ...row };
+        for (const key of descriptor.sanitizeColumns) {
+          if (typeof out[key] === "string")
+            out[key] = sanitizeHtml(out[key] as string);
+        }
+        return out;
+      })
+      .filter((row) => {
+        if (!options.skipSecrets || !descriptor.skipKeys) return true;
+        if (
+          typeof row.key === "string" &&
+          descriptor.skipKeys.includes(row.key)
+        ) {
+          skippedSecretRows.push(row.key);
+          return false;
+        }
+        return true;
+      });
+
+    for (const row of writable) {
+      const cols = descriptor.columns.filter((c) => c in row);
+      const placeholders = cols.map(() => "?").join(", ");
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
+        ).bind(...cols.map((c) => row[c]))
+      );
+    }
+    imported[table] = writable.length;
+  }
+  return { statements, imported, skippedSecretRows };
+}
+
+/** #87 / H9：分批提交；每批是一次 D1 事务，任一句失败整批回滚。 */
+async function executeBatchChunks(
+  env: Env,
+  statements: PreparedWrite[]
+): Promise<number> {
+  let batches = 0;
+  for (
+    let offset = 0;
+    offset < statements.length;
+    offset += MAX_IMPORT_BATCH_STATEMENTS
+  ) {
+    await env.DB.batch(
+      statements.slice(offset, offset + MAX_IMPORT_BATCH_STATEMENTS)
+    );
+    batches++;
+  }
+  return batches;
+}
+
+/**
+ * #87 / H9：找出将因 media_assets 替换而失去 DB 记录引用的 KV 对象。
+ * 只处理 storage_type='kv' 且新导入未复用的非空 kv_key —— 复用同一 key 时对象仍是活的，
+ * 误删会让新数据指向空对象。KV 删除不可与 D1 同事务，故只在 DB 全部提交后执行。
+ */
+function orphanedMediaKeys(
+  snapshot: Record<string, unknown[]>,
+  importedRows: Array<Record<string, unknown>>
+): string[] {
+  const reused = new Set(
+    importedRows
+      .map((row) => row.kv_key)
+      .filter((key): key is string => typeof key === "string" && key.length > 0)
+  );
+  const orphaned = new Set<string>();
+  for (const row of (snapshot.media_assets ?? []) as Array<
+    Record<string, unknown>
+  >) {
+    const key = row.kv_key;
+    if (
+      row.storage_type === "kv" &&
+      typeof key === "string" &&
+      key.length > 0 &&
+      !reused.has(key)
+    ) {
+      orphaned.add(key);
+    }
+  }
+  return [...orphaned];
 }
 
 export async function handleImport(
@@ -442,77 +585,96 @@ export async function handleImport(
     }
 
     // 备份当前全量数据到 KV（7 天 TTL），失败即中止导入——宁可不写也不留无备份的破坏性操作
-    const backupKey = await backupBeforeImport(env, byTable);
+    const { key: backupKey, snapshot } = await backupBeforeImport(env, byTable);
 
-    // ── 阶段 2：入库（列名只取自白名单常量；空表跳过，保持「提供即替换」语义） ──
-    const imported: Record<string, number> = {};
-    const skippedSecretRows: string[] = [];
+    // ── 阶段 2：事务化入库（#87 / H9） ──
+    // 先按 FK 顺序构造全部 DELETE（先子后父）与 INSERT（先父后子），
+    // 再分批交给 env.DB.batch()；D1 batch 是 SQL 事务，批内任一句失败即整批回滚。
+    // 跨批失败时用阶段 1.5 的本机快照自动回滚，不留「旧数据已删、新数据未写完」的半空库。
+    const touchedTables = new Set(byTable.keys());
+    const inserts = buildInsertStatements(env, byTable, {
+      sanitize: true,
+      skipSecrets: true,
+    });
+    const statements = [
+      ...buildDeleteStatements(env, touchedTables, byTable),
+      ...inserts.statements,
+    ];
 
-    // 2a) 删除：先子后父（兼容 ON DELETE RESTRICT 的存量库）
-    for (const table of DELETE_ORDER) {
-      const rows = byTable.get(table);
-      if (!rows || rows.length === 0) continue;
-      const skipKeys = IMPORTABLE_TABLES[table].skipKeys;
-      if (skipKeys) {
-        // 密钥行所在的表（见描述符 skipKeys）：只清理非密钥行，本机密钥/凭据保留
-        await env.DB.prepare(
-          `DELETE FROM ${table} WHERE key NOT IN (${skipKeys.map(() => "?").join(", ")})`
-        )
-          .bind(...skipKeys)
-          .run();
-      } else {
-        await env.DB.prepare(`DELETE FROM ${table}`).run();
+    let batches = 0;
+    try {
+      batches = await executeBatchChunks(env, statements);
+    } catch (e) {
+      console.error(
+        "Import batch failed:",
+        e instanceof Error ? e.message : String(e)
+      );
+      let restored = false;
+      try {
+        const restoreRows = new Map(
+          Object.entries(snapshot).map(([table, rows]) => [
+            table,
+            rows as Array<Record<string, unknown>>,
+          ])
+        );
+        await executeBatchChunks(env, [
+          ...buildDeleteStatements(env, touchedTables),
+          ...buildInsertStatements(env, restoreRows, {
+            sanitize: false,
+            // 本机密钥/心跳行从未被导入 DELETE 触及（NOT IN 名单），回滚时同样跳过
+            skipSecrets: true,
+          }).statements,
+        ]);
+        restored = true;
+      } catch (restoreError) {
+        console.error(
+          "Import rollback failed:",
+          restoreError instanceof Error
+            ? restoreError.message
+            : String(restoreError)
+        );
       }
+      // 不回显异常原文（可能含 SQL 表名 / 语句）；只给运维备份键与回滚结果
+      return Response.json(
+        {
+          code: ErrorCodes.SERVER_ERROR,
+          message: "Import failed: internal error",
+          data: { backup_key: backupKey, restored },
+        },
+        { status: 500 }
+      );
     }
 
-    // 2b) 插入：先父后子；净化 + 密钥行跳过
-    for (const table of INSERT_ORDER) {
-      const descriptor = IMPORTABLE_TABLES[table];
-      const rows = byTable.get(table);
-      if (!rows || rows.length === 0) continue;
-
-      const writable = rows
-        .map((row) => {
-          if (!descriptor.sanitizeColumns) return row;
-          const out = { ...row };
-          for (const key of descriptor.sanitizeColumns) {
-            if (typeof out[key] === "string")
-              out[key] = sanitizeHtml(out[key] as string);
-          }
-          return out;
-        })
-        .filter((row) => {
-          // 密钥行跳过（见描述符 skipKeys）：跨环境导入保留本机密钥/凭据
-          const skipKeys = descriptor.skipKeys;
-          if (!skipKeys) return true;
-          if (typeof row.key === "string" && skipKeys.includes(row.key)) {
-            skippedSecretRows.push(row.key);
-            return false;
-          }
-          return true;
-        });
-
-      for (const row of writable) {
-        const cols = descriptor.columns.filter((c) => c in row);
-        const placeholders = cols.map(() => "?").join(", ");
-        await env.DB.prepare(
-          `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
-        )
-          .bind(...cols.map((c) => row[c]))
-          .run();
+    // 2c) KV 孤儿清理：只在 DB 全部提交后做，且跳过新导入复用的 key
+    const orphanKeys = orphanedMediaKeys(
+      snapshot,
+      byTable.get("media_assets") ?? []
+    );
+    const kvCleanupFailures: string[] = [];
+    for (const key of orphanKeys) {
+      try {
+        await env.MEDIA.delete(key);
+      } catch (e) {
+        kvCleanupFailures.push(key);
+        console.error(
+          "Media KV cleanup failed for an orphaned key:",
+          e instanceof Error ? e.message : String(e)
+        );
       }
-      imported[table] = writable.length;
     }
 
     const note =
-      skippedSecretRows.length > 0
-        ? `；已跳过密钥行：${skippedSecretRows.join(", ")}`
+      inserts.skippedSecretRows.length > 0
+        ? `；已跳过密钥行：${inserts.skippedSecretRows.join(", ")}`
         : "";
     return successResponse(
       {
-        imported,
-        skipped_secret_rows: skippedSecretRows,
+        imported: inserts.imported,
+        skipped_secret_rows: inserts.skippedSecretRows,
         backup_key: backupKey,
+        batches,
+        kv_orphans_deleted: orphanKeys.length - kvCleanupFailures.length,
+        kv_cleanup_failed: kvCleanupFailures.length,
       },
       "Data imported successfully" + note
     );

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { handleImport } from "../src/handlers/admin";
+import {
+  handleImport,
+  MAX_IMPORT_BATCH_STATEMENTS,
+} from "../src/handlers/admin";
+import { router } from "../src/router";
+import { generateToken } from "../src/middleware/auth";
 import type { Env } from "../src/index";
 
 /**
@@ -19,16 +24,30 @@ interface RecordedStatement {
   binds: unknown[];
 }
 
+interface RecordingDbOptions {
+  existingCount?: number;
+  /** SELECT 返回值（按表名），供 #87 快照/孤儿清理测试构造存量数据 */
+  selectRows?: Record<string, unknown[]>;
+  /** 在第 N 次 batch（0 基）且语句满足条件时抛错——模拟 D1 事务失败 */
+  failBatchOn?: (batchIndex: number, stmts: RecordedStatement[]) => boolean;
+  /** 批提交成功后逐句应用到外部状态；失败批次在抛错前不应用，模拟整批回滚 */
+  apply?: (stmt: RecordedStatement) => void;
+}
+
 /**
- * 记录全部 prepare/bind 序列的假 D1（prepare 顺序即真实执行顺序；bind 写入同一记录对象）。
- * #86：新增 all()（COUNT 查询返回现有行数，其余返回空）与 MEDIA KV（备份 put）。
+ * 记录全部 prepare/bind/batch 序列的假 D1（prepare 顺序即真实执行顺序）。
+ * #86：all() 返回 COUNT/快照数据；MEDIA KV 记录 put。
+ * #87：batch() 按调用批次记录，可选失败注入与状态应用，用于原子性断言。
  * 所有读值默认「现有 100 行」——让常规导入不触发异常规模阈值，避免影响 #23 基线断言。
  */
-function recordingDb(options: { existingCount?: number } = {}): {
+function recordingDb(options: RecordingDbOptions = {}): {
   db: unknown;
   statements: RecordedStatement[];
+  batches: RecordedStatement[][];
 } {
   const statements: RecordedStatement[] = [];
+  const batches: RecordedStatement[][] = [];
+  const records = new WeakMap<object, RecordedStatement>();
   const existingCount = options.existingCount ?? 100;
   const prepare = (sql: string) => {
     const stmt: RecordedStatement = { sql, binds: [] };
@@ -38,57 +57,76 @@ function recordingDb(options: { existingCount?: number } = {}): {
         stmt.binds = binds;
         return api;
       },
-      all: () =>
-        Promise.resolve({
-          results: /COUNT\(\*\)/i.test(sql)
-            ? [{ count: existingCount }]
-            : ([] as unknown[]),
-        }),
+      all: () => {
+        if (/COUNT\(\*\)/i.test(sql))
+          return Promise.resolve({ results: [{ count: existingCount }] });
+        const table = /FROM\s+(\w+)/i.exec(sql)?.[1];
+        return Promise.resolve({
+          results: (table && options.selectRows?.[table]) || ([] as unknown[]),
+        });
+      },
       run: () => Promise.resolve({ success: true, meta: { last_row_id: 0 } }),
     };
+    records.set(api, stmt);
     return api;
   };
-  return { db: { prepare }, statements };
+  const batch = async (stmts: unknown[]) => {
+    const recorded = stmts.map(
+      (s) => records.get(s as object) ?? { sql: "UNKNOWN", binds: [] }
+    );
+    const batchIndex = batches.length;
+    batches.push(recorded);
+    if (options.failBatchOn?.(batchIndex, recorded)) {
+      throw new Error("simulated D1 batch failure");
+    }
+    for (const stmt of recorded) options.apply?.(stmt);
+  };
+  return { db: { prepare, batch }, statements, batches };
 }
 
-/** 记录 put 调用的假 MEDIA KV（#86 备份） */
+/** 记录 put/delete 调用的假 MEDIA KV（#86 备份 + #87 孤儿清理） */
 function recordingMedia(): {
   media: Env["MEDIA"];
   puts: Array<{ key: string; value: string; options?: unknown }>;
+  deletes: string[];
 } {
   const puts: Array<{ key: string; value: string; options?: unknown }> = [];
+  const deletes: string[] = [];
   const media = {
     put: (key: string, value: string, options?: unknown) => {
       puts.push({ key, value, options });
       return Promise.resolve();
     },
     get: () => Promise.resolve(null),
-    delete: () => Promise.resolve(),
+    delete: (key: string) => {
+      deletes.push(key);
+      return Promise.resolve();
+    },
   } as unknown as Env["MEDIA"];
-  return { media, puts };
+  return { media, puts, deletes };
 }
 
 function makeEnv(db: unknown, media?: Env["MEDIA"]): Env {
   return { DB: db, MEDIA: media ?? recordingMedia().media } as unknown as Env;
 }
 
-/** 以给定 export_data 发起导入，返回响应、SQL 语句与 KV 备份记录 */
+/** 以给定 export_data 发起导入，返回响应、SQL 语句、batch 分组与 KV 记录 */
 async function runImport(
   tables: Record<string, unknown[]>,
   options: {
     dryRun?: boolean;
     confirm?: boolean;
-    existingCount?: number;
+    dbOptions?: RecordingDbOptions;
   } = {}
 ): Promise<{
   res: Response;
   statements: RecordedStatement[];
+  batches: RecordedStatement[][];
   puts: Array<{ key: string; value: string; options?: unknown }>;
+  deletes: string[];
 }> {
-  const { db, statements } = recordingDb({
-    existingCount: options.existingCount,
-  });
-  const { media, puts } = recordingMedia();
+  const { db, statements, batches } = recordingDb(options.dbOptions);
+  const { media, puts, deletes } = recordingMedia();
   const params = new URLSearchParams();
   if (options.dryRun) params.set("dry_run", "1");
   if (options.confirm) params.set("confirm", "1");
@@ -102,7 +140,7 @@ async function runImport(
     }
   );
   const res = await handleImport(request, makeEnv(db, media));
-  return { res, statements, puts };
+  return { res, statements, batches, puts, deletes };
 }
 
 async function bodyOf(res: Response): Promise<{
@@ -402,7 +440,7 @@ describe("handleImport 破坏性操作刹车（issue #86 / H5）", () => {
   it("dry_run=1 只返回将要删除/插入行数，不执行任何 DELETE/INSERT、不写 KV", async () => {
     const { res, statements, puts } = await runImport(minimalBackup, {
       dryRun: true,
-      existingCount: 3,
+      dbOptions: { existingCount: 3 },
     });
 
     expect(res.status).toBe(200);
@@ -455,10 +493,13 @@ describe("handleImport 破坏性操作刹车（issue #86 / H5）", () => {
         slug: `c${i}`,
       })),
     };
-    const denied = await runImport(big, { existingCount: 10 });
+    const denied = await runImport(big, { dbOptions: { existingCount: 10 } });
     expect(denied.res.status).toBe(400);
 
-    const allowed = await runImport(big, { existingCount: 10, confirm: true });
+    const allowed = await runImport(big, {
+      dbOptions: { existingCount: 10 },
+      confirm: true,
+    });
     expect(allowed.res.status).toBe(200);
   });
 
@@ -470,9 +511,9 @@ describe("handleImport 破坏性操作刹车（issue #86 / H5）", () => {
         slug: `c${i}`,
       })),
     };
-    expect((await runImport(exact, { existingCount: 10 })).res.status).toBe(
-      200
-    );
+    expect(
+      (await runImport(exact, { dbOptions: { existingCount: 10 } })).res.status
+    ).toBe(200);
   });
 
   it("dry-run 也报告 needs_confirm=true（供调用方预判）", async () => {
@@ -505,5 +546,293 @@ describe("handleImport 破坏性操作刹车（issue #86 / H5）", () => {
     expect(statements.some((s) => /^\s*(DELETE|INSERT)\b/i.test(s.sql))).toBe(
       false
     );
+  });
+});
+
+/**
+ * issue #87（H9）：batch 原子替换 + KV 孤儿清理。
+ * fake D1 的 batch 在「失败注入」命中时抛错且不应用任何语句（对齐 D1 batch 事务语义），
+ * 从而可以直接断言「DELETE 不生效、库保持导入前状态」。
+ */
+describe("handleImport batch 原子替换（issue #87 / H9）", () => {
+  type Row = Record<string, unknown>;
+  const oldRow: Row = {
+    key: "site_title",
+    value: "OLD",
+    is_public: 0,
+    updated_at: "2024-01-01",
+  };
+
+  it("batch 中某条 INSERT 失败时 DELETE 不生效，快照回滚后库保持导入前状态", async () => {
+    const state: Record<string, Row[]> = { site_config: [{ ...oldRow }] };
+    const apply = (stmt: RecordedStatement) => {
+      const table = tableOf(stmt.sql);
+      if (stmt.sql.startsWith("DELETE")) {
+        state[table] = [];
+        return;
+      }
+      const cols = /INSERT INTO \w+ \(([^)]+)\)/.exec(stmt.sql)?.[1] ?? "";
+      (state[table] ??= []).push(
+        Object.fromEntries(
+          cols.split(", ").map((col, i) => [col, stmt.binds[i]])
+        )
+      );
+    };
+
+    const { res, batches, deletes } = await runImport(
+      {
+        site_config: [
+          {
+            key: "site_title",
+            value: "NEW",
+            is_public: 0,
+            updated_at: "2024-01-02",
+          },
+        ],
+      },
+      {
+        dbOptions: {
+          selectRows: { site_config: [{ ...oldRow }] },
+          failBatchOn: (index, stmts) =>
+            index === 0 &&
+            stmts.some((s) => s.sql.startsWith("INSERT INTO site_config")),
+          apply,
+        },
+      }
+    );
+
+    expect(res.status).toBe(500);
+    const body = await bodyOf(res);
+    expect(body.message).toBe("Import failed: internal error");
+    expect(body.message).not.toMatch(/site_config|INSERT|DELETE|SELECT/);
+    expect(body.data).toMatchObject({ restored: true });
+    expect(body.data?.backup_key).toEqual(
+      expect.stringMatching(/^backup:\d{4}-\d{2}-\d{2}T/)
+    );
+
+    // 第一批含 DELETE + 新 INSERT（整批失败，未应用）；第二批为快照回滚
+    expect(batches).toHaveLength(2);
+    expect(
+      batches[0].some((s) => s.sql.startsWith("DELETE FROM site_config"))
+    ).toBe(true);
+    expect(
+      batches[1].some((s) => s.sql.startsWith("INSERT INTO site_config"))
+    ).toBe(true);
+    expect(state.site_config).toEqual([oldRow]);
+    // DB 未提交，KV 对象不得提前清理
+    expect(deletes).toEqual([]);
+  });
+
+  it("跨表 batch 顺序满足外键约束：DELETE 先子后父、INSERT 先父后子，且顺序与输入顺序无关", async () => {
+    const scrambled: Record<string, unknown[]> = {
+      site_config: minimalBackup.site_config,
+      media_assets: minimalBackup.media_assets,
+      friend_links: minimalBackup.friend_links,
+      comments: minimalBackup.comments,
+      articles: minimalBackup.articles,
+      article_likes: minimalBackup.article_likes,
+      tags: minimalBackup.tags,
+      article_tags: minimalBackup.article_tags,
+      categories: minimalBackup.categories,
+    };
+
+    const { res, batches } = await runImport(scrambled);
+    expect(res.status).toBe(200);
+    const flat = batches.flat();
+    expect(
+      flat.filter((s) => s.sql.startsWith("DELETE")).map((s) => tableOf(s.sql))
+    ).toEqual(DELETE_ORDER);
+    expect(
+      flat.filter((s) => s.sql.startsWith("INSERT")).map((s) => tableOf(s.sql))
+    ).toEqual(INSERT_ORDER);
+  });
+
+  it(`大导入按 ${MAX_IMPORT_BATCH_STATEMENTS} 条/批切分，每批都是一次 batch 调用且顺序不乱`, async () => {
+    const rows = Array.from({ length: 450 }, (_, i) => ({
+      key: `k${i}`,
+      value: "v",
+      is_public: 0,
+      updated_at: "2024-01-01",
+    }));
+    const { res, batches } = await runImport({ site_config: rows });
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).data?.batches).toBe(3);
+    expect(batches.map((b) => b.length)).toEqual([
+      MAX_IMPORT_BATCH_STATEMENTS,
+      MAX_IMPORT_BATCH_STATEMENTS,
+      51,
+    ]);
+    expect(batches[0][0].sql).toBe(
+      "DELETE FROM site_config WHERE key NOT IN (?, ?, ?, ?, ?)"
+    );
+    expect(
+      batches.flat().filter((s) => s.sql.startsWith("INSERT"))
+    ).toHaveLength(450);
+  });
+});
+
+describe("handleImport KV 孤儿清理（issue #87 / H9）", () => {
+  it("替换 media_assets 时逐个删除旧 kv_key，跳过新导入复用的 key 与非 kv 存储", async () => {
+    const oldRows = [
+      { id: 1, kv_key: "old-1", storage_type: "kv" },
+      { id: 2, kv_key: "reused", storage_type: "kv" },
+      { id: 3, kv_key: "remote-url", storage_type: "remote" },
+      { id: 4, kv_key: null, storage_type: "kv" },
+    ];
+    const imported = [
+      {
+        id: 2,
+        filename: "f",
+        original_name: "f",
+        mime_type: "image/png",
+        file_size: 1,
+        kv_key: "reused",
+        storage_type: "kv",
+        alt_text: null,
+        created_at: "2024-01-01",
+        uploaded_by: null,
+      },
+      {
+        id: 5,
+        filename: "g",
+        original_name: "g",
+        mime_type: "image/png",
+        file_size: 2,
+        kv_key: "new-1",
+        storage_type: "kv",
+        alt_text: null,
+        created_at: "2024-01-01",
+        uploaded_by: null,
+      },
+    ];
+
+    const { res, deletes, batches } = await runImport(
+      { media_assets: imported },
+      { dbOptions: { selectRows: { media_assets: oldRows } } }
+    );
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).data).toMatchObject({
+      kv_orphans_deleted: 1,
+      kv_cleanup_failed: 0,
+    });
+    expect(deletes).toEqual(["old-1"]);
+    expect(
+      batches.flat().some((s) => s.sql === "DELETE FROM media_assets")
+    ).toBe(true);
+  });
+
+  it("KV 删除失败不影响已提交的 DB 导入，响应如实报数且不含异常原文", async () => {
+    const { db, statements } = recordingDb({
+      selectRows: {
+        media_assets: [{ id: 1, kv_key: "old-1", storage_type: "kv" }],
+      },
+    });
+    const media = {
+      put: () => Promise.resolve(),
+      get: () => Promise.resolve(null),
+      delete: () => Promise.reject(new Error("KV service unavailable")),
+    } as unknown as Env["MEDIA"];
+    const request = new Request("https://example.com/api/v1/admin/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        export_data: {
+          media_assets: [
+            {
+              id: 2,
+              kv_key: "new-1",
+              storage_type: "kv",
+              created_at: "2024-01-01",
+            },
+          ],
+        },
+      }),
+    });
+
+    const res = await handleImport(request, makeEnv(db, media));
+    expect(res.status).toBe(200);
+    const body = await bodyOf(res);
+    expect(body.data).toMatchObject({
+      kv_orphans_deleted: 0,
+      kv_cleanup_failed: 1,
+    });
+    expect(JSON.stringify(body)).not.toContain("KV service unavailable");
+    expect(
+      statements.some((s) => s.sql.startsWith("DELETE FROM media_assets"))
+    ).toBe(true);
+  });
+});
+
+/** #87 验收：路由层鉴权口径未因事务化改造而退化 */
+describe("admin/import 路由鉴权（issue #87 / H9）", () => {
+  const JWT_SECRET = "issue87-import-test-secret";
+
+  function authEnv(role?: "admin" | "editor"): Env {
+    const prepare = (sql: string) => {
+      const stmt = {
+        sql,
+        binds: [] as unknown[],
+        bind(...binds: unknown[]) {
+          stmt.binds = binds;
+          return stmt;
+        },
+        first: () => {
+          if (sql.includes("key = 'jwt_secret'"))
+            return Promise.resolve({ value: JWT_SECRET });
+          if (sql.includes("FROM users"))
+            return Promise.resolve(
+              role ? { role, must_change_password: 0 } : null
+            );
+          return Promise.resolve(null);
+        },
+        all: () => Promise.resolve({ results: [] as unknown[] }),
+        run: () => Promise.resolve({ success: true, meta: {} }),
+      };
+      return stmt;
+    };
+    return {
+      DB: {
+        prepare,
+        batch: () => Promise.resolve([]),
+      },
+      MEDIA: recordingMedia().media,
+      RATE_LIMIT: {
+        get: () => Promise.resolve(null),
+        put: () => Promise.resolve(),
+      },
+    } as unknown as Env;
+  }
+
+  async function callImport(role?: "admin" | "editor"): Promise<Response> {
+    const headers: Record<string, string> = {};
+    if (role) {
+      headers.Authorization = `Bearer ${await generateToken(
+        role === "admin" ? "adminuser" : "editoruser",
+        JWT_SECRET
+      )}`;
+    }
+    const request = new Request(
+      "https://api.example.test/api/v1/admin/import",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ export_data: { site_config: [] } }),
+      }
+    );
+    const ctx = {
+      waitUntil: () => {},
+      passThroughOnException: () => {},
+    } as unknown as ExecutionContext;
+    return router(request, authEnv(role), ctx);
+  }
+
+  it("未登录返回 401", async () => {
+    expect((await callImport()).status).toBe(401);
+  });
+
+  it("editor 返回 403", async () => {
+    expect((await callImport("editor")).status).toBe(403);
   });
 });
