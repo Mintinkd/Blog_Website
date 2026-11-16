@@ -9,7 +9,7 @@ import {
   ErrorCodes,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
-import { generateSlug } from "../services/article_service";
+import { generateSlug, slugExists } from "../services/article_service";
 import { getUserIdByUsername } from "../services/user_service";
 import type { AuthResult } from "../middleware/auth";
 
@@ -212,10 +212,7 @@ export async function handleCreateArticle(
         "链接标识格式无效：仅支持小写字母、数字、中文与连字符"
       );
     }
-    const dup = await env.DB.prepare("SELECT id FROM articles WHERE slug = ?")
-      .bind(slug)
-      .first();
-    if (dup) {
+    if (await slugExists(env, slug)) {
       return error(ErrorCodes.CONFLICT, "链接标识已被占用，请更换");
     }
   }
@@ -268,12 +265,7 @@ export async function handleUpdateArticle(
         "链接标识格式无效：仅支持小写字母、数字、中文与连字符"
       );
     }
-    const dup = await env.DB.prepare(
-      "SELECT id FROM articles WHERE slug = ? AND id <> ?"
-    )
-      .bind(slug, Number(id))
-      .first();
-    if (dup) {
+    if (await slugExists(env, slug, Number(id))) {
       return error(ErrorCodes.CONFLICT, "链接标识已被占用，请更换");
     }
   }

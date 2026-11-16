@@ -167,13 +167,8 @@ function makeEnv(state: State): Env {
             published_at: state.article.published_at,
           } as T;
         }
-        if (sql.includes("SELECT slug FROM articles WHERE id = ?")) {
-          return { slug: state.article.slug } as T;
-        }
-        if (
-          sql.includes("FROM articles a") &&
-          sql.includes("WHERE a.slug = ?")
-        ) {
+        // issue #101 / M21：写后重读改为按 id（不再先查 slug 再回环到 getArticleBySlug）。
+        if (sql.includes("FROM articles a") && sql.includes("WHERE a.id = ?")) {
           return {
             ...state.article,
             category_id: null,

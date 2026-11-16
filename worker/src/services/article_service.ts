@@ -265,6 +265,21 @@ function mapArticleDetail(
   };
 }
 
+async function loadArticleDetailById(
+  env: Env,
+  id: unknown
+): Promise<ArticleDetail | null> {
+  const row = await env.DB.prepare(
+    `${ARTICLE_DETAIL_SELECT}
+    WHERE a.id = ?
+  `
+  )
+    .bind(id)
+    .first();
+  if (!row) return null;
+  return mapArticleDetail(row, await loadArticleTags(env, row.id));
+}
+
 export async function getArticleBySlug(
   env: Env,
   slug: string
@@ -280,6 +295,26 @@ export async function getArticleBySlug(
   if (!row) return null;
 
   return mapArticleDetail(row, await loadArticleTags(env, row.id));
+}
+
+/**
+ * slug 唯一性检查单点（issue #101 / M21）：handler 创建/更新前的冲突检查、
+ * service 创建时的后缀兜底都走这里，避免散落 SQL 口径漂移。
+ * `excludeId` 用于更新时排除自身。
+ */
+export async function slugExists(
+  env: Env,
+  slug: string,
+  excludeId?: number
+): Promise<boolean> {
+  const sql =
+    excludeId === undefined
+      ? "SELECT id FROM articles WHERE slug = ?"
+      : "SELECT id FROM articles WHERE slug = ? AND id <> ?";
+  const row = await env.DB.prepare(sql)
+    .bind(...(excludeId === undefined ? [slug] : [slug, excludeId]))
+    .first<{ id: number }>();
+  return row != null;
 }
 
 /**
@@ -328,14 +363,10 @@ export async function createArticle(
   let slug =
     data.slug && data.slug.trim() ? data.slug.trim() : generateSlug(data.title);
   if (!slug) slug = generateSlug(data.title);
-  // 唯一性兜底：冲突时追加 -n 后缀
+  // 唯一性兜底：冲突时追加 -n 后缀（slug 检查统一走 slugExists，issue #101）
   const slugBase = slug;
   let n = 2;
-  while (
-    await env.DB.prepare("SELECT id FROM articles WHERE slug = ?")
-      .bind(slug)
-      .first()
-  ) {
+  while (await slugExists(env, slug)) {
     slug = `${slugBase}-${n++}`;
   }
   const now = new Date().toISOString();
@@ -385,8 +416,9 @@ export async function createArticle(
     }
   }
 
-  const article = await getArticleBySlug(env, slug);
-  return article!;
+  // issue #101 / M21：不再反调公开的 getArticleBySlug 形成回环，
+  // 直接用 last_row_id 按 id 读回完整详情（与 getArticleBySlug 共享 SELECT / 映射，形状不变）。
+  return (await loadArticleDetailById(env, article_id))!;
 }
 
 export async function checkArticleOwnership(
@@ -488,10 +520,9 @@ export async function updateArticle(
     }
   }
 
-  const article = await env.DB.prepare("SELECT slug FROM articles WHERE id = ?")
-    .bind(id)
-    .first<{ slug: string }>();
-  return article ? getArticleBySlug(env, article.slug) : null;
+  // issue #101 / M21：不再「先查 slug 再 getArticleBySlug」回环，
+  // 直接按 id 读回完整详情（SELECT / 映射与 getArticleBySlug 共享，形状不变）。
+  return loadArticleDetailById(env, id);
 }
 
 export async function deleteArticle(env: Env, id: number): Promise<boolean> {
