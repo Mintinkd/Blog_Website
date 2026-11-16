@@ -2,6 +2,7 @@ import { Env } from "../index";
 import {
   successResponse,
   error,
+  serverError,
   ErrorCodes,
   forbidden,
   unauthorized,
@@ -12,6 +13,7 @@ import { sanitizeHtml, escapeHtml } from "../utils/sanitizer";
 import { SubmitCommentRequest } from "../models/comment";
 import type { AuthResult } from "../middleware/auth";
 import { getClientIpString } from "../utils/client_ip";
+import { hashIp, MissingIpHashSecretError } from "../utils/ip_hash";
 import { getUserIdByUsername } from "../services/user_service";
 
 export async function handleListComments(
@@ -90,7 +92,16 @@ export async function handleSubmitComment(
   const content = sanitizeHtml(String(body.content).trim());
 
   const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
-  const ip_hash = await hashIp(ip);
+  let ip_hash: string;
+  try {
+    // issue #104 / L5：盐来自服务端 secret；未配置时 fail-closed，不写弱盐哈希。
+    ip_hash = await hashIp(ip, "blog", env.IP_HASH_SECRET);
+  } catch (err) {
+    if (err instanceof MissingIpHashSecretError) {
+      return serverError("Comment service temporarily unavailable");
+    }
+    throw err;
+  }
 
   const articleExists = await env.DB.prepare(
     "SELECT id FROM articles WHERE id = ?"
@@ -249,13 +260,4 @@ export async function handleDeleteComment(
   if (result.meta.changes === 0) return notFound("Comment not found");
 
   return successResponse(null, "Comment deleted");
-}
-
-async function hashIp(ip: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(ip + "-salt-blog-2024");
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }

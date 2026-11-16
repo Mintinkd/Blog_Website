@@ -68,7 +68,8 @@ function makeMissingArticleDb(): FakeDb {
 }
 
 function makeEnv(db: unknown): Env {
-  return { DB: db } as unknown as Env;
+  // #104 / L5：ip_hash 的盐来自服务端 secret，桩环境必须提供，否则 fail-closed。
+  return { DB: db, IP_HASH_SECRET: "test-ip-hash-secret" } as unknown as Env;
 }
 
 function request(method: "POST" | "GET", id: string): Request {

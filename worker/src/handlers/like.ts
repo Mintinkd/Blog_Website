@@ -7,14 +7,30 @@ import {
   ErrorCodes,
 } from "../utils/response";
 import { getClientIpString } from "../utils/client_ip";
+import {
+  hashIp,
+  MissingIpHashSecretError,
+  type IpHashScope,
+} from "../utils/ip_hash";
 
-async function hashIp(ip: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(ip + "-salt-like-2024");
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/**
+ * 解析请求 IP 并计算 `ip_hash`（#104 / L5）。
+ * secret 未配置时返回 `Response`（500 fail-closed），调用方直接透出。
+ */
+async function resolveIpHash(
+  request: Request,
+  env: Env,
+  scope: IpHashScope
+): Promise<string | Response> {
+  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
+  try {
+    return await hashIp(ip, scope, env.IP_HASH_SECRET);
+  } catch (err) {
+    if (err instanceof MissingIpHashSecretError) {
+      return serverError("Like service temporarily unavailable");
+    }
+    throw err;
+  }
 }
 
 /**
@@ -39,8 +55,8 @@ export async function handleToggleLike(
 ): Promise<Response> {
   const { article_id } = params;
   if (!isValidArticleId(article_id)) return invalidArticleId();
-  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
-  const ip_hash = await hashIp(ip);
+  const ip_hash = await resolveIpHash(request, env, "like");
+  if (ip_hash instanceof Response) return ip_hash;
 
   const article = await env.DB.prepare("SELECT id FROM articles WHERE id = ?")
     .bind(article_id)
@@ -90,8 +106,8 @@ export async function handleLikeStatus(
 ): Promise<Response> {
   const { article_id } = params;
   if (!isValidArticleId(article_id)) return invalidArticleId();
-  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
-  const ip_hash = await hashIp(ip);
+  const ip_hash = await resolveIpHash(request, env, "like");
+  if (ip_hash instanceof Response) return ip_hash;
 
   const existing = await env.DB.prepare(
     "SELECT id FROM article_likes WHERE article_id = ? AND ip_hash = ?"

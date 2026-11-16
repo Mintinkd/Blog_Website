@@ -10,6 +10,8 @@ export interface Env {
   API_PREFIX: string;
   /** #84 / H3：与 Pages 共享的访客 IP 签名密钥（wrangler secret）；未配置时 fail-closed 不采信 X-Real-IP */
   VISITOR_IP_SIGNING_SECRET?: string;
+  /** #104 / L5：ip_hash 的服务端盐（wrangler secret）；未配置时点赞 / 评论 fail-closed */
+  IP_HASH_SECRET?: string;
 }
 
 export default {

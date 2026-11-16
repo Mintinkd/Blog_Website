@@ -716,6 +716,22 @@ cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
 - 算法：`HMAC-SHA256("client-ip:v1:" + ip, secret)`，前端 `src/utils/visitorIpSigning.ts` 与 Worker `worker/src/utils/client_ip.ts` 逐字一致，跨端一致性由 `tests/visitor-ip-signing.test.ts` 守卫。
 - 轮换 secret 会使存量 IP 签名瞬间失效（仅影响去重精度，无安全问题），无需迁移数据。
 
+### IP 哈希盐（#104 / L5，必配）
+
+点赞去重与评论溯源存的 `ip_hash` 由服务端盐参与计算；盐缺失时**点赞与评论提交 fail-closed 返回 500**（宁不可用，也不写弱盐哈希）。
+
+```bash
+# 生产：Worker 侧 secret（只需 Worker，Pages 侧不需要）
+cd worker && npx wrangler secret put IP_HASH_SECRET
+
+# 本地开发：worker/.dev.vars 里写一行（该文件在 .gitignore，勿提交）
+echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
+```
+
+- 算法：`SHA-256("ip-hash:v1:<域>:<ip>:<secret>")`，`<域>` 为 `blog`（评论）或 `like`（点赞）——一份 secret 派生两域盐，两域哈希不可交叉比对。单点实现 `worker/src/utils/ip_hash.ts`，源码中不再有任何字面量盐（`worker/tests/ip_hash.test.ts` 静态守卫）。
+- 轮换 secret：`ip_hash` 全部变化，效果是**点赞去重一次性重置**（同一访客可再点一次）；评论的 `ip_hash` 仅用于溯源展示，无功能依赖。存量数据无法在不知明文 IP 的前提下重算，故**不迁移**。
+- 未配置 secret 时的症状：点赞 / 评论提交 500，其余读接口正常。
+
 ### Cloudflare 资源
 
 需要提前在 Cloudflare Dashboard 中创建：
