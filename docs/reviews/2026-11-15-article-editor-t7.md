@@ -70,7 +70,7 @@
 
 ## 已知限制 / out-of-scope（如实保留）
 
-1. **WYSIWYG 下插入内嵌链接被降级**：`buildLinkSnippet(..., "embed")` 生成 `<a href="…" data-embed="1">`，但 `MilkdownEditor.insertMarkdown()` 把它当 Markdown 解析，序列化成普通 `[text](url)`，`data-embed` 属性不进入请求体。属 T4/T5 实现缺口，超出 #68「回归 / CI / 文档」范围，本票未擅自改产品逻辑。`8a0fba5` 起 `verify-article-editor.mjs` 对该插入只断言「链接文本进入请求体」并注释成因，不把降级固化成期望；`data-embed="1"` 的保真断言明确针对 mock 语料里的**存量** anchor（这才是「不静默改写存量正文」的关键证据）。建议后续票处理。
+1. **WYSIWYG 下插入内嵌链接被降级**（~~已知缺口~~ → **#74 已修复**）：`buildLinkSnippet(..., "embed")` 生成 `<a href="…" data-embed="1">`，T7 时期 `MilkdownEditor.insertMarkdown()` 的 inline `insert(snippet, true)` 序列化往返会把它降级成普通 `[text](url)`，`data-embed` 不进请求体。当时属 T4/T5 实现缺口、超出 #68「回归 / CI / 文档」范围，故 `8a0fba5` 起回归只断言「链接文本进入请求体」并注释成因，不把降级固化成期望。**#74 收口**：embed 片段改走「更新 form.content → `setMarkdown` 整篇重解析」路径，`embedLinkRemark` 正确建 `embed_link` 节点；回归断言已升级为「新插入链接带 `data-embed="1"`」并加编辑器 DOM 节点断言（`docs/reviews/2026-11-16-embed-link-wysiwyg.md`）。存量 anchor 保真证据不变。已知取舍：整篇重载会把新节点追加到正文末尾而非 ProseMirror 当前光标（普通链接仍走光标处 inline 插入）。
 2. **10 分钟真实心跳未在浏览器快进**：`verifyConflict` 覆盖的是 `save()` 的保存前持有权校验；心跳与它共用 `createEditLock.request → conflictFound → onConflict` 同一分支。`tests/edit-lock.test.ts` 已有「10 分钟心跳用同一 POST 续期」与「心跳冲突立即停表并通知失锁，不再续期」两条 fake timers 用例锁定定时器与冲突路径，按 `docs/agents/testing.md`「同一行为不重复测」口径未在浏览器重复。
 3. **真实用户拖拽未自动化**：T5 只有合成 `DragEvent`；T7 用 `setInputFiles` 覆盖上传链路，真实桌面拖拽保留为 `docs/ARTICLE_EDITOR_UPGRADE.md` §10.4 手工检查项。
 4. **观感 target 未新增独立条目**：四类编辑器目标由既有 `TARGETS[0]`（弹窗 / 选中态）与 `EDITOR_TARGETS[0]`（元信息 / 工具栏）采集覆盖，本票补 `toggles` 采集与 VF-07 断言；新增 target 会重复跑同一套 `collectEditorSnapshot` 断言。按票面「部分实现」如实保留。

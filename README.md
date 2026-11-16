@@ -137,7 +137,7 @@
 │   │   ├── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
 │   │   └── editor/                  # 文章编辑器纯函数基线（issue #62 / T4 #65）
 │   │       ├── markdownBridge.ts    # 语义等价回写守卫 / 规范化比较 / 模式判定 / 保存前二次守卫
-│   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义
+│   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义、isEmbedSnippet 锚点判定（#74）
 │   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
 │   │       ├── uploadImage.ts       # 图片类型 / 10MB 预检、Bearer 上传、{ url, alt } 映射、失败保留正文
 │   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失

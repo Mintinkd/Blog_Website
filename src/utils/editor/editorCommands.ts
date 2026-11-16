@@ -203,11 +203,17 @@ export function buildLinkSnippet(
  *
  * WYSIWYG 下普通链接可用 inline insert，但 embed 锚点必须走「更新正文 →
  * 整篇 setMarkdown」路径，否则 inline 的序列化往返会把 data-embed 降级成
- * 普通 Markdown 链接。只做宽松识别，宁可让罕见变体走 inline（退化为已知
- * 缺口）也绝不把普通链接误判成 embed。
+ * 普通 Markdown 链接。
+ *
+ * 属性识别口径与 embedLink.ts 的 EMBED_FLAG 一致：属性名前必须是行首或空白
+ * （用 `(?:^|\s)` 而非 `\b`，避免 aria-data-embed 之类的属性误判），值仅接受
+ * "1" / '1' / 1。尾部边界较 EMBED_FLAG 多一个 `>`——本函数面对的是完整开标签
+ * （属性值后紧跟 `>`），embedLink.ts 面对的是裸属性串（以空白或行尾结束）。
  */
 export function isEmbedSnippet(snippet: string): boolean {
-  return /<a\b[^>]*\bdata-embed\s*=\s*(?:"1"|'1'|1)(?:\s|>)/i.test(snippet);
+  return /<a\b[^>]*(?:^|\s)data-embed\s*=\s*(?:"1"|'1'|1)(?:\s|>)/i.test(
+    snippet
+  );
 }
 
 /** 插入链接；未提供文字时用去掉协议的 URL 作为链接文字（与现有弹窗一致）。 */

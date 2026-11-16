@@ -240,6 +240,10 @@ describe("插入链接 / 图片", () => {
     expect(
       isEmbedSnippet('<a href="https://a.io" data-embedx="1">预览</a>')
     ).toBe(false);
+    // 与 embedLink.ts 的 EMBED_FLAG 同口径：属性名前须空白，aria-* 不算
+    expect(
+      isEmbedSnippet('<a href="https://a.io" aria-data-embed="1">预览</a>')
+    ).toBe(false);
   });
 
   it("insertLink 无文字时用去协议的 URL，并替换选区", () => {
