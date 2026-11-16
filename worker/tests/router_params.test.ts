@@ -18,6 +18,12 @@ describe("路径编译分型（issue #100）", () => {
     expect("/articles/1.5".match(pattern)).toBeNull();
   });
 
+  it("slug 允许点号 / 波浪号（兼容 v1.0 等存量 slug）", () => {
+    const { pattern } = compileRoutePath("/articles/:slug");
+    expect("/articles/v1.0".match(pattern)?.[1]).toBe("v1.0");
+    expect("/articles/my~post".match(pattern)?.[1]).toBe("my~post");
+  });
+
   it("多段 :article_id / :tag_id 同样分型为数字", () => {
     const { pattern, paramNames } = compileRoutePath(
       "/articles/:article_id/comments/:comment_id"
@@ -81,5 +87,17 @@ describe("matchRoute 分型行为（issue #100）", () => {
     expect(res).not.toBeNull();
     expect(res!.params.path).toBe("a/b.png");
     expect(res!.params["0"]).toBeUndefined();
+  });
+
+  it("原型属性名作为 method 不崩溃（Map 桶，无原型链污染）", () => {
+    for (const method of [
+      "constructor",
+      "toString",
+      "__proto__",
+      "hasOwnProperty",
+    ]) {
+      expect(() => matchRoute(method, "/articles/1")).not.toThrow();
+      expect(matchRoute(method, "/articles/1")).toBeNull();
+    }
   });
 });

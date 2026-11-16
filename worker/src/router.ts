@@ -107,7 +107,10 @@ interface Route {
 
 // issue #100 / M20：按 method 分桶（同时完成 L10 的同域工作，L10 关闭时引用本实现）。
 // 旧实现是单一线性数组 + 每次 matchRoute 过滤 method——注册顺序敏感且白扫无关方法。
-const routesByMethod: Record<string, Route[]> = {};
+// 用 Map 而非 {}：method 来自 request.method，若为 `constructor` / `__proto__`
+// 等原型属性名，普通对象的 `?? []` 会命中继承属性并对非数组执行 for...of → 500。
+// Map 无原型链，未知 method 落到空桶 → 404（与 admin 导入表白名单的同类防护一致）。
+const routesByMethod = new Map<string, Route[]>();
 
 /** 正则元字符转义（路径字面量不当作正则） */
 function escapeRegExpLiteral(s: string): string {
@@ -120,7 +123,9 @@ function escapeRegExpLiteral(s: string): string {
  * - `:id` / `:article_id` / `:comment_id` 等以 `id` 结尾的参数编译为 `(\d+)`，
  *   非法 id 直接不匹配（404），不进入 handler `bind(NaN)`；
  * - `:slug` 编译为 URL-safe 字符集 + 百分号编码（`%[0-9A-Fa-f]{2}`，兼容中文 slug），
- *   拒绝尖括号 / 引号 / 空格等注入字符；
+ *   拒绝**未编码的**尖括号 / 引号 / 空格等注入字符。编码后的 `%3C` 等属合法 URL
+ *   编码（中文 slug 同样靠它），解码内容由 handler 的参数绑定 + 前端 escapeHtml
+ *   保证安全，不在路由层二次拒绝；
  * - 其余 `:name` 保守编译为 `[^/]+`（既有行为不变）；
  * - `*path` 通配具名，regex 为 `(.+)`；
  * - 路径中的正则元字符（. + ? 等）一律转义为字面量。
@@ -150,8 +155,9 @@ export function compileRoutePath(path: string): {
       } else if (name === "id" || name.endsWith("_id")) {
         source += "(\\d+)";
       } else if (name === "slug" || name.endsWith("_slug")) {
-        // URL-safe 字符 + 百分号编码；中文 slug 在 pathname 中是 %xx 形式。
-        source += "((?:[A-Za-z0-9_-]|%[0-9A-Fa-f]{2})+)";
+        // URL-safe 字符（含点号 / 波浪号，兼容 v1.0 这类存量 slug）+ 百分号编码；
+        // 中文 slug 在 pathname 中是 %xx 形式（大小写 hex 均接受）。
+        source += "((?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+)";
       } else {
         source += "([^/]+)";
       }
@@ -180,7 +186,8 @@ function addRoute(
   requireAdmin = false
 ): void {
   const { pattern, paramNames } = compileRoutePath(path);
-  (routesByMethod[method] ??= []).push({
+  const bucket = routesByMethod.get(method) ?? [];
+  bucket.push({
     method,
     pattern,
     paramNames,
@@ -188,6 +195,7 @@ function addRoute(
     requireAuth,
     requireAdmin,
   });
+  routesByMethod.set(method, bucket);
 }
 
 export function matchRoute(
@@ -200,7 +208,7 @@ export function matchRoute(
   requireAdmin: boolean;
 } | null {
   // 只遍历该 method 的桶（issue #100 / M20，兼 L10 method 分桶）
-  for (const route of routesByMethod[method] ?? []) {
+  for (const route of routesByMethod.get(method) ?? []) {
     const match = pathname.match(route.pattern);
     if (match) {
       const params: Record<string, string> = {};
