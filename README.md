@@ -271,7 +271,7 @@ D1 (SQLite) 共 13 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。
+所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。
 
 ### 公开接口
 
@@ -320,7 +320,7 @@ D1 (SQLite) 共 13 张表：
 
 > `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
 
-> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。该切换已由 #64（T3）完成：`useArticleEditor` 统一走此接口，`src/admin/App.vue` 不再请求公开 slug 接口取正文。
+> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400（纯数字但违反 id 契约）/ 404（非数字，路由分型拦截，issue #100）、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。该切换已由 #64（T3）完成：`useArticleEditor` 统一走此接口，`src/admin/App.vue` 不再请求公开 slug 接口取正文。
 
 #### 编辑锁接口
 

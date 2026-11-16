@@ -105,7 +105,64 @@ interface Route {
   requireAdmin: boolean;
 }
 
-const routes: Route[] = [];
+// issue #100 / M20：按 method 分桶（同时完成 L10 的同域工作，L10 关闭时引用本实现）。
+// 旧实现是单一线性数组 + 每次 matchRoute 过滤 method——注册顺序敏感且白扫无关方法。
+const routesByMethod: Record<string, Route[]> = {};
+
+/** 正则元字符转义（路径字面量不当作正则） */
+function escapeRegExpLiteral(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 路由路径编译（issue #100 / M20）。
+ *
+ * - `:id` / `:article_id` / `:comment_id` 等以 `id` 结尾的参数编译为 `(\d+)`，
+ *   非法 id 直接不匹配（404），不进入 handler `bind(NaN)`；
+ * - `:slug` 编译为 URL-safe 字符集 + 百分号编码（`%[0-9A-Fa-f]{2}`，兼容中文 slug），
+ *   拒绝尖括号 / 引号 / 空格等注入字符；
+ * - 其余 `:name` 保守编译为 `[^/]+`（既有行为不变）；
+ * - `*path` 通配具名，regex 为 `(.+)`；
+ * - 路径中的正则元字符（. + ? 等）一律转义为字面量。
+ */
+export function compileRoutePath(path: string): {
+  pattern: RegExp;
+  paramNames: string[];
+} {
+  const paramNames: string[] = [];
+  let source = "";
+  let i = 0;
+  while (i < path.length) {
+    const ch = path[i];
+    if (ch === ":" || ch === "*") {
+      let end = i + 1;
+      while (end < path.length && path[end] !== "/") end += 1;
+      const name = path.slice(i + 1, end);
+      if (!name) {
+        // 零散符号按字面量处理（不应出现）
+        source += escapeRegExpLiteral(ch);
+        i += 1;
+        continue;
+      }
+      paramNames.push(name);
+      if (ch === "*") {
+        source += "(.+)";
+      } else if (name === "id" || name.endsWith("_id")) {
+        source += "(\\d+)";
+      } else if (name === "slug" || name.endsWith("_slug")) {
+        // URL-safe 字符 + 百分号编码；中文 slug 在 pathname 中是 %xx 形式。
+        source += "((?:[A-Za-z0-9_-]|%[0-9A-Fa-f]{2})+)";
+      } else {
+        source += "([^/]+)";
+      }
+      i = end;
+    } else {
+      source += escapeRegExpLiteral(ch);
+      i += 1;
+    }
+  }
+  return { pattern: new RegExp(`^${source}$`), paramNames };
+}
 
 // P1-5 / issue #8 建立；#83 / H1 收严：须改密会话在改密前拒绝**所有鉴权请求**
 // （含 GET 类管理接口），仅保留令牌续期与改密两个豁免路径。
@@ -122,19 +179,10 @@ function addRoute(
   requireAuth = false,
   requireAdmin = false
 ): void {
-  const paramNames: string[] = [];
-  const patternStr = path
-    .replace(/:([^/]+)/g, (_, name) => {
-      paramNames.push(name);
-      return "([^/]+)";
-    })
-    .replace(/\*/g, () => {
-      paramNames.push("0");
-      return "(.+)";
-    });
-  routes.push({
+  const { pattern, paramNames } = compileRoutePath(path);
+  (routesByMethod[method] ??= []).push({
     method,
-    pattern: new RegExp(`^${patternStr}$`),
+    pattern,
     paramNames,
     handler,
     requireAuth,
@@ -142,7 +190,7 @@ function addRoute(
   });
 }
 
-function matchRoute(
+export function matchRoute(
   method: string,
   pathname: string
 ): {
@@ -151,8 +199,8 @@ function matchRoute(
   requireAuth: boolean;
   requireAdmin: boolean;
 } | null {
-  for (const route of routes) {
-    if (route.method !== method) continue;
+  // 只遍历该 method 的桶（issue #100 / M20，兼 L10 method 分桶）
+  for (const route of routesByMethod[method] ?? []) {
     const match = pathname.match(route.pattern);
     if (match) {
       const params: Record<string, string> = {};
@@ -384,7 +432,8 @@ addRoute(
     handleDeleteMedia(req, env, params, auth),
   true
 );
-addRoute("GET", "/media/serve/*", async (req, env, _ctx, params) =>
+// issue #100 / M20：通配参数具名 path（旧实现硬编码数字下标）
+addRoute("GET", "/media/serve/*path", async (req, env, _ctx, params) =>
   handleServeMedia(req, env, params)
 );
 

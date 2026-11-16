@@ -241,8 +241,11 @@ describe("issue #63：鉴权与错误语义（router 全链路）", () => {
     expect(((await response.json()) as ApiBody).code).toBe(10003);
   });
 
-  it.each(["abc", "0", "-1", "1.5", "01", "1e3", "99999999999999999999", " 7"])(
-    "非法 id %j → 400，且不查文章",
+  // issue #100 / M20：:id 编译为 \d+ 后，非数字 id 在路由层即不匹配（404），
+  // 不再进入 handler；纯数字但违反 handler 契约（0 / 前导零 / 超出 safe integer）
+  // 仍由 handler 的 `^[1-9]\d*$` 校验返回 400。两者都不查文章。
+  it.each(["0", "01", "99999999999999999999"])(
+    "纯数字非法 id %j → 400（handler 契约），且不查文章",
     async (id) => {
       const state = makeState({
         authUser: { username: "adminuser", role: "admin" },
@@ -255,6 +258,25 @@ describe("issue #63：鉴权与错误语义（router 全链路）", () => {
 
       expect(response.status).toBe(400);
       expect(((await response.json()) as ApiBody).code).toBe(10001);
+      expect(
+        state.statements.filter((item) => item.sql.includes("FROM articles a"))
+      ).toHaveLength(0);
+    }
+  );
+
+  it.each(["abc", "-1", "1.5", "1e3", " 7"])(
+    "非数字 id %j → 404（路由分型拦截，不进 handler），且不查文章",
+    async (id) => {
+      const state = makeState({
+        authUser: { username: "adminuser", role: "admin" },
+      });
+      const response = await callEdit(
+        state,
+        encodeURIComponent(id),
+        "adminuser"
+      );
+
+      expect(response.status).toBe(404);
       expect(
         state.statements.filter((item) => item.sql.includes("FROM articles a"))
       ).toHaveLength(0);

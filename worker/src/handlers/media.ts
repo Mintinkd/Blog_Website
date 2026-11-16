@@ -283,7 +283,8 @@ export async function handleServeMedia(
   env: Env,
   params: Record<string, string>
 ): Promise<Response> {
-  const key = params["0"] || params.key || "";
+  // issue #100 / M20：通配参数改为具名 path，不再依赖数字下标的旧约定
+  const key = params.path || params.key || "";
   if (!key) return notFound("Media not found");
 
   const value = await env.MEDIA.get(key, { type: "arrayBuffer" });
