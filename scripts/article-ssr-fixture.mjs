@@ -38,13 +38,23 @@ export const PLACEHOLDER_PNG = Buffer.from(
 
 /**
  * motion chunk 匹配：dev 是 `/src/utils/motion.ts`，构建产物是
- * `/motion.<hash>.js`。脚本用同一规则阻断请求并过滤对应的资源报错。
+ * `/motion-<hash>.js` 或 `/motion.<hash>.js`。脚本用同一规则阻断请求并过滤
+ * 对应的资源报错。
+ *
+ * 必须排除 `src/scripts/layout/motion-boot.ts`（issue #103 / L4 从 BaseLayout
+ * 内联脚本拆出的引导模块）：它是 BaseLayout 的静态 import，而 `data-motion-failed`
+ * 的 catch 兜底就写在它里面。把它一并阻断，等于让兜底代码根本不注册，标记永远
+ * 不出现——用例会以「动态 import 的 catch 兜底失效」假红。
  */
-export const MOTION_CHUNK_RE = /\/motion[\w.-]*\.(?:m?js|ts)$/;
+export const MOTION_CHUNK_RE = /\/motion(?:[.-][\w.-]+)?\.(?:m?js|ts)$/;
+
+/** 引导模块是静态 import，不属于「motion chunk」，阻断规则要放行。 */
+export const MOTION_BOOT_RE = /\/motion-boot(?:[.-][\w.-]+)?\.(?:m?js|ts)$/;
 
 export function isMotionChunkUrl(url) {
   try {
-    return MOTION_CHUNK_RE.test(new URL(url).pathname);
+    const pathname = new URL(url).pathname;
+    return MOTION_CHUNK_RE.test(pathname) && !MOTION_BOOT_RE.test(pathname);
   } catch {
     return false;
   }
