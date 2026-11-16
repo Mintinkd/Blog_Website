@@ -98,6 +98,11 @@ export function renderHeadersFile() {
     ...Object.entries(SECURITY_HEADERS).map(
       ([name, value]) => `  ${name}: ${value}`
     ),
+    // issue #96 / M16：指纹资产（带内容哈希的 _assets/*.js|css） immutable 长缓存。
+    // 必须放在 /* 通用块之后（Pages _headers 同具体度后出现的规则生效），
+    // 且 /_assets/* 比 /* 更具体，不会与 HTML 路由护栏的 Cache-Control 冲突。
+    "/_assets/*",
+    "  Cache-Control: public, max-age=31536000, immutable",
   ];
   for (const pattern of HTML_ROUTE_PATTERNS) {
     lines.push(
