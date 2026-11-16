@@ -118,16 +118,7 @@ import SearchBox from '../islands/SearchBox.vue';
 
 <script>
   import { t } from '../utils/i18n.ts';
-  import { safePathSegment } from '../utils/escape.ts';
-
-  function esc(s: string): string {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  import { escapeHtml, safePathSegment } from '../utils/escape.ts';
 
   async function loadSearchTags() {
     const container = document.getElementById('search-tags');
@@ -144,8 +135,8 @@ import SearchBox from '../islands/SearchBox.vue';
         tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = tags.map((tag: any) => `
           <a href="/tags/${safePathSegment(tag.slug)}" class="taxonomy-item"
-             data-type="tag" data-slug="${esc(tag.slug)}" data-name="${esc(tag.name)}">
-            <span>${esc(tag.name)}</span>
+             data-type="tag" data-slug="${escapeHtml(tag.slug)}" data-name="${escapeHtml(tag.name)}">
+            <span>${escapeHtml(tag.name)}</span>
             <span class="taxonomy-count">${tag.article_count || 0}</span>
           </a>
         `).join('');
@@ -172,8 +163,8 @@ import SearchBox from '../islands/SearchBox.vue';
         categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
         container.innerHTML = categories.map((cat: any) => `
           <a href="/categories/${safePathSegment(cat.slug)}" class="taxonomy-item"
-             data-type="category" data-slug="${esc(cat.slug)}" data-name="${esc(cat.name)}">
-            <span>${esc(cat.name)}</span>
+             data-type="category" data-slug="${escapeHtml(cat.slug)}" data-name="${escapeHtml(cat.name)}">
+            <span>${escapeHtml(cat.name)}</span>
             <span class="taxonomy-count">${cat.article_count || 0}</span>
           </a>
         `).join('');

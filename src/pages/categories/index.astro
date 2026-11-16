@@ -96,16 +96,7 @@ export const prerender = false;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
-  import { safePathSegment } from '../../utils/escape.ts';
-
-  function esc(s: string): string {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadCategories() {
     const container = document.getElementById('categories-cloud');
@@ -128,10 +119,10 @@ export const prerender = false;
         container.innerHTML = categories.map((cat: any) => `
           <a href="/categories/${safePathSegment(cat.slug)}" class="category-item">
             <div class="category-head">
-              <span class="category-name">${esc(cat.name)}</span>
+              <span class="category-name">${escapeHtml(cat.name)}</span>
               <span class="category-count">${cat.article_count || 0} ${t('admin.article_count')}</span>
             </div>
-            ${cat.description ? `<span class="category-desc">${esc(cat.description)}</span>` : ''}
+            ${cat.description ? `<span class="category-desc">${escapeHtml(cat.description)}</span>` : ''}
           </a>
         `).join('');
       } else {
