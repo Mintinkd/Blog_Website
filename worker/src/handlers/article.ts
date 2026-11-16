@@ -10,6 +10,7 @@ import {
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
 import { generateSlug } from "../services/article_service";
+import { getUserIdByUsername } from "../services/user_service";
 import type { AuthResult } from "../middleware/auth";
 
 /**
@@ -98,12 +99,8 @@ export async function handleGetArticle(
       if (authResult.role === "admin") {
         allowed = true;
       } else if (article.author_id != null) {
-        const row = await env.DB.prepare(
-          "SELECT id FROM users WHERE username = ?"
-        )
-          .bind(authResult.username)
-          .first<{ id: number }>();
-        allowed = !!row && row.id === article.author_id;
+        const userId = await getUserIdByUsername(env, authResult.username);
+        allowed = userId !== null && userId === article.author_id;
       }
     }
     if (!allowed) {

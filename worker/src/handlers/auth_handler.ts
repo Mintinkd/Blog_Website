@@ -12,6 +12,7 @@ import {
   base64UrlEncode,
 } from "../middleware/auth";
 import type { AuthResult } from "../middleware/auth";
+import { getUserIdByUsername } from "../services/user_service";
 import {
   hashPassword,
   verifyPassword,
@@ -543,12 +544,8 @@ export async function handleCreateUser(
     return passwordStrengthError();
   }
 
-  const existing = await env.DB.prepare(
-    "SELECT id FROM users WHERE username = ?"
-  )
-    .bind(String(username))
-    .first();
-  if (existing) {
+  const existingId = await getUserIdByUsername(env, String(username));
+  if (existingId !== null) {
     return error(ErrorCodes.VALIDATION_FAILED, "Username already exists");
   }
 
@@ -693,10 +690,8 @@ export async function handleDeleteUser(
 
   // #51：禁止删除当前登录用户（角色降级有 self 检查，删除路径此前缺失）
   if (authResult) {
-    const self = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    if (self && self.id === Number(id)) {
+    const selfId = await getUserIdByUsername(env, authResult.username);
+    if (selfId !== null && selfId === Number(id)) {
       return error(ErrorCodes.VALIDATION_FAILED, "无法删除当前登录账户");
     }
   }

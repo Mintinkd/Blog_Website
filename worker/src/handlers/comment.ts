@@ -12,6 +12,7 @@ import { sanitizeHtml, escapeHtml } from "../utils/sanitizer";
 import { SubmitCommentRequest } from "../models/comment";
 import type { AuthResult } from "../middleware/auth";
 import { getClientIpString } from "../utils/client_ip";
+import { getUserIdByUsername } from "../services/user_service";
 
 export async function handleListComments(
   request: Request,
@@ -136,14 +137,12 @@ export async function handleListAllComments(
   }
 
   if (authResult && authResult.role === "editor") {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    if (user) {
+    const userId = await getUserIdByUsername(env, authResult.username);
+    if (userId !== null) {
       whereClause += whereClause
         ? " AND a.author_id = ?"
         : "WHERE a.author_id = ?";
-      bindParams.push(user.id);
+      bindParams.push(userId);
     } else {
       // 审查报告 H2 修复：用户无法解析时 fail-closed，不再回退为「不过滤」
       whereClause += whereClause ? " AND 1 = 0" : "WHERE 1 = 0";

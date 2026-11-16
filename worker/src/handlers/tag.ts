@@ -9,6 +9,7 @@ import {
 import { validate, isValidSlug } from "../utils/validator";
 import type { AuthResult } from "../middleware/auth";
 import { TAG_COLUMNS } from "../utils/columns";
+import { getUserIdByUsername } from "../services/user_service";
 
 export async function handleListTags(
   request: Request,
@@ -83,10 +84,7 @@ export async function handleCreateTag(
 
   let created_by: number | null = null;
   if (authResult) {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    created_by = user?.id || null;
+    created_by = await getUserIdByUsername(env, authResult.username);
   }
 
   const res = await env.DB.prepare(

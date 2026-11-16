@@ -7,6 +7,7 @@ import {
   ErrorCodes,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
+import { getUserIdByUsername } from "../services/user_service";
 import {
   Category,
   CreateCategoryRequest,
@@ -86,10 +87,7 @@ export async function handleCreateCategory(
 
   let created_by: number | null = null;
   if (authResult) {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    created_by = user?.id || null;
+    created_by = await getUserIdByUsername(env, authResult.username);
   }
 
   const res = await env.DB.prepare(
@@ -122,10 +120,8 @@ export async function handleUpdateCategory(
   if (!existing) return notFound("Category not found");
 
   if (authResult && authResult.role !== "admin") {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    if (!user || existing.created_by !== user.id) {
+    const userId = await getUserIdByUsername(env, authResult.username);
+    if (userId === null || existing.created_by !== userId) {
       return forbidden("您没有权限编辑此分类");
     }
   }

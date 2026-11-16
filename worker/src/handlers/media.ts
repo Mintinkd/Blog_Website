@@ -9,6 +9,7 @@ import {
 } from "../utils/response";
 import type { AuthResult } from "../middleware/auth";
 import { MEDIA_COLUMNS } from "../utils/columns";
+import { getUserIdByUsername } from "../services/user_service";
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -153,10 +154,7 @@ export async function handleUploadMedia(
 
   let uploaded_by: number | null = null;
   if (authResult) {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    uploaded_by = user?.id || null;
+    uploaded_by = await getUserIdByUsername(env, authResult.username);
   }
 
   const result = await env.DB.prepare(
@@ -209,12 +207,10 @@ export async function handleListMedia(
   const queryParams: unknown[] = [];
 
   if (authResult && authResult.role === "editor") {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    if (user) {
+    const userId = await getUserIdByUsername(env, authResult.username);
+    if (userId !== null) {
       whereClause = "WHERE uploaded_by = ?";
-      queryParams.push(user.id);
+      queryParams.push(userId);
     } else {
       // 审查报告 H2 修复：用户无法解析时 fail-closed，不再回退为「不过滤」
       whereClause = "WHERE 1 = 0";
@@ -265,10 +261,8 @@ export async function handleDeleteMedia(
   if (!media) return notFound("Media not found");
 
   if (authResult.role !== "admin") {
-    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-      .bind(authResult.username)
-      .first<{ id: number }>();
-    if (!user || media.uploaded_by !== user.id)
+    const userId = await getUserIdByUsername(env, authResult.username);
+    if (userId === null || media.uploaded_by !== userId)
       return forbidden("仅可删除自己上传的媒体");
   }
 

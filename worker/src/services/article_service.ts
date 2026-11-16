@@ -9,6 +9,7 @@ import {
 } from "../models/article";
 import type { AuthResult } from "../middleware/auth";
 import { ARTICLE_PUBLISH_COLUMNS } from "../utils/columns";
+import { getUserIdByUsername } from "./user_service";
 
 function generateSlug(title: string): string {
   return title
@@ -38,16 +39,6 @@ interface ListArticlesOptions {
   status?: "published" | "draft" | "all";
   auth_result?: AuthResult;
   author_id?: number;
-}
-
-async function getUserIdByUsername(
-  env: Env,
-  username: string
-): Promise<number | null> {
-  const row = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
-    .bind(username)
-    .first<{ id: number }>();
-  return row?.id || null;
 }
 
 /**
