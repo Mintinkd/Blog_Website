@@ -9,15 +9,19 @@
 export function withSecurityHeaders(response: Response): Response {
   const headers = new Headers(response.headers);
 
-  headers.set('X-Content-Type-Options', 'nosniff');
-  headers.set('X-Frame-Options', 'DENY');
-  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  // API 不需要加载任何资源；frame-ancestors 防 JSON 被 iframe 嵌套点击劫持
-  headers.set(
-    'Content-Security-Policy',
-    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
-  );
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // API 不需要加载任何资源；frame-ancestors 防 JSON 被 iframe 嵌套点击劫持。
+  // issue #93 / M7：若 handler 已为 SVG 等响应设了更严格的专用 CSP（如沙箱），
+  // 保留之，不覆盖——否则 img-proxy 的沙箱 CSP 会在统一出口被抹掉，纵深防御失效。
+  if (!headers.has("Content-Security-Policy")) {
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    );
+  }
 
   return new Response(response.body, {
     status: response.status,

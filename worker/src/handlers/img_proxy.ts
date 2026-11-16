@@ -40,6 +40,29 @@ const ALLOWED_IMAGE_MIME = [
   "image/jxl",
 ];
 
+/**
+ * SVG 响应纵深防御头（issue #93 / M7）。
+ *
+ * 外链 SVG 若以 image/svg+xml 在博客源下内联返回，内嵌 <script> 可同源执行。
+ * 唯一拦截原本是 API 侧 CSP（单点防护）——本函数给 SVG 响应额外加：
+ *   - Content-Disposition: attachment（与 media.ts 口径一致；<img src> 展示不受影响）
+ *   - 沙箱 CSP default-src 'none'; sandbox（即使 CSP 主策略失效仍隔离脚本）
+ *   - nosniff（防 MIME 嗅探成 HTML）
+ * 与 media.ts 的 serve 路径口径相同。非 SVG 返回空对象，响应头完全不变。
+ */
+export function svgSafeHeaders(contentType: string): Record<string, string> {
+  const mime = String(contentType ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (mime !== "image/svg+xml") return {};
+  return {
+    "Content-Disposition": "attachment",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+  };
+}
+
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 export const MAX_URL_LEN = 2048;
 export const MAX_REDIRECTS = 5;
@@ -559,12 +582,15 @@ export async function handleImgProxy(
   });
   if (cached.value) {
     const meta = (cached.metadata as { ct?: string } | null) || {};
+    const cachedCt = meta.ct || "image/*";
     return new Response(cached.value, {
       status: 200,
       headers: {
-        "Content-Type": meta.ct || "image/*",
+        "Content-Type": cachedCt,
         "Cache-Control": `public, max-age=${CACHE_TTL}`,
         "X-Img-Proxy": "cache-hit",
+        // issue #93 / M7：SVG 走 attachment + 沙箱 CSP，与 media.ts 口径一致
+        ...svgSafeHeaders(cachedCt),
       },
     });
   }
@@ -655,6 +681,7 @@ export async function handleImgProxy(
         "Content-Type": contentType,
         "Cache-Control": `public, max-age=${CACHE_TTL}`,
         "X-Img-Proxy": "cache-miss",
+        ...svgSafeHeaders(contentType),
       },
     });
   } finally {
