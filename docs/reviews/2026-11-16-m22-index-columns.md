@@ -62,4 +62,4 @@
 | Spec 3 [轻微]               | friend_link.ts/tag.ts 格式化噪音、table 参数略超字面                 | 接受：格式化来自 pre-commit prettier；table 参数服务于分片且已在 README 登记                                                                                             | —                |
 | Spec 2 / F2                 | 关闭评论附 EXPLAIN QUERY PLAN                                        | 关票评论补记（人工动作，非代码）                                                                                                                                         | 关票时           |
 
-> follow-up commit hash 在提交后回填。所有修复通过 worker 304 测试 + typecheck + 根包 `npm run check`（0 errors）。
+> follow-up commit：`2a0f9b0`（review(worker): address #73 review findings）。所有修复通过 worker 304 测试 + typecheck + 根包 `npm run check`（0 errors）。

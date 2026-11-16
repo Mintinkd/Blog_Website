@@ -9,6 +9,7 @@ import {
   insertLink,
   insertSnippet,
   isAllowedLinkUrl,
+  isEmbedSnippet,
   mdEscapeText,
   mdEscapeUrl,
   toggleLinePrefix,
@@ -209,6 +210,36 @@ describe("插入链接 / 图片", () => {
     expect(buildLinkSnippet("https://a.io", "<script>", "embed")).toBe(
       '<a href="https://a.io" data-embed="1">&lt;script&gt;</a>'
     );
+  });
+
+  it("#74：isEmbedSnippet 精确识别 data-embed 锚点，普通链接不误判", () => {
+    expect(
+      isEmbedSnippet(buildLinkSnippet("https://a.io", "预览", "embed"))
+    ).toBe(true);
+    expect(
+      isEmbedSnippet(
+        '<a class="x" data-embed=\'1\' href="https://a.io">预览</a>'
+      )
+    ).toBe(true);
+    expect(isEmbedSnippet("<a data-embed=1 href='https://a.io'>预览</a>")).toBe(
+      true
+    );
+    // 普通链接、属性中提及 data-embed 的文本、非 1 值都不得误判
+    expect(
+      isEmbedSnippet(buildLinkSnippet("https://a.io", "普通", "link"))
+    ).toBe(false);
+    expect(isEmbedSnippet('[看 data-embed="1" 说明](https://a.io)')).toBe(
+      false
+    );
+    expect(
+      isEmbedSnippet('<a data-embed="0" href="https://a.io">预览</a>')
+    ).toBe(false);
+    expect(
+      isEmbedSnippet('<a data-embed="10" href="https://a.io">预览</a>')
+    ).toBe(false);
+    expect(
+      isEmbedSnippet('<a href="https://a.io" data-embedx="1">预览</a>')
+    ).toBe(false);
   });
 
   it("insertLink 无文字时用去协议的 URL，并替换选区", () => {

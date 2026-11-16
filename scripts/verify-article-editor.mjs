@@ -478,16 +478,20 @@ async function scenarioSaveAndSsr(browser) {
         text: "普通链接",
         mode: "link",
       });
-      // 已知缺口（超出 #68 范围）：LinkDialog 的 embed 片段是
-      // `<a data-embed="1">`，但 WYSIWYG 的 insertMarkdown 会把它当 Markdown
-      // 解析成普通链接，属性不进入请求体。这里仍走一遍真实插入链路，
-      // 断言只锁「链接确实进了正文」，不把这个降级固化成期望；
-      // data-embed 的保真断言针对 mock 语料里的存量 anchor（见下）。
+      // #74：WYSIWYG 下「内嵌网页预览」必须写成带 data-embed 的专用节点，
+      // 不能再降级成普通 Markdown 链接。新插入的这条以独特文本
+      // 「内嵌网页预览」与存量语料的「内嵌预览」区分，请求体里精确断言其属性。
       await insertLink(page, {
         url: "https://example.com/embed",
         text: "内嵌网页预览",
         mode: "embed",
       });
+      // #74 验收：插入后编辑器内是专用 embed 节点（data-editor-embed 由 NodeView 写入），
+      // 不是普通链接；编辑态点击不导航由 embedLinkView 的 onClick preventDefault 保证。
+      await page.waitForSelector(
+        '.milkdown-host a[data-editor-embed="1"]:has-text("内嵌网页预览")',
+        { timeout: 10000 }
+      );
 
       await page.locator(".editor-image-input").setInputFiles({
         name: "photo.png",
@@ -534,9 +538,10 @@ async function scenarioSaveAndSsr(browser) {
         payload.content.includes('data-embed="1"'),
         "语料里的存量内嵌链接必须无损保留 data-embed 属性"
       );
-      assert.ok(
-        payload.content.includes("内嵌网页预览"),
-        "embed 模式插入的链接文本应进入请求体（当前内核降级为普通链接）"
+      assert.match(
+        payload.content,
+        /<a\s+href="https:\/\/example\.com\/embed"[^>]*data-embed="1"[^>]*>内嵌网页预览<\/a>/,
+        '#74：WYSIWYG 新插入的内嵌链接必须带 data-embed="1"，不得降级为普通链接'
       );
       assert.ok(
         payload.content.includes("![photo](" + MOCK_UPLOAD_URL),

@@ -29,6 +29,7 @@ import {
   buildImageSnippet,
   continueList,
   insertSnippet,
+  isEmbedSnippet,
   toggleLinePrefix,
   wrapSelection,
   type CommandResult,
@@ -250,6 +251,16 @@ function insertAtCursor(snippet: string): void {
   if (isSource.value) {
     const result = insertSnippet(props.content, selection(), snippet);
     applyResult(result);
+    return;
+  }
+  // #74：embed 锚点走「更新 form.content → setMarkdown」整篇重解析路径。
+  // inline insert(snippet, true) 会序列化再反序列化，丢掉 data-embed；而
+  // MilkdownEditor 的 watch(props.content) 用 replaceAll 整篇加载时，
+  // embedLinkRemark 能把三元组合并为专用 embed_link 节点（源码模式所见即所得）。
+  // emit 后 props.content 变化自然触发该 watch，无需新增 handle 方法。
+  if (isEmbedSnippet(snippet)) {
+    const result = insertSnippet(props.content, selection(), snippet);
+    emit("update:content", result.text);
     return;
   }
   // 异步组件尚未挂载时退化为追加，绝不静默丢弃作者的插入操作。

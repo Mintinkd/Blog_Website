@@ -198,6 +198,18 @@ export function buildLinkSnippet(
   return `[${mdEscapeText(label)}](${mdEscapeUrl(target)})`;
 }
 
+/**
+ * 判断一段待插入文本是否为 data-embed 锚点片段（#74）。
+ *
+ * WYSIWYG 下普通链接可用 inline insert，但 embed 锚点必须走「更新正文 →
+ * 整篇 setMarkdown」路径，否则 inline 的序列化往返会把 data-embed 降级成
+ * 普通 Markdown 链接。只做宽松识别，宁可让罕见变体走 inline（退化为已知
+ * 缺口）也绝不把普通链接误判成 embed。
+ */
+export function isEmbedSnippet(snippet: string): boolean {
+  return /<a\b[^>]*\bdata-embed\s*=\s*(?:"1"|'1'|1)(?:\s|>)/i.test(snippet);
+}
+
 /** 插入链接；未提供文字时用去掉协议的 URL 作为链接文字（与现有弹窗一致）。 */
 export function insertLink(
   text: string,
