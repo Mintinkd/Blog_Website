@@ -1,5 +1,6 @@
 import { Env } from "../index";
 import { getClientIpString } from "../utils/client_ip";
+import { consumeRateLimit } from "../utils/rate_limiter";
 
 /**
  * 外链图片智能代理（GET /img-proxy?url=...）
@@ -535,19 +536,21 @@ export async function handleImgProxy(
   }
   const tu = validation.url;
 
-  // 每 IP 限流（独立于全局 rate_limit，避免拖垮普通图片直连）
+  // 每 IP 限流（独立于全局 rate_limit）：issue #91 收敛到统一 RateLimiter，
+  // 滑动窗口计数抑制边界突发，await 写缩小 KV 非原子窗口。
   const ip = await clientIp(request, env.VISITOR_IP_SIGNING_SECRET);
-  const rlKey = `imgproxy:${ip}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
-  const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
-  if (rlCount >= RATE_MAX) {
+  const verdict = await consumeRateLimit(env.RATE_LIMIT, {
+    scope: "imgproxy",
+    identity: ip,
+    config: { windowMs: RATE_WINDOW_MS, maxRequests: RATE_MAX },
+    nowMs: Date.now(),
+  });
+  if (!verdict.allowed) {
     return Response.json(
       { code: 429, message: "代理请求过于频繁，请稍后再试", data: null },
       { status: 429 }
     );
   }
-  ctx.waitUntil(
-    env.RATE_LIMIT.put(rlKey, String(rlCount + 1), { expirationTtl: 60 })
-  );
 
   // KV 缓存（TTL 到期自动删除 = 过期内容自动清理）
   const cacheKey = `imgproxy/${await sha1Hex(target)}`;

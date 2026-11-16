@@ -1,6 +1,7 @@
 import { Env } from "../index";
 import type { AuthResult } from "../middleware/auth";
 import { error } from "../utils/response";
+import { consumeRateLimit } from "../utils/rate_limiter";
 import {
   FETCH_TIMEOUT_MS,
   RATE_WINDOW_MS,
@@ -214,25 +215,21 @@ export async function handleScrape(
   }
   const target = validation.url;
 
-  // 每管理员独立限流（不是每 IP；admin token 已由路由层校验）。
-  // KV 无原子自增，get/put 之间存在并发窗口、可能少量超发；管理端单用户场景接受，
-  // 强一致需要 Durable Objects（#33 明确不新增绑定）。
-  const rlKey = `scrape:${auth.username}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
-  const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
-  if (rlCount >= SCRAPE_RATE_MAX) {
-    const retryIn = Math.max(
-      1,
-      Math.ceil((RATE_WINDOW_MS - (Date.now() % RATE_WINDOW_MS)) / 1000)
-    );
+  // 每管理员独立限流（不是每 IP；admin token 已由路由层校验）：issue #91 收敛到统一
+  // RateLimiter（滑动窗口计数 + await 写）。KV 跨 PoP 最终一致的残余风险见 #91 关票评论。
+  const verdict = await consumeRateLimit(env.RATE_LIMIT, {
+    scope: "scrape",
+    identity: auth.username,
+    config: { windowMs: RATE_WINDOW_MS, maxRequests: SCRAPE_RATE_MAX },
+    nowMs: Date.now(),
+  });
+  if (!verdict.allowed) {
     return error(
       429,
-      `抓取请求过于频繁（每个管理员每分钟 ${SCRAPE_RATE_MAX} 次），请 ${retryIn} 秒后重试`,
+      `抓取请求过于频繁（每个管理员每分钟 ${SCRAPE_RATE_MAX} 次），请 ${verdict.retryAfterSec} 秒后重试`,
       429
     );
   }
-  ctx.waitUntil(
-    env.RATE_LIMIT.put(rlKey, String(rlCount + 1), { expirationTtl: 60 })
-  );
 
   const robots = await checkRobots(target);
   if (!robots.allowed) {

@@ -134,7 +134,8 @@ async function bodyOf(
 }
 
 function rateKey(username = "admin", now = Date.now()): string {
-  return `scrape:${username}:${Math.floor(now / 60_000)}`;
+  // issue #91：统一 RateLimiter 键名 ratelimit:<scope>:<identity>:<windowIndex>
+  return `ratelimit:scrape:${username}:${Math.floor(now / 60_000)}`;
 }
 
 afterEach(() => {
@@ -397,7 +398,7 @@ describe("GET /admin/scrape 安全抓取代理", () => {
 
     // admin 的计数键被写入，且不含客户端 IP
     const adminKey = [...store.keys()].find((k) =>
-      k.startsWith("scrape:admin:")
+      k.startsWith("ratelimit:scrape:admin:")
     );
     expect(adminKey).toBeDefined();
     expect(adminKey).not.toContain("203.0.113.9");

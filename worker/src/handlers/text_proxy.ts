@@ -12,6 +12,7 @@ import {
   readBodyWithLimit,
   mapFetchedFailure,
 } from "./img_proxy";
+import { consumeRateLimit } from "../utils/rate_limiter";
 
 /**
  * 外链文字/接口内容代理（GET /text-proxy?url=...）
@@ -90,11 +91,15 @@ export async function handleTextProxy(
   }
   const tu = validation.url;
 
-  // 每 IP 限流（独立键，与图片代理互不影响）
+  // 每 IP 限流（独立 scope，与图片代理互不影响）：issue #91 收敛到统一 RateLimiter。
   const ip = await clientIp(request, env.VISITOR_IP_SIGNING_SECRET);
-  const rlKey = `textproxy:${ip}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
-  const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
-  if (rlCount >= RATE_MAX) {
+  const verdict = await consumeRateLimit(env.RATE_LIMIT, {
+    scope: "textproxy",
+    identity: ip,
+    config: { windowMs: RATE_WINDOW_MS, maxRequests: RATE_MAX },
+    nowMs: Date.now(),
+  });
+  if (!verdict.allowed) {
     return corsify(
       Response.json(
         { code: 429, message: "代理请求过于频繁，请稍后再试", data: null },
@@ -102,9 +107,6 @@ export async function handleTextProxy(
       )
     );
   }
-  ctx.waitUntil(
-    env.RATE_LIMIT.put(rlKey, String(rlCount + 1), { expirationTtl: 60 })
-  );
 
   // KV 缓存（TTL 到期自动删除）
   const cacheKey = `textproxy/${await sha1Hex(target)}`;

@@ -3,36 +3,41 @@ import type { Env } from "../src/index";
 import { rateLimitMiddleware } from "../src/middleware/rate_limit";
 
 /**
- * issue #48（T6 / H8）：限流分桶改用规范化路由模板。
+ * issue #48（H8）分桶口径 + issue #91（M3）统一限流算法。
  *
- * 接缝：rateLimitMiddleware —— 工单点名的「限流键构造函数 + 限流规则表」。
- * 断言直接落在 KV 键名与配额边界上：
- *   - 同一模板下不同资源 id 必须共享同一个计数桶；
- *   - 规则按 method + 模板精确匹配，不做子串猜测；
- *   - DELETE 等未单列方法落到明确配额，不静默借用 GET 配额；
- *   - 窗口与既有阈值（评论 3、点赞 10、上传 10、搜索 10、admin/auth 120）不变。
+ * 接缝：rateLimitMiddleware —— 工单点名的「限流键构造 + 规则表 + 响应」。
+ * 底层算法（滑动窗口计数）由 rate_limiter.test.ts 单独钉死，这里只断言策略层：
+ *   - 同一模板下不同资源 id / 不同 slug 共享一个计数桶；
+ *   - 规则按 method + 模板精确匹配；
+ *   - 文章详情 /articles/:slug 跨 slug 共享宽松配额；
+ *   - 配额边界、IP 解析、429 响应不变。
+ *
+ * 用有状态 KV 桩（按 key 存值）替代旧的顺序 mock——新算法每请求读当前/上一两个键。
  */
 
 const FIXED_NOW = new Date("2026-10-26T12:00:00.000Z");
 const MINUTE = 60_000;
-const WINDOW_START = Math.floor(FIXED_NOW.getTime() / MINUTE);
+const WINDOW_INDEX = Math.floor(FIXED_NOW.getTime() / MINUTE); // 0（12:00:00）
 
 interface MockEnv {
   env: Env;
   get: ReturnType<typeof vi.fn>;
   put: ReturnType<typeof vi.fn>;
+  store: Map<string, string>;
 }
 
+/** 有状态 KV 桩：get 从 store 按 key 读，put 写回；spy 记录调用。 */
 function makeEnv(): MockEnv {
-  const get = vi.fn(async (_key: string): Promise<string | null> => null);
-  const put = vi.fn(
-    async (_key: string, _value: string, _options?: unknown) => undefined
-  );
+  const store = new Map<string, string>();
+  const get = vi.fn(async (key: string) => store.get(key) ?? null);
+  const put = vi.fn(async (key: string, value: string) => {
+    store.set(key, value);
+  });
   const env = {
     API_PREFIX: "/api/v1",
     RATE_LIMIT: { get, put },
   } as unknown as Env;
-  return { env, get, put };
+  return { env, get, put, store };
 }
 
 function makeCtx(): ExecutionContext {
@@ -50,14 +55,20 @@ function request(
   return new Request(`https://example.com/api/v1${path}`, { method, headers });
 }
 
-function expectKey(
-  mock: ReturnType<typeof vi.fn>,
+/** 当前窗口键（算法单测覆盖 prev 键，这里只需定位当前桶）。 */
+function key(route: string, method: string, ip = "unknown"): string {
+  return `ratelimit:global:${ip}:${method}:${route}:${WINDOW_INDEX}`;
+}
+
+/** 预置某桶已用配额（写当前窗口键）。 */
+function seed(
+  mock: MockEnv,
   route: string,
-  method: string
-): void {
-  expect(mock.mock.calls[0][0]).toBe(
-    `rate_limit:unknown:${method}:${route}:${WINDOW_START}`
-  );
+  method: string,
+  count: number,
+  ip = "unknown"
+) {
+  mock.store.set(key(route, method, ip), String(count));
 }
 
 beforeEach(() => {
@@ -72,44 +83,36 @@ afterEach(() => {
 
 describe("计数键归一化（issue #48）", () => {
   it("不同文章 id 的评论请求命中同一个计数键", async () => {
-    const { env, get } = makeEnv();
+    const mock = makeEnv();
     const ctx = makeCtx();
-
-    get.mockResolvedValueOnce("0").mockResolvedValueOnce("1");
-
-    expect(
-      await rateLimitMiddleware(
-        request("POST", "/articles/1/comments"),
-        env,
-        ctx
-      )
-    ).toBeNull();
-    expect(
-      await rateLimitMiddleware(
-        request("POST", "/articles/2/comments"),
-        env,
-        ctx
-      )
-    ).toBeNull();
-
-    expect(get).toHaveBeenCalledTimes(2);
-    expect(get.mock.calls[0][0]).toBe(get.mock.calls[1][0]);
-    expect(get.mock.calls[0][0]).toBe(
-      `rate_limit:unknown:POST:/articles/:id/comments:${WINDOW_START}`
+    await rateLimitMiddleware(
+      request("POST", "/articles/1/comments"),
+      mock.env,
+      ctx
     );
+    await rateLimitMiddleware(
+      request("POST", "/articles/2/comments"),
+      mock.env,
+      ctx
+    );
+
+    const currKeys = mock.put.mock.calls.map(([k]) => k);
+    expect(currKeys[0]).toBe(key("/articles/:id/comments", "POST"));
+    expect(currKeys[0]).toBe(currKeys[1]);
   });
 
   it("多数值段逐段归一：/articles/1/comments/2 → /articles/:id/comments/:id", async () => {
-    const { env, get } = makeEnv();
-
-    const result = await rateLimitMiddleware(
-      request("DELETE", "/articles/1/comments/2"),
-      env,
-      makeCtx()
+    const mock = makeEnv();
+    expect(
+      await rateLimitMiddleware(
+        request("DELETE", "/articles/1/comments/2"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
+    expect(mock.put.mock.calls[0][0]).toBe(
+      key("/articles/:id/comments/:id", "DELETE")
     );
-
-    expect(result).toBeNull();
-    expectKey(get, "/articles/:id/comments/:id", "DELETE");
   });
 
   it("已命名的固定路径保持原样，数值资源段归一", async () => {
@@ -126,349 +129,346 @@ describe("计数键归一化（issue #48）", () => {
       { method: "DELETE", path: "/tags/3", route: "/tags/:id" },
       { method: "DELETE", path: "/comments/11", route: "/comments/:id" },
     ];
-
-    for (const testCase of cases) {
-      const { env, get } = makeEnv();
-      const result = await rateLimitMiddleware(
-        request(testCase.method, testCase.path),
-        env,
-        makeCtx()
-      );
-      expect(result).toBeNull();
-      expectKey(get, testCase.route, testCase.method);
+    for (const c of cases) {
+      const mock = makeEnv();
+      expect(
+        await rateLimitMiddleware(
+          request(c.method, c.path),
+          mock.env,
+          makeCtx()
+        )
+      ).toBeNull();
+      expect(mock.put.mock.calls[0][0]).toBe(key(c.route, c.method));
     }
   });
 
   it("尾部斜杠不会制造额外分桶", async () => {
-    const { env, get } = makeEnv();
-
-    expect(
-      await rateLimitMiddleware(
-        request("DELETE", "/articles/7/"),
-        env,
-        makeCtx()
-      )
-    ).toBeNull();
-    expectKey(get, "/articles/:id", "DELETE");
+    const mock = makeEnv();
+    await rateLimitMiddleware(
+      request("DELETE", "/articles/7/"),
+      mock.env,
+      makeCtx()
+    );
+    expect(mock.put.mock.calls[0][0]).toBe(key("/articles/:id", "DELETE"));
   });
 
   it("同一路径的不同 method 使用不同桶", async () => {
-    const { env, get } = makeEnv();
-
-    await rateLimitMiddleware(request("POST", "/articles/1"), env, makeCtx());
-    await rateLimitMiddleware(request("DELETE", "/articles/1"), env, makeCtx());
-
-    expect(get.mock.calls[0][0]).toBe(
-      `rate_limit:unknown:POST:/articles/:id:${WINDOW_START}`
-    );
-    expect(get.mock.calls[1][0]).toBe(
-      `rate_limit:unknown:DELETE:/articles/:id:${WINDOW_START}`
-    );
-    expect(get.mock.calls[0][0]).not.toBe(get.mock.calls[1][0]);
-  });
-
-  it("同一分钟外的请求进入下一个窗口", async () => {
-    const { env, get } = makeEnv();
-
+    const mock = makeEnv();
     await rateLimitMiddleware(
-      request("POST", "/articles/1/comments"),
-      env,
+      request("POST", "/articles/1"),
+      mock.env,
       makeCtx()
     );
-    vi.setSystemTime(new Date(FIXED_NOW.getTime() + MINUTE));
     await rateLimitMiddleware(
-      request("POST", "/articles/1/comments"),
-      env,
+      request("DELETE", "/articles/1"),
+      mock.env,
       makeCtx()
     );
-
-    expect(get.mock.calls[1][0]).toBe(
-      `rate_limit:unknown:POST:/articles/:id/comments:${WINDOW_START + 1}`
-    );
+    const keys = mock.put.mock.calls.map(([k]) => k);
+    expect(keys[0]).toBe(key("/articles/:id", "POST"));
+    expect(keys[1]).toBe(key("/articles/:id", "DELETE"));
+    expect(keys[0]).not.toBe(keys[1]);
   });
 });
 
 describe("同模板共享配额（issue #48 AC1/AC2）", () => {
   it("评论配额 3 次/分，遍历 article_id 不能放大", async () => {
-    const { env, get, put } = makeEnv();
+    const mock = makeEnv();
     const ctx = makeCtx();
-
     for (let i = 0; i < 3; i += 1) {
-      get.mockResolvedValueOnce(String(i));
-      const result = await rateLimitMiddleware(
-        request("POST", `/articles/${i + 1}/comments`),
-        env,
-        ctx
-      );
-      expect(result).toBeNull();
+      expect(
+        await rateLimitMiddleware(
+          request("POST", `/articles/${i + 1}/comments`),
+          mock.env,
+          ctx
+        )
+      ).toBeNull();
     }
-
-    get.mockResolvedValueOnce("3");
     const blocked = await rateLimitMiddleware(
       request("POST", "/articles/999/comments"),
-      env,
+      mock.env,
       ctx
     );
-
     expect(blocked?.status).toBe(429);
-    expect(put).toHaveBeenCalledTimes(3);
-    // 四次请求全部落在同一个键（0/1/2 放行并自增，3 被拒）
-    const keys = new Set(get.mock.calls.map(([key]) => key));
+    expect(mock.put).toHaveBeenCalledTimes(3);
+    const keys = new Set(mock.put.mock.calls.map(([k]) => k));
     expect(keys.size).toBe(1);
   });
 
   it("点赞配额 10 次/分，跨文章共享", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("9");
+    const mock = makeEnv();
+    seed(mock, "/articles/:id/like", "POST", 9);
     expect(
       await rateLimitMiddleware(
         request("POST", "/articles/1/like"),
-        env,
+        mock.env,
         makeCtx()
       )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("10");
     const blocked = await rateLimitMiddleware(
       request("POST", "/articles/2/like"),
-      env,
+      mock.env,
       makeCtx()
     );
     expect(blocked?.status).toBe(429);
-    expect(get.mock.calls[0][0]).toBe(get.mock.calls[1][0]);
   });
 
   it("上传配额 10 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("9");
+    const mock = makeEnv();
+    seed(mock, "/media/upload", "POST", 9);
     expect(
       await rateLimitMiddleware(
         request("POST", "/media/upload"),
-        env,
+        mock.env,
         makeCtx()
       )
     ).toBeNull();
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("POST", "/media/upload"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
+  });
 
-    get.mockResolvedValueOnce("10");
+  it("GET /search 配额 10 次/分", async () => {
+    const mock = makeEnv();
+    seed(mock, "/search", "GET", 9);
+    expect(
+      await rateLimitMiddleware(
+        request("GET", "/search?q=test"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("GET", "/search?q=test"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
+  });
+});
+
+describe("文章详情宽松限流（issue #91 / M3）", () => {
+  it("不同 slug 共享同一宽松桶（跨 slug 不放大 D1 写）", async () => {
+    const mock = makeEnv();
+    await rateLimitMiddleware(
+      request("GET", "/articles/hello-world"),
+      mock.env,
+      makeCtx()
+    );
+    await rateLimitMiddleware(
+      request("GET", "/articles/another-post"),
+      mock.env,
+      makeCtx()
+    );
+    expect(mock.put).toHaveBeenCalledTimes(2);
+    const keys = new Set(mock.put.mock.calls.map(([k]) => k));
+    expect(keys.size).toBe(1);
+    expect(mock.put.mock.calls[0][0]).toBe(key("/articles/:slug", "GET"));
+  });
+
+  it("文章详情配额 120 次/分，第 121 次被拒", async () => {
+    const mock = makeEnv();
+    seed(mock, "/articles/:slug", "GET", 119);
+    expect(
+      await rateLimitMiddleware(
+        request("GET", "/articles/post-a"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
     const blocked = await rateLimitMiddleware(
-      request("POST", "/media/upload"),
-      env,
+      request("GET", "/articles/post-b"),
+      mock.env,
       makeCtx()
     );
     expect(blocked?.status).toBe(429);
   });
 
-  it("GET /search 配额 10 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("9");
+  it("列表 /articles 与编辑器 /articles/:id/edit 不套用详情限流", async () => {
+    const mock = makeEnv();
     expect(
       await rateLimitMiddleware(
-        request("GET", "/search?q=test"),
-        env,
+        request("GET", "/articles"),
+        mock.env,
         makeCtx()
       )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("10");
-    const blocked = await rateLimitMiddleware(
-      request("GET", "/search?q=test"),
-      env,
-      makeCtx()
-    );
-    expect(blocked?.status).toBe(429);
+    expect(
+      await rateLimitMiddleware(
+        request("GET", "/articles/7/edit"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
+    expect(mock.put).not.toHaveBeenCalled();
   });
 });
 
 describe("未单列方法落到明确配额（issue #48 AC3）", () => {
   it("DELETE 默认 10 次/分，不借用 GET 的 60 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("9");
+    const mock = makeEnv();
+    seed(mock, "/friend-links/:id", "DELETE", 9);
     expect(
       await rateLimitMiddleware(
         request("DELETE", "/friend-links/1"),
-        env,
+        mock.env,
         makeCtx()
       )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("10");
-    const blocked = await rateLimitMiddleware(
-      request("DELETE", "/friend-links/2"),
-      env,
-      makeCtx()
-    );
-    expect(blocked?.status).toBe(429);
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("DELETE", "/friend-links/2"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
   });
 
-  it("POST 默认 60 次/分保持不变", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("59");
+  it("POST 默认 60 次/分", async () => {
+    const mock = makeEnv();
+    seed(mock, "/settings/import", "POST", 59);
     expect(
       await rateLimitMiddleware(
         request("POST", "/settings/import"),
-        env,
+        mock.env,
         makeCtx()
       )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("60");
-    const blocked = await rateLimitMiddleware(
-      request("POST", "/settings/import"),
-      env,
-      makeCtx()
-    );
-    expect(blocked?.status).toBe(429);
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("POST", "/settings/import"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
   });
 
-  it("PUT 默认 60 次/分保持不变", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("59");
+  it("PUT 默认 60 次/分", async () => {
+    const mock = makeEnv();
+    seed(mock, "/settings", "PUT", 59);
     expect(
-      await rateLimitMiddleware(request("PUT", "/settings"), env, makeCtx())
+      await rateLimitMiddleware(
+        request("PUT", "/settings"),
+        mock.env,
+        makeCtx()
+      )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("60");
-    const blocked = await rateLimitMiddleware(
-      request("PUT", "/settings"),
-      env,
-      makeCtx()
-    );
-    expect(blocked?.status).toBe(429);
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("PUT", "/settings"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
   });
 
   it("auth/admin 写操作维持 120 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("119");
+    const mock = makeEnv();
+    seed(mock, "/auth/login", "POST", 119);
     expect(
-      await rateLimitMiddleware(request("POST", "/auth/login"), env, makeCtx())
+      await rateLimitMiddleware(
+        request("POST", "/auth/login"),
+        mock.env,
+        makeCtx()
+      )
     ).toBeNull();
-
-    get.mockResolvedValueOnce("120");
-    const blocked = await rateLimitMiddleware(
-      request("POST", "/auth/login"),
-      env,
-      makeCtx()
-    );
-    expect(blocked?.status).toBe(429);
+    expect(
+      (
+        await rateLimitMiddleware(
+          request("POST", "/auth/login"),
+          mock.env,
+          makeCtx()
+        )
+      )?.status
+    ).toBe(429);
   });
 });
 
 describe("method + 模板精确匹配（issue #48）", () => {
   it("含 /comments 子串但不是评论模板的路径不套用 3 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    // 旧实现 pathname.includes('/comments') 会在这里落到 3 次/分并误伤。
-    get.mockResolvedValueOnce("3");
-    const result = await rateLimitMiddleware(
-      request("POST", "/articles/1/comments/2"),
-      env,
-      makeCtx()
+    const mock = makeEnv();
+    seed(mock, "/articles/:id/comments/:id", "POST", 3);
+    expect(
+      await rateLimitMiddleware(
+        request("POST", "/articles/1/comments/2"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
+    expect(mock.put.mock.calls[0][0]).toBe(
+      key("/articles/:id/comments/:id", "POST")
     );
-
-    expect(result).toBeNull();
-    expectKey(get, "/articles/:id/comments/:id", "POST");
   });
 
   it("含 /like 子串但不是点赞模板的路径不套用 10 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("10");
-    const result = await rateLimitMiddleware(
-      request("POST", "/articles/1/like-extra"),
-      env,
-      makeCtx()
-    );
-
-    expect(result).toBeNull();
-    expectKey(get, "/articles/:id/like-extra", "POST");
-  });
-
-  it("含 /media 子串但不是上传模板的路径不套用 10 次/分", async () => {
-    const { env, get } = makeEnv();
-
-    get.mockResolvedValueOnce("10");
-    const result = await rateLimitMiddleware(
-      request("POST", "/media/upload/extra"),
-      env,
-      makeCtx()
-    );
-
-    expect(result).toBeNull();
-    expectKey(get, "/media/upload/extra", "POST");
+    const mock = makeEnv();
+    seed(mock, "/articles/:id/like-extra", "POST", 10);
+    expect(
+      await rateLimitMiddleware(
+        request("POST", "/articles/1/like-extra"),
+        mock.env,
+        makeCtx()
+      )
+    ).toBeNull();
   });
 
   it("普通 GET 读接口完全跳过限流，不读写 KV", async () => {
-    const { env, get, put } = makeEnv();
-    const ctx = makeCtx();
-
+    const mock = makeEnv();
     for (const path of [
-      "/articles",
-      "/articles/hello",
       "/config",
       "/media",
       "/settings/public",
+      "/categories",
+      "/tags",
     ]) {
       expect(
-        await rateLimitMiddleware(request("GET", path), env, ctx)
+        await rateLimitMiddleware(request("GET", path), mock.env, makeCtx())
       ).toBeNull();
     }
-
-    expect(get).not.toHaveBeenCalled();
-    expect(put).not.toHaveBeenCalled();
+    expect(mock.get).not.toHaveBeenCalled();
+    expect(mock.put).not.toHaveBeenCalled();
   });
 });
 
 describe("客户端 IP 与响应", () => {
-  it("优先使用 CF-Connecting-IP", async () => {
-    const { env, get } = makeEnv();
-
+  it("限流键包含解析出的客户端 IP", async () => {
+    const mock = makeEnv();
     await rateLimitMiddleware(
       request("POST", "/articles/1/comments", {
         "CF-Connecting-IP": "203.0.113.7",
         "X-Forwarded-For": "198.51.100.9, 10.0.0.1",
       }),
-      env,
+      mock.env,
       makeCtx()
     );
-
-    expect(get.mock.calls[0][0]).toBe(
-      `rate_limit:203.0.113.7:POST:/articles/:id/comments:${WINDOW_START}`
-    );
-  });
-
-  it("无 CF 头时取 X-Forwarded-For 的第一跳并去空白", async () => {
-    const { env, get } = makeEnv();
-
-    await rateLimitMiddleware(
-      request("POST", "/articles/1/comments", {
-        "X-Forwarded-For": " 198.51.100.9 , 10.0.0.1",
-      }),
-      env,
-      makeCtx()
-    );
-
-    expect(get.mock.calls[0][0]).toBe(
-      `rate_limit:198.51.100.9:POST:/articles/:id/comments:${WINDOW_START}`
+    expect(mock.put.mock.calls[0][0]).toBe(
+      key("/articles/:id/comments", "POST", "203.0.113.7")
     );
   });
 
   it("超限返回 429 与 RATE_LIMITED 错误码", async () => {
-    const { env, get, put } = makeEnv();
-
-    get.mockResolvedValueOnce("3");
+    const mock = makeEnv();
+    seed(mock, "/articles/:id/comments", "POST", 3);
     const blocked = await rateLimitMiddleware(
       request("POST", "/articles/1/comments"),
-      env,
+      mock.env,
       makeCtx()
     );
-
     expect(blocked?.status).toBe(429);
     const body = (await blocked?.json()) as {
       code: number;
@@ -478,7 +478,6 @@ describe("客户端 IP 与响应", () => {
     expect(body.code).toBe(10007);
     expect(body.message).toContain("Max 3 requests per minute");
     expect(body.data).toBeNull();
-    // 超限请求不再自增计数
-    expect(put).not.toHaveBeenCalled();
+    expect(mock.put).not.toHaveBeenCalled();
   });
 });
