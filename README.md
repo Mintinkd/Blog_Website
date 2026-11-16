@@ -378,23 +378,25 @@ D1 (SQLite) 共 13 张表：
 
 ## 前台页面
 
-| 路径                 | 说明                                                                    | 渲染模式 |
-| -------------------- | ----------------------------------------------------------------------- | -------- |
-| `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
-| `/articles`          | 文章列表（分页）                                                        | 静态     |
-| `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
-| `/categories`        | 分类云（全部分类）                                                      | SSR      |
-| `/categories/:slug`  | 分类文章                                                                | SSR      |
-| `/tags`              | 标签云（全部标签）                                                      | SSR      |
-| `/tags/:slug`        | 标签文章                                                                | SSR      |
-| `/api/v1/*`          | API代理到Worker                                                         | SSR      |
-| `/rss.xml`           | RSS订阅源                                                               | SSR      |
-| `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
-| `/archives`          | 时间线归档                                                              | 静态     |
-| `/about`             | 关于页面                                                                | 静态     |
-| `/privacy`           | 隐私与阅读统计披露（中英、页脚入口）                                    | 静态     |
-| `/search`            | 搜索页                                                                  | 静态     |
-| `/admin`             | 后台管理                                                                | 静态     |
+| 路径                | 说明                                                                    | 渲染模式 |
+| ------------------- | ----------------------------------------------------------------------- | -------- |
+| `/`                 | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
+| `/articles`         | 文章列表（分页）                                                        | 静态     |
+| `/articles/:slug`   | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
+| `/categories`       | 分类云（全部分类）                                                      | SSR      |
+| `/categories/:slug` | 分类文章                                                                | SSR      |
+| `/tags`             | 标签云（全部标签）                                                      | SSR      |
+| `/tags/:slug`       | 标签文章                                                                | SSR      |
+| `/api/v1/*`         | API代理到Worker                                                         | SSR      |
+
+> **分类 / 标签页 SSR 首屏（issue #97 / M17）**：四个分类 / 标签页在服务端直连 Worker 取数并渲染首屏 HTML（`src/utils/taxonomyServer.ts` + 共用 `taxonomyRender.ts`），非 JS 抓取器可见真实分类 / 标签 / 文章标题；客户端脚本在首屏已渲染时跳过重复 fetch，分页与语言切换仍刷新。取数失败 / 空数据时降级为客户端接管。
+> | `/rss.xml` | RSS订阅源 | SSR |
+> | `/speculation-rules` | 空预取规则集（Cloudflare 护栏） | SSR |
+> | `/archives` | 时间线归档 | 静态 |
+> | `/about` | 关于页面 | 静态 |
+> | `/privacy` | 隐私与阅读统计披露（中英、页脚入口） | 静态 |
+> | `/search` | 搜索页 | 静态 |
+> | `/admin` | 后台管理 | 静态 |
 
 `/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
 

@@ -50,14 +50,35 @@ describe("页面不再重复定义 esc（issue #95 AC）", () => {
     "src/pages/tags/[slug].astro",
   ];
 
-  it.each(PAGES)("%s 无本地 esc 定义，且 import 单源 escapeHtml", (rel) => {
-    const src = readFileSync(path.join(ROOT, rel), "utf8");
-    // 覆盖 function / const / let / var + 箭头赋值；esc() 无参（键盘 Esc）不算 escape 副本
-    expect(src, `${rel} 仍定义本地 esc`).not.toMatch(
-      /(?:function|const|let|var)\s+esc\s*[=(]|esc\s*=\s*(?:\(|function)/
+  it.each(PAGES)(
+    "%s 无本地 esc 定义，直接使用或经 taxonomyRender 间接消费单源",
+    (rel) => {
+      const src = readFileSync(path.join(ROOT, rel), "utf8");
+      // 覆盖 function / const / let / var + 箭头赋值；esc() 无参（键盘 Esc）不算 escape 副本
+      expect(src, `${rel} 仍定义本地 esc`).not.toMatch(
+        /(?:function|const|let|var)\s+esc\s*[=(]|esc\s*=\s*(?:\(|function)/
+      );
+      // #97 后详情页卡片渲染收敛到 taxonomyRender，页面不再直接 import escapeHtml——
+      // 只要经该单源（它消费 escapeHtml）即可，禁止的是页面内重复定义。
+      const direct =
+        /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*utils\/escape/.test(
+          src
+        );
+      const viaRender =
+        /import\s*\{[^}]*\brenderArticleCards\b[^}]*\}\s*from\s*['"][^'"]*utils\/taxonomyRender/.test(
+          src
+        );
+      expect(direct || viaRender, `${rel} 未使用 escape 单源`).toBe(true);
+    }
+  );
+
+  it("taxonomyRender 单源消费 escapeHtml（#97 间接路径守卫）", () => {
+    const src = readFileSync(
+      path.join(ROOT, "src/utils/taxonomyRender.ts"),
+      "utf8"
     );
-    expect(src, `${rel} 未 import escapeHtml`).toMatch(
-      /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*utils\/escape/
+    expect(src).toMatch(
+      /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*escape['"]/
     );
   });
 

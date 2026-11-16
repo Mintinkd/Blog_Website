@@ -1,9 +1,18 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
+import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
 
 export const prerender = false;
 
-const { slug } = Astro.params;
+const { slug } = Astro.params || {};
+
+// issue #97 / M17：服务端取数渲染首屏（方案 A），非 JS 抓取器可见；客户端脚本负责后续交互。
+const loaded = await loadTaxonomyForPage('tag-articles', { slug });
+const items = loaded.status === 'ok' ? loaded.items as import('../../utils/taxonomyServer.ts').TaxonomyArticle[] : [];
+const totalPages = loaded.status === 'ok' ? loaded.totalPages : 1;
+const firstHtml = renderArticleCards(items, { read: '阅读', noArticles: '暂无文章', loadFailed: '加载失败' }, 'zh-CN', true);
+const firstPagination = renderPagination(1, totalPages, { prev: '上一页', next: '下一页' });
 ---
 
 <BaseLayout title={`标签: ${slug}`} description="">
@@ -12,9 +21,9 @@ const { slug } = Astro.params;
       <h1 class="page-title" data-i18n="page.tag" data-i18n-params={JSON.stringify({ name: slug })}>标签: {slug}</h1>
       <a href="/articles" class="page-back" data-i18n="page.all_articles">← 所有文章</a>
     </div>
-    <div id="article-list" data-tag-slug={slug} data-page="1" data-page-size="10">
-      <div class="article-list-inner"></div>
-      <div id="pagination-mount"></div>
+    <div id="article-list" data-tag-slug={slug} data-page="1" data-page-size="10" data-ssr={loaded.status === 'ok' || loaded.status === 'empty' ? '1' : '0'}>
+      <div class="article-list-inner"><Fragment set:html={firstHtml} /></div>
+      <div id="pagination-mount"><Fragment set:html={firstPagination} /></div>
     </div>
   </section>
 </BaseLayout>
@@ -64,7 +73,7 @@ const { slug } = Astro.params;
 
 <script>
   import { t, getLocale } from '../../utils/i18n.ts';
-  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+  import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
 
   async function loadArticles(page = 1) {
     const container = document.querySelector('.article-list-inner');
@@ -83,40 +92,18 @@ const { slug } = Astro.params;
       if (data.code === 0 && data.data) {
         const { items, total_pages } = data.data;
 
-        if (items.length === 0) {
-          container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('page.no_articles_tag')}</p>`;
-          return;
-        }
-
-        container.innerHTML = items.map((article: any) => `
-          <article class="list-card">
-            <a href="/articles/${safePathSegment(article.slug)}" class="list-card-link">
-              <div class="list-card-body">
-                <div class="list-card-meta">
-                  ${article.category ? `<span class="list-card-category">${escapeHtml(article.category.name)}</span>` : ''}
-                  <span class="list-card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
-                </div>
-                <h3 class="list-card-title">${escapeHtml(article.title)}</h3>
-                ${article.summary ? `<p class="list-card-summary">${escapeHtml(article.summary)}</p>` : ''}
-                <div class="list-card-footer">
-                  <div class="list-card-tags">
-                    ${(article.tags || []).slice(0, 3).map((tag: any) => `<a href="/tags/${safePathSegment(tag.slug)}" class="list-card-tag">${escapeHtml(tag.name)}</a>`).join('')}
-                  </div>
-                  <span class="list-card-stats">${article.view_count || 0} ${t('article.read')}</span>
-                </div>
-              </div>
-            </a>
-          </article>
-        `).join('');
+        container.innerHTML = renderArticleCards(items, {
+          read: t('article.read'),
+          noArticles: t('page.no_articles_tag'),
+          loadFailed: t('common.load_failed'),
+        }, dateLocale, true);
+        if (items.length === 0) return;
 
         const paginationMount = document.getElementById('pagination-mount');
-        if (paginationMount && total_pages > 1) {
-          let pagHtml = '<div class="pagination">';
-          if (page > 1) pagHtml += `<button class="pag-btn" data-page="${page - 1}">${t('page.prev')}</button>`;
-          pagHtml += `<span class="pag-info">${page} / ${total_pages}</span>`;
-          if (page < total_pages) pagHtml += `<button class="pag-btn" data-page="${page + 1}">${t('page.next')}</button>`;
-          pagHtml += '</div>';
-          paginationMount.innerHTML = pagHtml;
+        if (paginationMount) {
+          paginationMount.innerHTML = renderPagination(page, total_pages, {
+            prev: t('page.prev'), next: t('page.next'),
+          });
 
           paginationMount.querySelectorAll('.pag-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -132,8 +119,12 @@ const { slug } = Astro.params;
     }
   }
 
-  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
-  document.addEventListener('astro:page-load', () => loadArticles());
+  // issue #97：SSR 首屏已渲染时跳过首次 fetch（避免重复请求/闪烁），语言切换 / 分页仍刷新。
+  document.addEventListener('astro:page-load', () => {
+    const wrapper = document.getElementById('article-list');
+    if (wrapper?.dataset.ssr === '1') return;
+    loadArticles();
+  });
 
   document.addEventListener('locale-changed', () => loadArticles());
 </script>

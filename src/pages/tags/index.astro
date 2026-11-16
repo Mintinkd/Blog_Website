@@ -1,7 +1,15 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
+import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
 export const prerender = false;
+
+// issue #97 / M17：服务端取数渲染首屏（方案 A），非 JS 抓取器可见；客户端脚本负责后续刷新。
+const loaded = await loadTaxonomyForPage('tags');
+const tags = loaded.status === 'ok' ? [...loaded.items].sort(
+  (a: any, b: any) => (b.article_count || 0) - (a.article_count || 0)
+) : [];
 ---
 
 <BaseLayout title="标签" description="">
@@ -10,8 +18,17 @@ export const prerender = false;
       <h1 class="page-title" data-i18n="page.tags">标签</h1>
     </div>
     <p class="page-desc" data-i18n="page.tags_desc">按标签浏览所有文章</p>
-    <div id="tags-cloud" class="tags-cloud">
-      <div class="tags-loading" data-i18n="common.loading">加载中...</div>
+    <div id="tags-cloud" class="tags-cloud" data-ssr={loaded.status === 'ok' ? '1' : '0'}>
+      {loaded.status === 'ok' ? (
+        <Fragment set:html={tags.map((tag: any) => `
+          <a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">
+            <span>${escapeHtml(tag.name)}</span>
+            <span class="tag-count">${tag.article_count || 0}</span>
+          </a>
+        `).join('')} />
+      ) : (
+        <div class="tags-empty" data-i18n={loaded.status === 'error' ? 'common.load_failed' : 'page.no_articles_tag'}>{loaded.status === 'error' ? '加载失败' : '暂无标签'}</div>
+      )}
     </div>
   </section>
 </BaseLayout>
@@ -109,7 +126,11 @@ export const prerender = false;
     }
   }
 
-  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
-  document.addEventListener('astro:page-load', () => loadTags());
+  // issue #97：SSR 首屏已渲染时跳过首次 fetch（避免重复请求/闪烁），语言切换仍刷新。
+  document.addEventListener('astro:page-load', () => {
+    const container = document.getElementById('tags-cloud');
+    if (container?.dataset.ssr === '1') return;
+    loadTags();
+  });
   document.addEventListener('locale-changed', () => loadTags());
 </script>

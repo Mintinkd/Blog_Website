@@ -1,7 +1,15 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
+import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
 export const prerender = false;
+
+// issue #97 / M17：服务端取数渲染首屏（方案 A），非 JS 抓取器可见；客户端脚本负责后续刷新。
+const loaded = await loadTaxonomyForPage('categories');
+const categories = loaded.status === 'ok' ? [...loaded.items].sort(
+  (a: any, b: any) => (b.article_count || 0) - (a.article_count || 0)
+) : [];
 ---
 
 <BaseLayout title="分类" description="">
@@ -10,8 +18,20 @@ export const prerender = false;
       <h1 class="page-title" data-i18n="page.categories">分类</h1>
     </div>
     <p class="page-desc" data-i18n="page.categories_desc">按分类浏览所有文章</p>
-    <div id="categories-cloud" class="categories-cloud">
-      <div class="categories-loading" data-i18n="common.loading">加载中...</div>
+    <div id="categories-cloud" class="categories-cloud" data-ssr={loaded.status === 'ok' ? '1' : '0'}>
+      {loaded.status === 'ok' ? (
+        <Fragment set:html={categories.map((cat: any) => `
+          <a href="/categories/${safePathSegment(cat.slug)}" class="category-item">
+            <div class="category-head">
+              <span class="category-name">${escapeHtml(cat.name)}</span>
+              <span class="category-count">${cat.article_count || 0} <span data-i18n="admin.article_count">篇文章</span></span>
+            </div>
+            ${cat.description ? `<span class="category-desc">${escapeHtml(cat.description)}</span>` : ''}
+          </a>
+        `).join('')} />
+      ) : (
+        <div class="categories-empty" data-i18n={loaded.status === 'error' ? 'common.load_failed' : 'page.no_categories'}>{loaded.status === 'error' ? '加载失败' : '暂无分类'}</div>
+      )}
     </div>
   </section>
 </BaseLayout>
@@ -133,7 +153,12 @@ export const prerender = false;
     }
   }
 
-  // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
-  document.addEventListener('astro:page-load', () => loadCategories());
+  // issue #97：SSR 首屏已渲染（data-ssr=1）时跳过首次 fetch，避免重复请求与闪烁；
+  // 语言切换仍刷新（文案/排序随 locale 变），SSR 未成功时首次照旧由客户端补齐。
+  document.addEventListener('astro:page-load', () => {
+    const container = document.getElementById('categories-cloud');
+    if (container?.dataset.ssr === '1') return;
+    loadCategories();
+  });
   document.addEventListener('locale-changed', () => loadCategories());
 </script>
