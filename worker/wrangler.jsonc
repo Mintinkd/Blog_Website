@@ -7,6 +7,7 @@
       "binding": "DB",
       "database_name": "blog-db",
       "database_id": "5c759ce7-82e0-4205-8d01-fea18db55cd7",
+      "migrations_dir": "migrations",
     },
   ],
   "kv_namespaces": [

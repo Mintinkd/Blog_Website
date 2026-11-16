@@ -176,7 +176,9 @@
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
 │   ├── wrangler.jsonc            # Worker配置（D1/KV绑定 + 每日 cron，实际生效）
-│   ├── schema.sql                    # 数据库Schema
+│   ├── schema.sql                    # 数据库 Schema（全新库形态，可重复执行，issue #94）
+│   ├── migrations/                   # wrangler d1 migrations 迁移文件（0001_baseline 等，issue #94）
+│   ├── migrations-baseline.sql       # 存量/全新库标记 0001 已应用（幂等，issue #94）
 │   ├── schema-tier0-incremental.sql  # 阅读统计 Tier 0 增量 DDL（已有部署升级直接 --file 执行）
 │   ├── package.json             # 后端依赖与脚本（typecheck / test）
 │   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
@@ -630,16 +632,19 @@ Worker 本地运行在 `http://localhost:8787`
 ```bash
 cd worker
 npx wrangler d1 execute blog-db --remote --file=./schema.sql
+npx wrangler d1 execute blog-db --remote --file=./migrations-baseline.sql   # 把历史迁移标记为已应用
 npm run db:seed          # 生成随机初始管理员口令（仅终端打印一次，首次登录强制改密）
 ```
 
 > **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
+
+> **数据库迁移框架（issue #94 / M12）**：`worker/schema.sql` 只保留「全新库」形态（历史 ALTER 列已并入 CREATE TABLE，可重复执行无 `duplicate column`）；历史增量 ALTER + UPDATE 收编在 `worker/migrations/0001_baseline.sql`，由 `wrangler d1 migrations` 管理（`wrangler.jsonc` 的 `migrations_dir: "migrations"`）。全新库与已迁移存量库**不要**执行 0001（会 duplicate column），改用上面的 `migrations-baseline.sql` 把 `0001_baseline.sql` 记为已应用（幂等，可重跑）；从未迁移过的极老库才用 `npx wrangler d1 migrations apply blog-db --remote` 执行 0001 补齐列。用 `npx wrangler d1 migrations list blog-db --remote` 查待应用列表——baseline 标记后应显示「No migrations to apply」。
 >
 > **#83 / H1**：`schema.sql` 不再写入任何硬编码可登录口令。全新库初始化后**必须**执行 `npm run db:seed`（本地库加 `--` 传 `--local`），它用 `randomUUID()` 生成随机口令、以 PBKDF2 哈希 UPSERT 写入 `admin` 账户并在终端打印一次明文；该口令无法从仓库或响应复现。若种子命令失败，本次口令不打印、可安全重跑。可用 `SEED_ADMIN_USERNAME` 覆盖用户名。
 
-> **已有部署升级**：schema.sql 文件尾部的迁移语句仅供增量执行一次；对已有库请单独执行新增的迁移语句，勿重复执行全文（会因 `duplicate column` 报错）。
+> **已有部署升级**：schema.sql 现为全新库形态、可重复执行，尾部不再有增量 ALTER。已迁移过的库如需接入迁移框架，执行 `migrations-baseline.sql` 标记 0001 已应用即可；新增结构变更写成 `worker/migrations/0002_*.sql`（命名 `{number}_{name}.sql`，按数字排序）后用 `wrangler d1 migrations apply` 应用。切勿把历史 0001 直接 apply 到已迁移库（duplicate column）。
 
-**阅读统计（Tier 0）增量 DDL**：已有库升级时只执行 `worker/schema-tier0-incremental.sql`（5 条语句，均 `IF NOT EXISTS`，重复执行安全）；不要重跑 `schema.sql` 全文。该文件与 `worker/schema.sql` 尾部「阅读统计 Tier 0」段同义，是**唯一可执行来源**。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
+**阅读统计（Tier 0）增量 DDL**：已有库升级时执行 `worker/schema-tier0-incremental.sql`（5 条语句，均 `IF NOT EXISTS`，重复执行安全）。issue #94 后 `schema.sql` 已是幂等全新库形态、重跑不再报 duplicate；该文件仍作为「只补 Tier 0、不碰其他结构」的最小增量来源保留。它与 `worker/schema.sql` 的「阅读统计 Tier 0」段同义。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
 
 ```bash
 cd worker
@@ -678,6 +683,8 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 > **新增对象类迁移**（表 / 索引）：写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。
 >
 > **新增列类迁移**（`ALTER TABLE ADD COLUMN`，无 `IF NOT EXISTS`）：不能塞进 SQL 文件重放（第二次报 `duplicate column`）。照 `scripts/migrate-reading-time.mjs` 的模式写幂等 JS：先查 `PRAGMA table_info` 判列存在，缺列才 ALTER + 回填，末尾再查一次 fail-closed；在 `Apply D1 migrations` 步骤追加一行 `node ../scripts/<name>.mjs`。`reading_time`（#90 / M2）即以此迁移：存量库加列后按与 Worker 一致的算法回填（`tests/reading-time-migration.test.ts` 守卫两端同值），已有列则跳过不覆盖。**禁止**把全量 `schema.sql` 当迁移跑。
+>
+> **三套机制分工（issue #94 / M12 后）**：① `worker/migrations/*.sql` 是**结构性迁移的版本历史**（`wrangler d1 migrations`，手动 apply，按文件名去重）——0001 是历史 baseline，未来结构变更写 0002+、不进 CI 自动流程；② `schema-tier0-incremental.sql` / `schema-m22-incremental.sql` 与 `scripts/migrate-reading-time.mjs` 是 **CI 每次重放的幂等补丁**（`IF NOT EXISTS` / 判列存在），属防御性重放网，保留原样、不再新增内容——它们与 ① 不冲突：① 管「一次性演进」，② 管「每次部署的自愈兜底」；③ `schema.sql` 是全新库形态，可重复执行。新增幂等补丁请优先改写为 ① 的迁移文件 + ② 的重放脚本两处（如需 CI 自愈），并在关票说明。
 >
 > 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）——CI 自动迁移 + 对象核对正是为防止此类漏跑。手动应急命令见上文「初始化数据库 / 增量 DDL」段。
 

@@ -52,17 +52,18 @@ describe("M22 索引幂等（#73）", () => {
     }
   });
 
-  it("依赖迁移列的索引位于 ALTER TABLE 之后（全新库初始化不报 no such column）", () => {
+  it("依赖迁移列的索引存在，且 uploaded_by 列已在 CREATE TABLE 内（全新库不报 no such column）", () => {
+    // issue #94 / M12：历史 ALTER 收编到 migrations/0001_baseline.sql，
+    // 全新库 schema.sql 直接把 uploaded_by 写进 CREATE TABLE，故不再有 ALTER 顺序约束。
     const schema = readFileSync(path.join(ROOT, "schema.sql"), "utf8");
-    const alterUploadedBy = schema.search(
-      /ALTER\s+TABLE\s+media_assets\s+ADD\s+COLUMN\s+uploaded_by/i
+    const createMedia = schema.match(
+      /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+media_assets\s*\([^;]*\);/i
     );
-    const indexUploadedBy = schema.search(
+    expect(createMedia, "media_assets CREATE TABLE 存在").not.toBeNull();
+    expect(createMedia![0]).toMatch(/\buploaded_by\b/i);
+    expect(schema).toMatch(
       /CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+idx_media_assets_uploaded_by/i
     );
-    expect(alterUploadedBy).toBeGreaterThan(-1);
-    expect(indexUploadedBy).toBeGreaterThan(-1);
-    expect(indexUploadedBy).toBeGreaterThan(alterUploadedBy);
   });
 });
 

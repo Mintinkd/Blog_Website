@@ -9,7 +9,8 @@ import { LEGACY_SEED_PASSWORD_HASH } from "../src/utils/seed";
  * #83 起新部署不再有硬编码可登录口令：
  *  - TS 侧保留的哈希仅用于识别存量种子账号（LEGACY_SEED_PASSWORD_HASH），
  *    恒等于 SHA-256("password")——改它会让存量识别失配；
- *  - schema.sql 只允许残留一处该哈希（存量迁移 UPDATE），**禁止**再出现种子 INSERT；
+ *  - 该哈希只在 migrations/0001_baseline.sql 的存量 UPDATE 中残留一处（issue #94 收编），
+ *    schema.sql 不含，**禁止**在任何文件出现种子 INSERT；
  *  - 随机口令由 scripts/seed-credential.mjs 生成，见 seed_random.test.ts。
  */
 
@@ -35,12 +36,20 @@ describe("种子凭据契约（issue #24 / #83）", () => {
     );
   });
 
-  it("schema.sql：历史哈希恰好一处（存量迁移 UPDATE），且等于 TS 常量", async () => {
-    const hashLiterals = [...schema().matchAll(/'([0-9a-f]{64})'/g)].map(
+  it("迁移文件：历史哈希恰好一处（baseline UPDATE），且等于 TS 常量；schema.sql 不含", async () => {
+    // issue #94 / M12：存量 UPDATE 从 schema.sql 收编到 migrations/0001_baseline.sql。
+    const baseline = readFileSync(
+      join(import.meta.dirname, "..", "migrations", "0001_baseline.sql"),
+      "utf8"
+    );
+    const hashLiterals = [...baseline.matchAll(/'([0-9a-f]{64})'/g)].map(
       (m) => m[1]
     );
     expect(hashLiterals).toHaveLength(1);
     expect(hashLiterals[0]).toBe(LEGACY_SEED_PASSWORD_HASH);
+    expect(schema()).not.toMatch(
+      /'5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8'/i
+    );
   });
 
   it("schema.sql：不再写入硬编码可登录的种子管理员行", () => {

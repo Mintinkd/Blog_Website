@@ -1,5 +1,9 @@
 -- Blog Site D1 Database Schema
 -- Project: blog_website
+--
+-- 全新库形态（issue #94 / M12）：历史 ALTER 迁移列直接并入 CREATE TABLE；
+-- 存量库的同一批 ALTER + UPDATE 收录于 migrations/0001_baseline.sql。
+-- 本文件可重复执行（全为 CREATE IF NOT EXISTS / INSERT OR IGNORE），无 duplicate column。
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8,7 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -16,6 +23,7 @@ CREATE TABLE IF NOT EXISTS categories (
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
   description TEXT DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -24,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
+  created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -36,6 +45,7 @@ CREATE TABLE IF NOT EXISTS articles (
   summary TEXT DEFAULT '',
   cover_image TEXT DEFAULT '',
   category_id INTEGER,
+  author_id INTEGER REFERENCES users(id),
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
   view_count INTEGER NOT NULL DEFAULT 0,
   like_count INTEGER NOT NULL DEFAULT 0,
@@ -84,6 +94,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
   kv_key TEXT NOT NULL UNIQUE,
   storage_type TEXT NOT NULL DEFAULT 'kv' CHECK (storage_type IN ('kv', 'r2')),
   alt_text TEXT DEFAULT '',
+  uploaded_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -178,45 +189,17 @@ INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('admin_passwor
 -- jwt_secret: auto-generated on first read if empty (self-healing), see worker/src/middleware/auth.ts
 INSERT OR IGNORE INTO site_config (key, value, is_public) VALUES ('jwt_secret', '', 0);
 
--- Migration: Create users table if not exists (for existing deployments)
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  display_name TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'editor')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 -- #83 / H1：全新库不再写入任何硬编码可登录口令。
 -- 初始化后必须执行 `npm run db:seed`（worker/scripts/db-seed.mjs）生成随机初始口令，
 -- 该口令只在终端打印一次，首次登录强制改密。切勿在 SQL 中固化口令。
 -- 存量 site_config 凭据仍由 login API 在首次登录时自动迁移到 users 表。
+-- 历史增量 ALTER / UPDATE（author_id / uploaded_by / created_by / 须改密列 + legacy 口令标记）
+-- 已按 issue #94 / M12 收编到 migrations/0001_baseline.sql，仅供未迁移的极老库补齐；
+-- 全新库不再需要执行它们——其列已并入上方 CREATE TABLE。
 
--- Migration: Add author_id to articles
-ALTER TABLE articles ADD COLUMN author_id INTEGER REFERENCES users(id);
+-- 依赖迁移列的索引（列已在 CREATE TABLE 内，全新库初始化不报 no such column）
 CREATE INDEX IF NOT EXISTS idx_articles_author_id ON articles(author_id);
-UPDATE articles SET author_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE author_id IS NULL;
-
--- Migration: Add uploaded_by to media_assets
-ALTER TABLE media_assets ADD COLUMN uploaded_by INTEGER REFERENCES users(id);
-UPDATE media_assets SET uploaded_by = (SELECT id FROM users WHERE role = 'admin' LIMIT 1) WHERE uploaded_by IS NULL;
--- #73 / M22：依赖迁移列的索引须在 ALTER 之后创建（全新库初始化才不报 no such column）
 CREATE INDEX IF NOT EXISTS idx_media_assets_uploaded_by ON media_assets(uploaded_by);
-
--- Migration: Add created_by to categories and tags
-ALTER TABLE categories ADD COLUMN created_by INTEGER REFERENCES users(id);
-ALTER TABLE tags ADD COLUMN created_by INTEGER REFERENCES users(id);
-
--- Migration: users 加「须改密」标记与登录失败锁定（P1-5 / issue #8）
-ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE users ADD COLUMN locked_until TEXT;
--- #83 / H1：仅识别**存量库**中仍在使用历史种子口令（SHA-256("password")）的账号并强制改密。
--- 字面量为 worker/src/utils/seed.ts 的 LEGACY_SEED_PASSWORD_HASH 的 SQL 拷贝（SQL 无法 import TS），
--- 由 worker/tests/seed_constants.test.ts 机械守卫。此哈希不用于建号——新部署走 npm run db:seed。
-UPDATE users SET must_change_password = 1 WHERE password_hash = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
 
 -- ── 阅读统计 Tier 0（issue #53 / docs/READER_ANALYTICS.md §5） ──
 -- 本段全部 IF NOT EXISTS，可重复执行；存量库的增量片段见 README「初始化数据库」。
