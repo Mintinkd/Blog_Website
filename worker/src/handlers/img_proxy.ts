@@ -14,6 +14,8 @@ import { getClientIpString } from "../utils/client_ip";
  *      localhost、内部域名、workers.dev 递归代理等）；
  *    - 解析后 IP 复核（issue #19）：域名经 DoH（A/AAAA）解析，任一结果落入受限段即拒绝；
  *      解析失败/超时/无记录 fail-closed 拒绝；每一跳重定向同样复核（TOCTOU 说明见函数注释）；
+ *    - #88 / H10：解析判定只在 RESOLUTION_TTL_MS 内复用，过期即重新 DoH，缩短校验到建连的窗口；
+ *      blocked 判定写结构化日志（[ssrf-blocked] JSON）供告警；连接级绑定仍为已知残余风险。
  *    - 重定向不自动跟随（redirect: 'manual'），每一跳都复用同一校验，超跳数报错；
  *    - 请求头净化：去掉 Referer/Cookie，防被当作中间人带出敏感上下文；
  *    - 仅允许图片 Content-Type，响应体流式读取、超 10MB 即取消上游（不整块入内存）；
@@ -255,6 +257,58 @@ export function mapFetchedFailure(
 const DOH_ENDPOINT = "https://cloudflare-dns.com/dns-query";
 const DOH_TIMEOUT_MS = 3_000;
 
+/**
+ * #88 / H10：一次解析判定在同一请求内可复用的最长时间。
+ * 同主机重定向不必重复 DoH；但判定比这更旧时必须在下一次 fetch 前重新查询，
+ * 把「校验完成 → 实际建连」的窗口上界从整个请求生命周期压到 1 秒。
+ * 注意：Workers fetch 无法绑定已校验 IP，这只能缩窗，不能消除 DNS rebinding。
+ */
+export const RESOLUTION_TTL_MS = 1_000;
+
+/** #88 / H10：blocked 日志的可选上下文（img 通道传 channel/clientIp，其余通道留默认） */
+export interface ProxyLogContext {
+  channel?: string;
+  clientIp?: string;
+}
+
+type BlockReason =
+  | "literal"
+  | "doh"
+  | "lookup_failed"
+  | "empty"
+  | "redirect_validation"
+  | "malformed_location";
+
+interface ResolutionDecision {
+  status: "ok" | "blocked" | "failed";
+  reason: BlockReason;
+  blockedIps: string[];
+  /** 判定完成时刻（Date.now()），用于判定是否超过 RESOLUTION_TTL_MS */
+  checkedAt: number;
+}
+
+/** #88 / H10：blocked 判定统一出口——结构化 JSON 日志，供日志查询/告警规则匹配 [ssrf-blocked] */
+async function logSsrfBlocked(
+  host: string,
+  hop: number,
+  decision: Pick<ResolutionDecision, "reason" | "blockedIps">,
+  context?: ProxyLogContext
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    event: "ssrf_blocked",
+    channel: context?.channel ?? "unknown",
+    host,
+    hop,
+    reason: decision.reason,
+    blocked_ips: decision.blockedIps,
+    at: new Date().toISOString(),
+  };
+  // 不记录原始 client IP / 完整目标 URL（可能含敏感 query），只记哈希与主机名
+  if (context?.clientIp)
+    payload.client_ip_hash = await sha1Hex(context.clientIp);
+  console.warn("[ssrf-blocked] " + JSON.stringify(payload));
+}
+
 /** 主机是否为 IP 字面量（IPv4 点分 / IPv6 含冒号，URL 中带方括号） */
 function isIpLiteralHost(host: string): boolean {
   const h = host.replace(/^\[|\]$/g, "");
@@ -294,15 +348,29 @@ async function queryDoh(
  * issue #19：解析后 IP 复核。对需要 DNS 解析的主机做 DoH A/AAAA 查询，
  * 任一结果落入受限段（复用 isBlockedIp 语义）即拒绝；IP 字面量无需解析。
  *
- * 注：DoH 结果与 fetch 建连时的实际解析之间存在 TOCTOU 窗口（DNS 可变更/轮换）。
- * 本复核只保证「校验时」解析结果安全；Workers 运行时无法把 fetch 绑定到已校验 IP，
- * 连接级绑定为 #19 明确的范围外事项。
+ * #88 / H10：返回带 reason / blockedIps / checkedAt 的判定对象，供 1 秒 TTL 复用与结构化告警。
+ * 仍存在 TOCTOU 窗口（DNS 可变更/轮换）：本复核只保证「校验时」解析结果安全；
+ * Workers 运行时无法把 fetch 绑定到已校验 IP，连接级绑定为 #19 明确的范围外事项（见 #88 残余风险）。
  */
 async function resolveAndCheckTarget(
   host: string,
   signal?: AbortSignal | null
-): Promise<"ok" | "blocked" | "failed"> {
-  if (isIpLiteralHost(host)) return isBlockedIp(host) ? "blocked" : "ok";
+): Promise<ResolutionDecision> {
+  const done = (
+    status: ResolutionDecision["status"],
+    reason: BlockReason,
+    blockedIps: string[] = []
+  ): ResolutionDecision => ({
+    status,
+    reason,
+    blockedIps,
+    checkedAt: Date.now(),
+  });
+
+  if (isIpLiteralHost(host))
+    return isBlockedIp(host)
+      ? done("blocked", "literal")
+      : done("ok", "literal");
 
   const dnsSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(DOH_TIMEOUT_MS)])
@@ -313,30 +381,32 @@ async function resolveAndCheckTarget(
   ]);
 
   // 任一查询失败/超时，或解析结果为空：fail-closed，明确拒绝而非放行
-  if (a === null || aaaa === null) return "failed";
+  if (a === null || aaaa === null) return done("failed", "lookup_failed");
   const ips = [...a, ...aaaa];
-  if (ips.length === 0) return "failed";
+  if (ips.length === 0) return done("failed", "empty");
 
-  for (const ip of ips) {
-    if (isBlockedIp(ip)) return "blocked";
-  }
-  return "ok";
+  const blocked = ips.filter(isBlockedIp);
+  if (blocked.length > 0) return done("blocked", "doh", blocked);
+  return done("ok", "doh");
 }
 
 /**
  * issue #14：redirect: 'manual' 手动逐跳跟随；每一跳都复用 validateTargetUrl。
  * issue #19：每一跳（含首跳）拉取前先做解析后 IP 复核——命中受限段返回 kind: 'blocked'，
  * 解析失败/超时返回 kind: 'resolution_failed'。
+ * #88 / H10：判定只在 RESOLUTION_TTL_MS 内复用（同主机 http→https 不重复 DoH）；
+ * 过期则在下一次 fetch 前重新查询，把校验到建连的窗口压到 TTL 内。所有 blocked 出口写结构化日志。
  * 重定向目标落入黑名单/校验不通过时立即停止（kind: 'blocked'），不发起后续请求；
  * 跳数超过 MAX_REDIRECTS 返回 kind: 'too_many_redirects'。
  */
 export async function fetchWithValidatedRedirects(
   initial: URL,
-  init: RequestInit
+  init: RequestInit,
+  context?: ProxyLogContext
 ): Promise<ProxyFetchResult> {
   let current = initial;
   // 同一请求内按主机复用解析结果（同主机重定向如 http→https 不重复 DoH 查询）
-  const resolutions = new Map<string, Promise<"ok" | "blocked" | "failed">>();
+  const resolutions = new Map<string, Promise<ResolutionDecision>>();
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     // issue #19：每次拉取前对主机做解析后 IP 复核（含首跳与每一跳重定向）
@@ -346,9 +416,18 @@ export async function fetchWithValidatedRedirects(
       resolution = resolveAndCheckTarget(host, init.signal);
       resolutions.set(host, resolution);
     }
-    const outcome = await resolution;
-    if (outcome === "blocked") return { kind: "blocked" };
-    if (outcome === "failed") return { kind: "resolution_failed" };
+    let outcome = await resolution;
+    // #88 / H10：判定过期（例如同主机重定向耗时 > TTL）时，fetch 前必须重新查询
+    if (Date.now() - outcome.checkedAt > RESOLUTION_TTL_MS) {
+      resolution = resolveAndCheckTarget(host, init.signal);
+      resolutions.set(host, resolution);
+      outcome = await resolution;
+    }
+    if (outcome.status === "blocked") {
+      await logSsrfBlocked(host, hop, outcome, context);
+      return { kind: "blocked" };
+    }
+    if (outcome.status === "failed") return { kind: "resolution_failed" };
 
     let res: Response;
     try {
@@ -366,11 +445,25 @@ export async function fetchWithValidatedRedirects(
       try {
         next = new URL(loc, current);
       } catch {
+        await logSsrfBlocked(
+          current.hostname,
+          hop + 1,
+          { reason: "malformed_location", blockedIps: [] },
+          context
+        );
         return { kind: "blocked" };
       }
 
       const v = validateTargetUrl(next.toString());
-      if (!v.ok) return { kind: "blocked" };
+      if (!v.ok) {
+        await logSsrfBlocked(
+          next.hostname,
+          hop + 1,
+          { reason: "redirect_validation", blockedIps: [] },
+          context
+        );
+        return { kind: "blocked" };
+      }
 
       current = v.url;
       continue;
@@ -477,15 +570,19 @@ export async function handleImgProxy(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const fetched = await fetchWithValidatedRedirects(tu, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        Accept:
-          "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    const fetched = await fetchWithValidatedRedirects(
+      tu,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          Accept:
+            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+        signal: ctrl.signal,
       },
-      signal: ctrl.signal,
-    });
+      { channel: "img", clientIp: ip }
+    );
 
     // issue #22：四类失败 kind 收敛为共享映射（成功路径降落到下方检查）
     if (fetched.kind !== "ok") {
