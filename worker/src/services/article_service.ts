@@ -50,6 +50,33 @@ async function getUserIdByUsername(
   return row?.id || null;
 }
 
+/**
+ * 解析列表查询里 group_concat 出来的标签 blob（issue #89 / M1）。
+ *
+ * 格式：每条标签 `id^_name^_slug`，标签间以 `^^` 拼接。
+ * 解析取「首个 ^_ 之前的 id、末个 ^_ 之后的 slug、中间整段 name」，
+ * 这样 name 自身含 `^_` 组合也不丢失（slug 按约定为 URL-safe，不含分隔符）。
+ * 空 blob / 缺字段的畸形片段直接丢弃，不抛异常。
+ */
+function parseTagsBlob(blob: unknown): TagBrief[] {
+  if (typeof blob !== "string" || blob.length === 0) return [];
+  const tags: TagBrief[] = [];
+  for (const chunk of blob.split("^^")) {
+    if (!chunk) continue;
+    const first = chunk.indexOf("^_");
+    const last = chunk.lastIndexOf("^_");
+    if (first < 0 || last <= first) continue;
+    const id = Number(chunk.slice(0, first));
+    if (!Number.isFinite(id)) continue;
+    tags.push({
+      id,
+      name: chunk.slice(first + 2, last),
+      slug: chunk.slice(last + 2),
+    });
+  }
+  return tags;
+}
+
 export async function listArticles(
   env: Env,
   options: ListArticlesOptions
@@ -114,13 +141,22 @@ export async function listArticles(
     .first<{ total: number }>();
   const total = countResult?.total || 0;
 
+  // issue #89 / M1：用相关子查询一次取回每篇文章的标签 blob，消除逐篇 D1 往返。
+  // 内层按 t.id 排序保证 blob 中标签顺序稳定（可复现），外层 group_concat 拼接。
   const articles = await env.DB.prepare(
     `
     SELECT a.id, a.title, a.slug, a.summary, a.cover_image, a.status, a.content,
            a.view_count, a.like_count, a.comment_count, a.published_at, a.created_at,
            a.author_id,
            c.id as category_id, c.name as category_name, c.slug as category_slug,
-           u.display_name as author_name
+           u.display_name as author_name,
+           (SELECT group_concat(blob.part, '^^') FROM (
+              SELECT t.id || '^_' || t.name || '^_' || t.slug AS part
+              FROM tags t
+              JOIN article_tags at ON t.id = at.tag_id
+              WHERE at.article_id = a.id
+              ORDER BY t.id
+            ) blob) AS tags_blob
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
     LEFT JOIN users u ON a.author_id = u.id
@@ -135,15 +171,7 @@ export async function listArticles(
   const items: ArticleListItem[] = [];
 
   for (const row of articles.results) {
-    const tags = await env.DB.prepare(
-      `
-      SELECT t.id, t.name, t.slug FROM tags t
-      JOIN article_tags at ON t.id = at.tag_id
-      WHERE at.article_id = ?
-    `
-    )
-      .bind(row.id)
-      .all();
+    const tags = parseTagsBlob(row.tags_blob);
 
     items.push({
       id: row.id as number,
@@ -158,11 +186,7 @@ export async function listArticles(
             slug: row.category_slug as string,
           }
         : { id: 1, name: "未分类", slug: "uncategorized" },
-      tags: tags.results.map((t: Record<string, unknown>) => ({
-        id: t.id as number,
-        name: t.name as string,
-        slug: t.slug as string,
-      })),
+      tags,
       status: row.status as "draft" | "published",
       view_count: row.view_count as number,
       like_count: row.like_count as number,
