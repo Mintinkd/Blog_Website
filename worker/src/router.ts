@@ -107,8 +107,9 @@ interface Route {
 
 const routes: Route[] = [];
 
-// P1-5 / issue #8：仍在使用初始口令的账号，改密前拒绝管理端写操作（白名单内除外）
-const WRITE_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+// P1-5 / issue #8 建立；#83 / H1 收严：须改密会话在改密前拒绝**所有鉴权请求**
+// （含 GET 类管理接口），仅保留令牌续期与改密两个豁免路径。
+// 不再按 HTTP 方法区分——读接口同样能泄露配置/用户/统计数据，旧口径只拦写方法留下缺口。
 const MUST_CHANGE_PASSWORD_EXEMPT_PATHS = new Set([
   "/auth/refresh",
   "/auth/change-password",
@@ -637,9 +638,10 @@ export async function router(
           withCors(forbidden("权限不足，仅管理员可执行此操作"), request)
         );
       }
+      // #83 / H1：会话级闸门——须改密会话的任何鉴权请求一律 403，
+      // 含 GET 类管理接口；仅两个豁免路径可达。
       if (
         result.user.mustChangePassword &&
-        WRITE_METHODS.has(method) &&
         !MUST_CHANGE_PASSWORD_EXEMPT_PATHS.has(pathname)
       ) {
         return withSecurityHeaders(

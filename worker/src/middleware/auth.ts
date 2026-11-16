@@ -135,12 +135,17 @@ async function getUserAuth(
     // P1 复审 Spec(c)2 / #16：仅「列不存在」（迁移前）允许回退旧列；其余异常一律向上抛（fail-closed，不得静默关闭门禁）
     if (!isMissingColumnError(e)) throw e;
   }
-  // 新增列尚未迁移时降级为旧列（须改密强制仅在迁移后生效）
+  // #83 / H1 fail-closed：列未迁移时不得返回 false 放行。
+  // 历史口径（mustChangePassword: false）会让未迁移库的「须改密」门禁整体失效——
+  // 种子口令账号可凭旧口令登录并直接访问管理接口。改为视为「须改密」，
+  // 除 /auth/refresh、/auth/change-password 外的鉴权接口一律由 router 闸门拦截 403。
+  // 代价：未迁移库上已改密用户也会被要求改密（无法从旧列判断），
+  // 这是有意选择的 fail-closed 取舍——正确出路是执行 README 登记的 D1 迁移。
   const row = await env.DB.prepare("SELECT role FROM users WHERE username = ?")
     .bind(username)
     .first<{ role: string }>();
   if (!row) return null;
-  return { role: row.role, mustChangePassword: false };
+  return { role: row.role, mustChangePassword: true };
 }
 
 /** Generate a strong random JWT secret (64-character base64url string) */

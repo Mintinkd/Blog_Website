@@ -4,7 +4,7 @@
  * - 旧格式（无盐单轮 SHA-256 hex）仅保留「校验兼容」，登录成功后由调用方透明升级
  */
 
-import { DEFAULT_SEED_PASSWORD } from "./seed";
+import { LEGACY_SEED_PLAINTEXT } from "./seed";
 
 const PBKDF2_SCHEME = "pbkdf2";
 const PBKDF2_HASH = "sha256";
@@ -53,7 +53,7 @@ function canonicalize(value: string): string {
  */
 const WEAK_PASSWORDS = new Set(
   [
-    DEFAULT_SEED_PASSWORD,
+    LEGACY_SEED_PLAINTEXT,
     "changeme",
     "changeme1234",
     "password1",

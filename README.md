@@ -620,9 +620,12 @@ Worker 本地运行在 `http://localhost:8787`
 ```bash
 cd worker
 npx wrangler d1 execute blog-db --remote --file=./schema.sql
+npm run db:seed          # 生成随机初始管理员口令（仅终端打印一次，首次登录强制改密）
 ```
 
 > **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
+>
+> **#83 / H1**：`schema.sql` 不再写入任何硬编码可登录口令。全新库初始化后**必须**执行 `npm run db:seed`（本地库加 `--` 传 `--local`），它用 `randomUUID()` 生成随机口令、以 PBKDF2 哈希 UPSERT 写入 `admin` 账户并在终端打印一次明文；该口令无法从仓库或响应复现。若种子命令失败，本次口令不打印、可安全重跑。可用 `SEED_ADMIN_USERNAME` 覆盖用户名。
 
 > **已有部署升级**：schema.sql 文件尾部的迁移语句仅供增量执行一次；对已有库请单独执行新增的迁移语句，勿重复执行全文（会因 `duplicate column` 报错）。
 
@@ -644,7 +647,9 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 ### 首次设置
 
-数据库初始化后，默认管理员账户已自动创建（用户名: `admin`，初始口令为 schema.sql 中的种子值）；首次登录响应会返回 `must_change_password: true` 并强制要求改密，未完成改密前除 `POST /auth/refresh`（令牌续期）与 `POST /auth/change-password`（改密）外的写操作均会被拒绝。
+数据库初始化并执行 `npm run db:seed` 后，管理员账户（默认用户名 `admin`）以随机初始口令创建；首次登录响应返回 `must_change_password: true` 并强制要求改密。**须改密会话被服务端会话级闸门拦截**：未完成改密前，除 `POST /auth/refresh`（令牌续期）与 `POST /auth/change-password`（改密）外，所有携带该会话令牌的鉴权请求（含 GET 类管理接口）一律返回 403。
+
+> **存量库升级（#83 / H1）**：已执行过旧版 `schema.sql` 的库含硬编码种子口令账号，其 `must_change_password=1` 标记由迁移中的存量识别 UPDATE 完成。若目标库**缺 `must_change_password` 列**（从未跑过该迁移），鉴权采用 fail-closed：所有会话被视为「须改密」，仅续期/改密路径可达——正确出路是立即重放 `schema.sql` 中 `users` 三列迁移（`must_change_password` / `failed_login_attempts` / `locked_until`）。切勿在库未迁移状态下长期运行。
 
 **JWT 密钥**：
 

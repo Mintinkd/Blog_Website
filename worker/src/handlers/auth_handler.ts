@@ -22,8 +22,8 @@ import {
 import type { PasswordVerifyResult } from "../utils/password";
 import { isMissingColumnError } from "../utils/d1_compat";
 import {
-  DEFAULT_SEED_PASSWORD,
-  INITIAL_ADMIN_PASSWORD_HASH,
+  LEGACY_SEED_PLAINTEXT,
+  LEGACY_SEED_PASSWORD_HASH,
 } from "../utils/seed";
 
 // P1-5 / issue #8：初始/默认口令检测与登录失败锁定
@@ -200,15 +200,18 @@ async function registerLoginFailure(
   }
 }
 
-/** 默认/初始口令判定：显式标记、种子哈希，或登录口令即种子默认值（兼容哈希已升级为 pbkdf2 的情形） */
+/**
+ * 历史默认口令判定（#83 / H1）：显式标记、历史种子哈希，或登录口令即历史种子明文
+ * （兼容存量哈希已升级为 pbkdf2 的情形）。常量语义见 utils/seed.ts——仅识别存量弱口令账号。
+ */
 function usingDefaultCredential(
   user: Pick<UserAuthRow, "must_change_password" | "password_hash">,
   providedPassword: string
 ): boolean {
   return (
     Boolean(user.must_change_password) ||
-    user.password_hash === INITIAL_ADMIN_PASSWORD_HASH ||
-    providedPassword === DEFAULT_SEED_PASSWORD
+    user.password_hash === LEGACY_SEED_PASSWORD_HASH ||
+    providedPassword === LEGACY_SEED_PLAINTEXT
   );
 }
 
@@ -306,8 +309,8 @@ export async function handleLogin(
       if (remainMs > 0) return lockedFeedback(remainMs);
 
       const needsChange =
-        adminPasswordHash.value === INITIAL_ADMIN_PASSWORD_HASH ||
-        providedPassword === DEFAULT_SEED_PASSWORD;
+        adminPasswordHash.value === LEGACY_SEED_PASSWORD_HASH ||
+        providedPassword === LEGACY_SEED_PLAINTEXT;
       const migratedHash = await hashPassword(providedPassword);
       // Auto-migrate: update or create user in users table from legacy site_config
       if (user) {

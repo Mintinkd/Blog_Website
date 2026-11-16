@@ -1,17 +1,26 @@
 /**
- * 种子管理员凭据的单一导出点（issue #24）。
+ * 历史种子凭据的**存量识别**单一来源（issue #24 建立，#83 / H1 收窄）。
  *
- * TS 侧所有引用一律走本模块 import；SQL 侧的 schema.sql 文件性质无法 import TS，
- * 其种子 INSERT 与迁移 UPDATE 各携带同一字面量，属已接受的重复（两处旁有注释
- * 互指本文件；worker/tests/seed_constants.test.ts 机械守卫两侧一致性）。
+ * #83 起，新部署不再有硬编码明文口令：初始口令由 `npm run db:seed`
+ * （worker/scripts/seed-credential.mjs）用 randomUUID() 生成并只在终端打印一次。
  *
- * ⚠ 改种子口令时，本文件的 DEFAULT_SEED_PASSWORD 与 schema.sql 须同步修改，
- * 否则门禁判定与数据库种子失配（契约面同步规则，见 CODING_STANDARDS.md）。
+ * 本模块保留的两个常量**只用于存量库识别**（旧部署曾用固定口令 "password"）：
+ *  - 登录时识别「仍用历史种子明文/哈希」的账号，强制打 must_change_password 标记；
+ *  - 弱口令名单纳入该明文，防止任何人改回它。
+ * 它们不参与任何新账号创建，也不代表当前任何账号的口令。
+ * schema.sql 的存量迁移 UPDATE 携带 LEGACY_SEED_PASSWORD_HASH 的字面量
+ * （SQL 无法 import TS，属已接受的重复，由 seed_constants.test.ts 机械守卫）。
  */
 
-/** 初始管理员口令明文（schema.sql 种子 INSERT 写入的就是下方哈希对应的口令） */
-export const DEFAULT_SEED_PASSWORD = "password";
-
-/** SHA-256(DEFAULT_SEED_PASSWORD) 的十六进制小写 —— schema.sql 种子 INSERT 与迁移 UPDATE 携带同一字面量 */
-export const INITIAL_ADMIN_PASSWORD_HASH =
+/**
+ * 历史种子口令的 SHA-256（十六进制小写）。仅用于识别存量弱口令账号并强制改密；
+ * 不用于建号，不是当前任何账号的口令。
+ */
+export const LEGACY_SEED_PASSWORD_HASH =
   "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8";
+
+/**
+ * 历史种子口令明文。仅用于「登录口令等于历史种子值」的存量判定与弱口令拦截；
+ * 新部署的初始口令与此无关，由 db:seed 随机生成。
+ */
+export const LEGACY_SEED_PLAINTEXT = "password";
