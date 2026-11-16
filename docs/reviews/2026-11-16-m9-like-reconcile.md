@@ -51,4 +51,4 @@
 | Spec F2 [部分]          | 原子性仅桩级验证，「计数与记录一致」未真断言              | like 桩改为有状态 in-memory D1：`likes` 集合为独立真值源，batch 成功才应用；三个用例均读回断言 `likeCount === likes.size` | 见下方 follow-up |
 | Spec F3 [部分]          | 对账只验证「发出 UPDATE」，未读回收敛值                   | reconcile 桩 batch 成功后写回 `state.articles`；新增读回断言 + 二次对账 `fixed=0` 幂等断言                                | 同上             |
 
-> follow-up commit hash 在提交后回填。所有修复均通过 worker 全量测试（294）+ typecheck + 根包 `npm run check`。
+> follow-up commit：`6da91fe`（review(worker): address #72 review findings）。所有修复均通过 worker 全量测试（294）+ typecheck + 根包 `npm run check`。
