@@ -13,6 +13,8 @@ import {
  */
 
 const DOH_PREFIX = "https://cloudflare-dns.com/dns-query";
+/** #109：第二解析器（默认与主解析器同答案，即「DNS 稳定」） */
+const SECONDARY_DOH_PREFIX = "https://dns.google/resolve";
 
 type DohRecord = { type: "A" | "AAAA"; data: string };
 
@@ -51,9 +53,11 @@ function installNetworkStub(
         : input instanceof URL
           ? input.href
           : input.url;
-    if (href.startsWith(DOH_PREFIX)) {
+    if (href.startsWith(DOH_PREFIX) || href.startsWith(SECONDARY_DOH_PREFIX)) {
       dohCalls.push(href);
       const type = new URL(href).searchParams.get("type") || "";
+      // #109：默认第二解析器返回与主解析器一致的答案（模拟稳定 DNS）；
+      // 需要模拟分裂解析的用例见 dns_stability.test.ts。
       const answer = dohByType[type];
       if (!answer)
         return Promise.reject(new Error(`unexpected DoH query type: ${type}`));
@@ -275,7 +279,8 @@ describe("fetchWithValidatedRedirects 解析后 IP 复核", () => {
     );
 
     expect(result.kind).toBe("ok");
-    expect(dohCalls.length).toBe(2); // A + AAAA 各一次，第二跳复用
+    // #109 后每轮解析 = 主/备解析器各 A+AAAA（4 次），第二跳复用该判定
+    expect(dohCalls.length).toBe(4);
     expect(targetCalls).toEqual([
       "http://same.publicsite.net/img.png",
       "https://same.publicsite.net/img.png",
@@ -317,7 +322,9 @@ describe("fetchWithValidatedRedirects 解析后 IP 复核", () => {
     );
 
     expect(result.kind).toBe("blocked");
-    expect(dohCalls.length).toBe(4); // 首跳 A/AAAA + 过期后 A/AAAA
+    // 首跳 4 次（主/备 × A/AAAA）；第二跳主解析器即命中 metadata → 直接拒绝，
+    // 不再做第二解析器复核，故只多 2 次（A + AAAA）＝ 6。
+    expect(dohCalls.length).toBe(6);
   });
 });
 

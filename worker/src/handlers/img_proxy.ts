@@ -279,6 +279,12 @@ export function mapFetchedFailure(
 
 // issue #19：解析后 IP 复核所用的 DoH（DNS over HTTPS）JSON 端点与单查询超时
 const DOH_ENDPOINT = "https://cloudflare-dns.com/dns-query";
+/**
+ * #109 / H10-R：第二解析器。两个独立解析器的答案集合必须一致，
+ * 否则视为「DNS 不稳定 / 分裂解析」直接拒绝——这是 Workers 平台上能做到的最强
+ * rebinding 检测（无法把 fetch 绑定到已校验 IP，见 ADR 0007）。
+ */
+const SECONDARY_DOH_ENDPOINT = "https://dns.google/resolve";
 const DOH_TIMEOUT_MS = 3_000;
 
 /**
@@ -298,6 +304,7 @@ export interface ProxyLogContext {
 type BlockReason =
   | "literal"
   | "doh"
+  | "rebinding"
   | "lookup_failed"
   | "empty"
   | "redirect_validation"
@@ -341,13 +348,14 @@ function isIpLiteralHost(host: string): boolean {
 
 /** DoH 查询单个记录类型；成功且 Status=0 返回记录数据，其余情况返回 null */
 async function queryDoh(
+  endpoint: string,
   host: string,
   type: "A" | "AAAA",
   signal: AbortSignal
 ): Promise<string[] | null> {
   try {
     const res = await fetch(
-      `${DOH_ENDPOINT}?name=${encodeURIComponent(host)}&type=${type}`,
+      `${endpoint}?name=${encodeURIComponent(host)}&type=${type}`,
       {
         headers: { accept: "application/dns-json" },
         signal,
@@ -366,6 +374,38 @@ async function queryDoh(
   } catch {
     return null;
   }
+}
+
+interface DohRound {
+  a: string[] | null;
+  aaaa: string[] | null;
+}
+
+/** 单轮解析：同一解析器并发查 A + AAAA（任一失败即整轮失败，fail-closed） */
+async function resolveRound(
+  endpoint: string,
+  host: string,
+  signal?: AbortSignal | null
+): Promise<DohRound> {
+  const dnsSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(DOH_TIMEOUT_MS)])
+    : AbortSignal.timeout(DOH_TIMEOUT_MS);
+  const [a, aaaa] = await Promise.all([
+    queryDoh(endpoint, host, "A", dnsSignal),
+    queryDoh(endpoint, host, "AAAA", dnsSignal),
+  ]);
+  return { a, aaaa };
+}
+
+function flattenRound(round: DohRound): string[] {
+  return [...(round.a ?? []), ...(round.aaaa ?? [])];
+}
+
+/** 地址集合比较（顺序无关，重复项视为同一集合） */
+function sameAddressSet(x: string[], y: string[]): boolean {
+  const a = [...new Set(x)].sort();
+  const b = [...new Set(y)].sort();
+  return a.length === b.length && a.every((ip, i) => ip === b[i]);
 }
 
 /**
@@ -396,21 +436,34 @@ async function resolveAndCheckTarget(
       ? done("blocked", "literal")
       : done("ok", "literal");
 
-  const dnsSignal = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(DOH_TIMEOUT_MS)])
-    : AbortSignal.timeout(DOH_TIMEOUT_MS);
-  const [a, aaaa] = await Promise.all([
-    queryDoh(host, "A", dnsSignal),
-    queryDoh(host, "AAAA", dnsSignal),
-  ]);
+  const primary = await resolveRound(DOH_ENDPOINT, host, signal);
 
   // 任一查询失败/超时，或解析结果为空：fail-closed，明确拒绝而非放行
-  if (a === null || aaaa === null) return done("failed", "lookup_failed");
-  const ips = [...a, ...aaaa];
+  if (primary.a === null || primary.aaaa === null)
+    return done("failed", "lookup_failed");
+  const ips = flattenRound(primary);
   if (ips.length === 0) return done("failed", "empty");
 
   const blocked = ips.filter(isBlockedIp);
   if (blocked.length > 0) return done("blocked", "doh", blocked);
+
+  // #109 / H10-R：第二解析器复核。答案集合不一致 → 视为 rebinding / 分裂解析并拒绝。
+  const secondary = await resolveRound(SECONDARY_DOH_ENDPOINT, host, signal);
+  if (secondary.a === null || secondary.aaaa === null) {
+    // 备用解析器不可用时退回主解析器再查一次：不一致同样拒绝（不能因为备用挂了就放行）
+    const retry = await resolveRound(DOH_ENDPOINT, host, signal);
+    if (retry.a === null || retry.aaaa === null)
+      return done("failed", "lookup_failed");
+    const retryIps = flattenRound(retry);
+    if (!sameAddressSet(ips, retryIps))
+      return done("blocked", "rebinding", retryIps.filter(isBlockedIp));
+    return done("ok", "doh");
+  }
+
+  const secondaryIps = flattenRound(secondary);
+  if (!sameAddressSet(ips, secondaryIps)) {
+    return done("blocked", "rebinding", secondaryIps.filter(isBlockedIp));
+  }
   return done("ok", "doh");
 }
 
