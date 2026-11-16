@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { renderHeadersFile } from "../scripts/security-headers.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * issue #96 / M16：指纹资产 immutable 长缓存。
@@ -30,7 +34,15 @@ describe("指纹资产 immutable 长缓存（issue #96）", () => {
   });
 
   it("既有 5 安全头块与 HTML 护栏不变（无回归）", () => {
-    expect(content).toContain("X-Content-Type-Options: nosniff");
+    for (const header of [
+      "X-Content-Type-Options: nosniff",
+      "X-Frame-Options: DENY",
+      "Referrer-Policy: strict-origin-when-cross-origin",
+      "Permissions-Policy: camera=(), microphone=(), geolocation=()",
+      "Content-Security-Policy: default-src 'self'",
+    ]) {
+      expect(content, header).toContain(header);
+    }
     expect(content).toContain(
       "Cache-Control: public, max-age=0, must-revalidate, no-transform"
     );
@@ -38,6 +50,8 @@ describe("指纹资产 immutable 长缓存（issue #96）", () => {
   });
 
   it("提交态 public/_headers 与生成物逐字节一致（drift 镜像）", () => {
-    expect(readFileSync("public/_headers", "utf8")).toBe(content);
+    expect(readFileSync(path.join(ROOT, "public/_headers"), "utf8")).toBe(
+      content
+    );
   });
 });

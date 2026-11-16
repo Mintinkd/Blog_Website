@@ -31,7 +31,7 @@
 │   └── deploy.yml              # CI/CD 自动部署
 ├── public/
 │   ├── .assetsignore             # Workers+Assets 排除 _worker.js
-│   ├── _headers                  # 生成物：安全响应头 + HTML 护栏（安全头 / 护栏模块单源渲染，禁止手工编辑，issue #28）
+│   ├── _headers                  # 生成物：安全响应头 + HTML 护栏 + _assets 指纹资产 immutable 长缓存（模块单源渲染，禁止手工编辑，issue #28 / #96）
 │   ├── bg-placeholder.svg       # 默认全站背景图
 │   └── robots.txt
 ├── src/
@@ -723,7 +723,7 @@ cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
 
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
-1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏），构建后钩子收紧 CSP 产物）
+1. 生成物漂移断言（设置白名单 / 安全头）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏 + `_assets` immutable 长缓存），构建后钩子收紧 CSP 产物）
 2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
 3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
@@ -734,7 +734,7 @@ cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
 
 自定义域会在 HTML 上追加 JavaScript Detections 内联脚本与 `Speculation-Rules: "/cdn-cgi/speculation"`（Speed Brain），分别触发 CSP violation 与预取 503。仓库不依赖 Dashboard 关闭这些功能，而由 `scripts/cloudflare-guards.mjs` 单源声明两个响应头：
 
-- `Cache-Control: … no-transform` — 停 JavaScript Detections 注入（代价：HTML 不经边缘 gzip / brotli；`/_assets/*` 等资产不受影响）；
+- `Cache-Control: … no-transform` — 停 JavaScript Detections 注入（代价：HTML 不经边缘 gzip / brotli；此 no-transform 护栏只挂在预渲染 HTML 路由上，`/_assets/*` 等资产不受该护栏影响，而是由独立规则 `Cache-Control: public, max-age=31536000, immutable` 走指纹资产长缓存，issue #96）；
 - `Speculation-Rules: "/speculation-rules"` — 以自有空规则集覆盖 Speed Brain（端点 `src/pages/speculation-rules.ts`，MIME 必须为 `application/speculationrules+json`）。
 
 静态 / 预渲染页面由 `public/_headers` 的 HTML 路由块覆盖，SSR 路由由 `src/middleware.ts` 按 `content-type: text/html` 追加；资产不携带这两个头。新增预渲染 HTML 路由需同步 `HTML_ROUTE_PATTERNS`。验证步骤与已知边界（未知路径 404、zone 级响应头改写）见 `docs/security/cloudflare-guards.md`。
