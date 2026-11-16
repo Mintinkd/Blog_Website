@@ -18,7 +18,7 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
       <h1 class="page-title" data-i18n="page.tags">标签</h1>
     </div>
     <p class="page-desc" data-i18n="page.tags_desc">按标签浏览所有文章</p>
-    <div id="tags-cloud" class="tags-cloud" data-ssr={loaded.status === 'ok' ? '1' : '0'}>
+    <div id="tags-cloud" class="tags-cloud" data-ssr={loaded.status !== 'error' ? '1' : '0'}>
       {loaded.status === 'ok' ? (
         <Fragment set:html={tags.map((tag: any) => `
           <a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">
@@ -90,7 +90,7 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
 </style>
 
 <script>
-  import { t } from '../../utils/i18n.ts';
+  import { t, initLocale } from '../../utils/i18n.ts';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadTags() {
@@ -129,7 +129,10 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
   // issue #97：SSR 首屏已渲染时跳过首次 fetch（避免重复请求/闪烁），语言切换仍刷新。
   document.addEventListener('astro:page-load', () => {
     const container = document.getElementById('tags-cloud');
-    if (container?.dataset.ssr === '1') return;
+    const stored = localStorage.getItem('locale');
+    const ssrZh = stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
+    if (container?.dataset.ssr === '1' && ssrZh) return;
+    initLocale();
     loadTags();
   });
   document.addEventListener('locale-changed', () => loadTags());

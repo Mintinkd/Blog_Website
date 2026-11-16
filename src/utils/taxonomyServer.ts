@@ -78,8 +78,10 @@ function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
   if (!rawItems) return { status: "error" };
 
   const totalPages =
-    isRecord(data) && typeof data.total_pages === "number"
-      ? Math.max(0, data.total_pages)
+    isRecord(data) &&
+    typeof data.total_pages === "number" &&
+    Number.isFinite(data.total_pages)
+      ? Math.max(0, Math.floor(data.total_pages))
       : 1;
 
   if (kind === "categories" || kind === "tags") {

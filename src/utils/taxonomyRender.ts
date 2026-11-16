@@ -12,7 +12,6 @@ import type { TaxonomyArticle } from "./taxonomyServer";
 export interface ArticleCardLabels {
   read: string;
   noArticles: string;
-  loadFailed: string;
 }
 
 export function renderArticleCards(

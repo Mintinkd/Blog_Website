@@ -18,7 +18,7 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
       <h1 class="page-title" data-i18n="page.categories">分类</h1>
     </div>
     <p class="page-desc" data-i18n="page.categories_desc">按分类浏览所有文章</p>
-    <div id="categories-cloud" class="categories-cloud" data-ssr={loaded.status === 'ok' ? '1' : '0'}>
+    <div id="categories-cloud" class="categories-cloud" data-ssr={loaded.status !== 'error' ? '1' : '0'}>
       {loaded.status === 'ok' ? (
         <Fragment set:html={categories.map((cat: any) => `
           <a href="/categories/${safePathSegment(cat.slug)}" class="category-item">
@@ -115,7 +115,7 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
 </style>
 
 <script>
-  import { t, getLocale } from '../../utils/i18n.ts';
+  import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadCategories() {
@@ -157,7 +157,10 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
   // 语言切换仍刷新（文案/排序随 locale 变），SSR 未成功时首次照旧由客户端补齐。
   document.addEventListener('astro:page-load', () => {
     const container = document.getElementById('categories-cloud');
-    if (container?.dataset.ssr === '1') return;
+    const stored = localStorage.getItem('locale');
+    const ssrZh = stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
+    if (container?.dataset.ssr === '1' && ssrZh) return;
+    initLocale();
     loadCategories();
   });
   document.addEventListener('locale-changed', () => loadCategories());

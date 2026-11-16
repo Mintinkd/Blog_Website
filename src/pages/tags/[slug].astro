@@ -11,7 +11,8 @@ const { slug } = Astro.params || {};
 const loaded = await loadTaxonomyForPage('tag-articles', { slug });
 const items = loaded.status === 'ok' ? loaded.items as import('../../utils/taxonomyServer.ts').TaxonomyArticle[] : [];
 const totalPages = loaded.status === 'ok' ? loaded.totalPages : 1;
-const firstHtml = renderArticleCards(items, { read: '阅读', noArticles: '暂无文章', loadFailed: '加载失败' }, 'zh-CN', true);
+// error 时不写首屏内容（留空由客户端接管并显示加载失败），避免误导性「暂无文章」
+const firstHtml = loaded.status === 'error' ? '' : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章' }, 'zh-CN', true);
 const firstPagination = renderPagination(1, totalPages, { prev: '上一页', next: '下一页' });
 ---
 
@@ -72,7 +73,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 </style>
 
 <script>
-  import { t, getLocale } from '../../utils/i18n.ts';
+  import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
 
   async function loadArticles(page = 1) {
@@ -95,7 +96,6 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         container.innerHTML = renderArticleCards(items, {
           read: t('article.read'),
           noArticles: t('page.no_articles_tag'),
-          loadFailed: t('common.load_failed'),
         }, dateLocale, true);
         if (items.length === 0) return;
 
@@ -104,14 +104,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
           paginationMount.innerHTML = renderPagination(page, total_pages, {
             prev: t('page.prev'), next: t('page.next'),
           });
-
-          paginationMount.querySelectorAll('.pag-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const p = parseInt((btn as HTMLElement).dataset.page || '1', 10);
-              loadArticles(p);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
-          });
+          bindPagination();
         }
       }
     } catch (e) {
@@ -119,10 +112,34 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     }
   }
 
-  // issue #97：SSR 首屏已渲染时跳过首次 fetch（避免重复请求/闪烁），语言切换 / 分页仍刷新。
+  // issue #97：分页绑定独立成函数——SSR 首屏也带 .pag-btn，跳过首次 fetch 时仍需绑定。
+  function bindPagination() {
+    const paginationMount = document.getElementById('pagination-mount');
+    if (!paginationMount) return;
+    paginationMount.querySelectorAll('.pag-btn').forEach(btn => {
+      if ((btn as HTMLElement).dataset.bound === '1') return;
+      (btn as HTMLElement).dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const p = parseInt((btn as HTMLElement).dataset.page || '1', 10);
+        loadArticles(p);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  }
+
+  // issue #97：SSR 首屏默认中文；非中文用户必须主动刷新一次套用正确文案。
+  // 同步读存储/浏览器语言判断（initLocale 是异步 dynamic import，page-load 时可能尚未执行）。
+  function ssrLocaleIsZh(): boolean {
+    const stored = localStorage.getItem('locale');
+    return stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
+  }
   document.addEventListener('astro:page-load', () => {
     const wrapper = document.getElementById('article-list');
-    if (wrapper?.dataset.ssr === '1') return;
+    if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
+      bindPagination();
+      return;
+    }
+    initLocale();
     loadArticles();
   });
 
