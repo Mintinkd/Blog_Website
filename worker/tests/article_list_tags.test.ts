@@ -117,6 +117,10 @@ describe("listArticles 标签批量解析（#89 / M1）", () => {
     );
     expect(listSelects).toHaveLength(1);
     expect(listSelects[0].sql).toMatch(/group_concat/i);
+    // 顺序稳定：SQL 内层按 t.id 排序；分隔符约定 ^_ 字段 / ^^ 标签（守卫拼接格式不漂移）
+    expect(listSelects[0].sql).toMatch(/ORDER\s+BY\s+t\.id/i);
+    expect(listSelects[0].sql).toMatch(/'\^\^'/);
+    expect(listSelects[0].sql).toMatch(/'\^_'/);
     const perArticleTagQueries = stmts.filter((s) =>
       /WHERE\s+at\.article_id\s*=\s*\?/i.test(s.sql)
     );
@@ -155,7 +159,8 @@ describe("listArticles 标签批量解析（#89 / M1）", () => {
       "1^_a^_b^_cpp", // name 含字段分隔符 ^_
       "2^_a b c^_a-b-c", // 空格 + 连字符 slug
       "3^_中文 标签^_zh-tag", // 中文 + 空格
-      "4^_C/C++^_cplusplus", // 斜杠
+      "4^_C/C++^_cplusplus", // 斜杠与单个 ^
+      "5^_x^y^_xy", // name 含单个 ^（非 ^^ 分隔符），不应被切分
     ].join("^^");
     const fake = makeListDb([row(1, blob)], 1);
     const result = await listArticles(makeEnv(fake.db), {
@@ -168,6 +173,7 @@ describe("listArticles 标签批量解析（#89 / M1）", () => {
       { id: 2, name: "a b c", slug: "a-b-c" },
       { id: 3, name: "中文 标签", slug: "zh-tag" },
       { id: 4, name: "C/C++", slug: "cplusplus" },
+      { id: 5, name: "x^y", slug: "xy" },
     ]);
   });
 

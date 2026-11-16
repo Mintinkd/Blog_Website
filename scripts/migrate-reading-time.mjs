@@ -109,7 +109,11 @@ async function main() {
   }
 
   console.log("reading_time 列不存在，执行 ALTER TABLE ADD COLUMN...");
-  await query("ALTER TABLE articles ADD COLUMN reading_time INTEGER", cfg);
+  // 与 schema.sql 的新建库定义一致：NOT NULL DEFAULT 1，保证无回填值的行也有合法时长。
+  await query(
+    "ALTER TABLE articles ADD COLUMN reading_time INTEGER NOT NULL DEFAULT 1",
+    cfg
+  );
 
   // 分页回填存量文章，避免一次性拉全表。
   const updateSql = buildUpdateSql();

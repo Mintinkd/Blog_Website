@@ -243,21 +243,21 @@
 
 D1 (SQLite) 共 13 张表：
 
-| 表名                      | 说明                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `users`                   | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                           |
-| `categories`              | 文章分类（含 created_by 所有权）                                                                                       |
-| `tags`                    | 标签（含 created_by 所有权）                                                                                           |
-| `articles`                | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；author_id 作者，category_id 默认1） |
-| `article_tags`            | 文章-标签多对多关联                                                                                                    |
-| `comments`                | 评论（含审核状态）                                                                                                     |
-| `article_likes`           | 点赞记录（IP去重）                                                                                                     |
-| `media_assets`            | 媒体文件元数据（含 uploaded_by 所有权）                                                                                |
-| `friend_links`            | 友情链接                                                                                                               |
-| `site_config`             | 站点配置（KV结构，含JWT密钥、统计HMAC密钥与清理任务心跳）                                                              |
-| `analytics_article_daily` | 阅读统计日聚合（PV/UV/requests/engaged/bot_filtered，按文章+站点时区日）                                               |
-| `analytics_view_token`    | 24h 去重令牌（HMAC hex，不含 IP 明文；每日 cron 清理）                                                                 |
-| `analytics_dim_daily`     | 阅读统计维度桶（只写单篇行，全站查询时 GROUP BY；保留 400 天）                                                         |
+| 表名                      | 说明                                                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                   | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                                                                                                 |
+| `categories`              | 文章分类（含 created_by 所有权）                                                                                                                                                             |
+| `tags`                    | 标签（含 created_by 所有权）                                                                                                                                                                 |
+| `articles`                | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；`reading_time` 落库的阅读分钟数，创建/更新时写入，列表读它不再搬正文；author_id 作者，category_id 默认1） |
+| `article_tags`            | 文章-标签多对多关联                                                                                                                                                                          |
+| `comments`                | 评论（含审核状态）                                                                                                                                                                           |
+| `article_likes`           | 点赞记录（IP去重）                                                                                                                                                                           |
+| `media_assets`            | 媒体文件元数据（含 uploaded_by 所有权）                                                                                                                                                      |
+| `friend_links`            | 友情链接                                                                                                                                                                                     |
+| `site_config`             | 站点配置（KV结构，含JWT密钥、统计HMAC密钥与清理任务心跳）                                                                                                                                    |
+| `analytics_article_daily` | 阅读统计日聚合（PV/UV/requests/engaged/bot_filtered，按文章+站点时区日）                                                                                                                     |
+| `analytics_view_token`    | 24h 去重令牌（HMAC hex，不含 IP 明文；每日 cron 清理）                                                                                                                                       |
+| `analytics_dim_daily`     | 阅读统计维度桶（只写单篇行，全站查询时 GROUP BY；保留 400 天）                                                                                                                               |
 
 另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。Tier 1 的 `analytics_consent` 本批不建。
 

@@ -18,7 +18,9 @@ interface Recorded {
   binds: unknown[];
 }
 
-function listRow() {
+function listRow(
+  overrides: { reading_time?: number | null; content?: string } = {}
+) {
   return {
     id: 1,
     title: "标题",
@@ -39,11 +41,12 @@ function listRow() {
     author_name: "作者",
     reading_time: 7, // 落库值，人为设为 7 以区分「读落库」与「现算」
     tags_blob: null,
+    ...overrides,
   };
 }
 
 /** 列表桩：记录 SQL，返回一行带 reading_time=7 的文章。 */
-function makeListDb() {
+function makeListDb(row = listRow()) {
   const recorded: Recorded[] = [];
   const prepare = (sql: string) => {
     const stmt = {
@@ -57,7 +60,7 @@ function makeListDb() {
         recorded.push({ sql: stmt.sql, binds: [...stmt.binds] });
         if (/SELECT COUNT\(\*\)/i.test(stmt.sql))
           return { results: [{ total: 1 }] };
-        return { results: [listRow()] };
+        return { results: [row] };
       },
       async first() {
         recorded.push({ sql: stmt.sql, binds: [...stmt.binds] });
@@ -88,6 +91,19 @@ describe("listArticles 不再搬运正文（#90 / M2）", () => {
     expect(listSql!.sql).toMatch(/a\.reading_time\b/);
     // reading_time 来自落库字段而非现算（content="短" 现算是 1，落库是 7）
     expect(result.items[0].reading_time).toBe(7);
+  });
+
+  it("存量行 reading_time 为 null 时回退到 1（列表无 content，不现算）", async () => {
+    // 列表 SQL 已不取 content，回退只能给与 schema DEFAULT 一致的 1；
+    // 若误回退 calculateReadingTime(row.content) 会因拿不到正文恒得 1，此处显式钉住行为。
+    const fake = makeListDb(
+      listRow({ reading_time: null, content: "长".repeat(5000) })
+    );
+    const result = await listArticles({ DB: fake.db } as unknown as Env, {
+      page: 1,
+      page_size: 10,
+    });
+    expect(result.items[0].reading_time).toBe(1);
   });
 });
 

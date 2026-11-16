@@ -198,11 +198,9 @@ export async function listArticles(
       author_name: row.author_name as string | null,
       published_at: row.published_at as string | null,
       created_at: row.created_at as string,
-      // 落库值优先；存量文章若尚未回填（列为 null），惰性回退现算，保证形状与数值稳定。
-      reading_time:
-        row.reading_time != null
-          ? (row.reading_time as number)
-          : calculateReadingTime((row.content as string) || ""),
+      // 落库值优先；列表不再取 content，无法在此现算，缺值时回退到与 schema
+      // DEFAULT 一致的 1（存量回填由 scripts/migrate-reading-time.mjs 完成）。
+      reading_time: row.reading_time != null ? (row.reading_time as number) : 1,
     });
   }
 
