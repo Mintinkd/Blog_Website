@@ -72,6 +72,7 @@ import {
   handleDeleteFriendLink,
 } from "./handlers/friend_link";
 import { handleExport, handleImport } from "./handlers/admin";
+import { handleReconcileCounters } from "./handlers/reconcile";
 import {
   handleAnalyticsOverview,
   handleAnalyticsDimensions,
@@ -512,6 +513,14 @@ addRoute(
   "POST",
   "/admin/import",
   async (req, env) => handleImport(req, env),
+  true,
+  true
+);
+// #72 / M9：手动计数器对账入口（admin-only；与 export/import 同一鉴权口径）
+addRoute(
+  "POST",
+  "/admin/reconcile-counters",
+  async (req, env) => handleReconcileCounters(req, env),
   true,
   true
 );
