@@ -47,7 +47,9 @@ function normalizePathname(pathname: string): string {
 
 /** 单段文章详情（slug）才走宽松限流；列表 /articles 与两段 /articles/:id/edit 不匹配。 */
 function isArticleDetailGet(method: string, pathname: string): boolean {
-  return method === "GET" && /^\/articles\/[^/]+$/.test(pathname);
+  // 先去尾斜杠再判断：/articles/hello/ 与 /articles/hello 必须同桶，避免绕过限流。
+  const trimmed = pathname.replace(/\/+$/, "") || "/";
+  return method === "GET" && /^\/articles\/[^/]+$/.test(trimmed);
 }
 
 // 只对写操作、较贵的查询（GET /search）、文章详情（写 D1）做限流并写 KV。

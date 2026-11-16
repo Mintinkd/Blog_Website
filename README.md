@@ -187,7 +187,8 @@
 │       ├── middleware/
 │       │   ├── auth.ts          # JWT认证
 │       │   ├── cors.ts          # 跨域
-│       │   ├── rate_limit.ts    # 限流（KV 固定窗口；计数键按 method + 路由模板分桶，资源 id 不影响配额，issue #48）
+│       │   ├── rate_limit.ts    # 限流策略（规则表 + method/路由模板分桶，issue #48；算法委托 utils/rate_limiter.ts，issue #91）
+│       │   ├── rate_limiter.ts  # 统一限流算法（滑动窗口计数 + KV 幂等键，四处限流共用，issue #91）
 │       │   └── security_headers.ts  # API 安全响应头（CSP default-src 'none'，渗透报告 002）
 │       ├── handlers/            # API处理器
 │       │   ├── article.ts
@@ -359,12 +360,14 @@ D1 (SQLite) 共 13 张表：
 
 ### API 限流
 
-写操作（POST/PUT/DELETE）与 `GET /search` 经 KV 固定窗口限流（issue #48）：
+写操作（POST/PUT/DELETE）、`GET /search`、`GET /articles/:slug` 经统一 `RateLimiter` 限流（分桶口径 issue #48，算法 issue #91）：
 
+- **算法**：滑动窗口计数（当前窗口实计数 + 上一窗口按已流逝比例加权衰减）——窗口切换瞬间不再突发到 2× 配额（固定窗口的旧问题），边界突发上限压到 1 次（见 `worker/tests/rate_limiter.test.ts`）。四处调用点（全局中间件 / img-proxy / text-proxy / scrape）共用 `worker/src/utils/rate_limiter.ts` 一套算法与键名 `ratelimit:<scope>:<identity>:<windowIndex>`。
+- **局限**：KV 无原子自增、`get→put` 并发窗口仍可能少量超发；跨 PoP 最终一致（约 60s）导致计数低估。两者是残余风险，根治需 Durable Objects / Cloudflare Rate Limiting API（未纳入本批）。
 - 计数键按 `method + 路由模板` 分桶，资源 id 段归一为 `:id`——同一接口下不同文章/分类等共享配额，遍历资源 id 无法放大配额
-- 规则精确匹配（不做子串猜测）：评论 3 次/分、点赞 10 次/分、媒体上传 10 次/分、`/auth/*` 与 `/admin/import` 120 次/分、搜索 10 次/分
+- 规则精确匹配（不做子串猜测）：评论 3 次/分、点赞 10 次/分、媒体上传 10 次/分、`/auth/*` 与 `/admin/import` 120 次/分、搜索 10 次/分、文章详情 120 次/分（每次访问写 D1，宽松限流抑制放大）
 - 未单列方法落到明确的方法级配额：POST/PUT 60 次/分、DELETE 10 次/分
-- 普通 GET 读接口（列表/配置/友链/媒体读取等）完全跳过限流，不产生 KV 写入
+- 其余普通 GET 读接口（列表/配置/友链/媒体读取等）跳过限流，不产生 KV 写入
 
 ## 前台页面
 

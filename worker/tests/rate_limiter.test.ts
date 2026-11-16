@@ -83,7 +83,8 @@ describe("窗口边界突发上限（issue #91 AC：固定窗口 2× → 滑动�
       nowMs: MINUTE + 2,
     });
     expect(second.allowed).toBe(false);
-    expect(second.retryAfterSec).toBeGreaterThan(0);
+    // 保守上界：剩余窗口(≈60s) + 一整个窗口(60s) = ≈120s 后上一窗口残余必已滑出
+    expect(second.retryAfterSec).toBe(120);
   });
 
   it("窗口中点（ratio=0.5）：上一窗口残余权重减半，可放行至多 5 次", async () => {

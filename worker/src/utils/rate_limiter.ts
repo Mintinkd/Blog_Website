@@ -28,7 +28,7 @@ export interface RateLimitVerdict {
   allowed: boolean;
   /** 当前估算的请求数（含上一窗口加权） */
   count: number;
-  /** 被拒时距下次可用的秒数（放行时为 0） */
+  /** 被拒时距「最迟可用」的保守秒数（上一窗口残余完全滑出；放行时为 0） */
   retryAfterSec: number;
 }
 
@@ -96,10 +96,13 @@ export async function consumeRateLimit(
   const count = slidingWindowCount(prevCount, currCount, elapsedRatio);
 
   if (count >= config.maxRequests) {
-    // 距当前窗口结束的秒数作为保守重试时间（上一窗口残余权重只会继续衰减）。
+    // 滑动窗口下，仅等「当前窗口结束」不够——进入下一窗口后，本窗口计数仍作为
+    // 「上一窗口」带残余权重。保守上界：再等一整个窗口，上一窗口计数必已完全滑出，
+    // 此时 count 只剩新窗口自身计数，一定可重试。文案给出的是「最迟」可用时间。
+    const remainingMs = config.windowMs - (nowMs % config.windowMs);
     const retryAfterSec = Math.max(
       1,
-      Math.ceil((config.windowMs - (nowMs % config.windowMs)) / 1000)
+      Math.ceil((remainingMs + config.windowMs) / 1000)
     );
     return { allowed: false, count, retryAfterSec };
   }

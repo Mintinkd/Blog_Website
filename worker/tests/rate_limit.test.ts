@@ -293,6 +293,24 @@ describe("文章详情宽松限流（issue #91 / M3）", () => {
     expect(blocked?.status).toBe(429);
   });
 
+  it("尾斜杠 /articles/hello/ 与 /articles/hello 命中同一详情桶（不可绕过）", async () => {
+    const mock = makeEnv();
+    await rateLimitMiddleware(
+      request("GET", "/articles/hello"),
+      mock.env,
+      makeCtx()
+    );
+    await rateLimitMiddleware(
+      request("GET", "/articles/hello/"),
+      mock.env,
+      makeCtx()
+    );
+    expect(mock.put).toHaveBeenCalledTimes(2);
+    const keys = new Set(mock.put.mock.calls.map(([k]) => k));
+    expect(keys.size).toBe(1);
+    expect(mock.put.mock.calls[0][0]).toBe(key("/articles/:slug", "GET"));
+  });
+
   it("列表 /articles 与编辑器 /articles/:id/edit 不套用详情限流", async () => {
     const mock = makeEnv();
     expect(
