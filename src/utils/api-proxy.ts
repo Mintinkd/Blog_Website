@@ -54,28 +54,12 @@ export function buildProxyResponseHeaders(
   origin: string | null | undefined
 ): Headers {
   const headers = new Headers(upstream);
-  // issue #98 / M18：剥离 hop-by-hop 头（RFC 7230 §6.1）——这些头仅对单跳有效，
-  // 透传给浏览器会导致连接语义错乱（如 transfer-encoding 与 body 不匹配）。
-  // Connection 头自身列举的自定义 hop-by-hop 头也要一并剥除。
-  const connectionTokens = (upstream.get("connection") ?? "")
-    .split(",")
-    .map((token) => token.trim().toLowerCase())
-    .filter(Boolean);
   for (const key of [
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
     "access-control-allow-origin",
     "access-control-allow-methods",
     "access-control-allow-headers",
     "access-control-max-age",
     "vary",
-    ...connectionTokens,
   ]) {
     headers.delete(key);
   }
