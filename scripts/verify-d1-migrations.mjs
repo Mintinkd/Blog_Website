@@ -16,6 +16,7 @@
  * CLI 部分仅在主模块时执行。
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -82,14 +83,37 @@ export function parseWranglerJson(raw) {
   return candidates.find((r) => r.length > 0) ?? candidates[0];
 }
 
+/**
+ * Cloudflare D1 REST API（POST .../query）响应解析：取 result[0].results。
+ * CI 实测 wrangler --remote --json 对 SELECT 只回统计、不回查询行，故 remote
+ * 核对走 REST API（D1 Read 权限即可），它返回完整 rows。坏结构抛错 fail-closed。
+ */
+export function parseD1ApiResponse(body) {
+  if (!body || body.success !== true) {
+    const msg = (body?.errors ?? [])
+      .map((e) => `${e.code}: ${e.message}`)
+      .join("; ");
+    throw new Error(`D1 query API 失败：${msg || "success=false"}`);
+  }
+  const result = body.result;
+  if (!Array.isArray(result) || result.length === 0) {
+    throw new Error("D1 query API 返回空 result");
+  }
+  const first = result[0];
+  if (first?.success === false || !Array.isArray(first?.results)) {
+    throw new Error("D1 query API 首项无有效 results（可能 SQL 执行失败）");
+  }
+  return first.results;
+}
+
 /** 对比 sqlite_master 的 name 集合与预期清单，返回缺失项（顺序按预期清单）。 */
 export function findMissingObjects(rows) {
   const present = new Set(rows.map((r) => String(r.name)));
   return EXPECTED_D1_OBJECTS.filter((name) => !present.has(name));
 }
 
-// 核对 SQL 固化在 worker/schema-verify.sql（--file 传入），避免 --command 在
-// Windows shell 下的引号问题；清单与 EXPECTED_D1_OBJECTS 的一致性由单测锁定。
+// 核对 SQL 固化在 worker/schema-verify.sql（单一来源，清单一致性由单测锁定）；
+// remote 走 REST API 时直接读文件正文，local 仍用 wrangler --file。
 const VERIFY_SQL_FILE = "schema-verify.sql";
 
 function isMainModule() {
@@ -103,34 +127,78 @@ function isMainModule() {
   }
 }
 
-function main() {
+async function fetchRemoteRows(repoRoot) {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !accountId) {
+    throw new Error(
+      "remote 核对需要 CLOUDFLARE_API_TOKEN 与 CLOUDFLARE_ACCOUNT_ID"
+    );
+  }
+  // database_id 来自 wrangler.jsonc（与迁移/Worker 绑定同一来源），不另存常量。
+  const wranglerConfig = readFileSync(
+    path.join(repoRoot, "worker", "wrangler.jsonc"),
+    "utf8"
+  );
+  const dbId = wranglerConfig.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1];
+  if (!dbId)
+    throw new Error("wrangler.jsonc 中找不到 d1_databases[].database_id");
+  // SQL 去掉注释行后作为单条语句传入（REST API 不接受 --file）。
+  const sql = readFileSync(
+    path.join(repoRoot, "worker", VERIFY_SQL_FILE),
+    "utf8"
+  )
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n")
+    .trim();
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${dbId}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sql }),
+    }
+  );
+  const body = await res.json();
+  return parseD1ApiResponse(body);
+}
+
+function fetchLocalRows(repoRoot) {
+  const raw = execFileSync(
+    "npx",
+    [
+      "wrangler",
+      "d1",
+      "execute",
+      "blog-db",
+      "--json",
+      "--local",
+      "--file",
+      VERIFY_SQL_FILE,
+    ],
+    {
+      cwd: path.join(repoRoot, "worker"),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+      shell: process.platform === "win32",
+    }
+  );
+  return parseWranglerJson(raw);
+}
+
+async function main() {
   const local = process.argv.includes("--local");
   const repoRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     ".."
   );
-  const workerDir = path.join(repoRoot, "worker");
-  const args = [
-    "wrangler",
-    "d1",
-    "execute",
-    "blog-db",
-    "--json",
-    local ? "--local" : "--remote",
-    "--file",
-    VERIFY_SQL_FILE,
-  ];
-  const raw = execFileSync("npx", args, {
-    cwd: workerDir,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "inherit"],
-    // Windows 下 npx 是 .cmd，不经 shell 无法执行；CI(Linux) 同样兼容。
-    // 参数均为无空格字面量（SQL 在文件里），shell 拼接无注入风险。
-    shell: process.platform === "win32",
-  });
-  const rows = parseWranglerJson(raw);
-  // 诊断输出（CI 日志可见）：仅打印对象名，无敏感信息；核对失败时能直接看出
-  // 是「查询返回空」还是「部分对象缺失」，无需再猜 wrangler 的 stdout 结构。
+  const rows = local
+    ? fetchLocalRows(repoRoot)
+    : await fetchRemoteRows(repoRoot);
   console.log(
     `sqlite_master 命中 ${rows.length} 项：${rows.map((r) => r.name).join(", ") || "(空)"}`
   );
@@ -139,9 +207,6 @@ function main() {
     console.error(
       `D1 迁移核对失败：缺少 ${missing.length} 个对象：\n  ${missing.join("\n  ")}`
     );
-    // 诊断：命中 0/部分时打印 wrangler 原始 stdout 尾部（不含凭证，只有对象名与统计），
-    // 便于定位「查询返回空」究竟是 SQL 问题还是 stdout 解析问题。
-    console.error("wrangler stdout 尾部诊断：\n" + raw.slice(-1500));
     process.exit(1);
   }
   console.log(
@@ -149,4 +214,9 @@ function main() {
   );
 }
 
-if (isMainModule()) main();
+if (isMainModule()) {
+  main().catch((e) => {
+    console.error(e?.message ?? String(e));
+    process.exit(1);
+  });
+}

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   EXPECTED_D1_OBJECTS,
   findMissingObjects,
+  parseD1ApiResponse,
   parseWranglerJson,
 } from "../scripts/verify-d1-migrations.mjs";
 
@@ -89,6 +90,37 @@ describe("D1 迁移核对", () => {
     expect(() => parseWranglerJson("not json")).toThrow();
     expect(() => parseWranglerJson("[]")).toThrow();
     expect(() => parseWranglerJson("├ progress only, no JSON")).toThrow();
+  });
+
+  it("parseD1ApiResponse 解析 REST API 的 result[0].results（remote 核对路径）", () => {
+    // CI 实测：wrangler --remote --json 对 SELECT 只返回统计、不返回查询行；
+    // 改用 Cloudflare D1 REST API，它返回完整 rows。
+    const body = {
+      success: true,
+      errors: [],
+      result: [
+        {
+          success: true,
+          results: [
+            { name: "analytics_view_token" },
+            { name: "idx_dim_daily_lookup" },
+          ],
+          meta: { rows_read: 41 },
+        },
+      ],
+    };
+    expect(parseD1ApiResponse(body)).toEqual([
+      { name: "analytics_view_token" },
+      { name: "idx_dim_daily_lookup" },
+    ]);
+  });
+
+  it("parseD1ApiResponse 对失败/坏结构抛错（fail-closed）", () => {
+    expect(() =>
+      parseD1ApiResponse({ success: false, errors: [{ code: 1 }] })
+    ).toThrow();
+    expect(() => parseD1ApiResponse({ success: true, result: [] })).toThrow();
+    expect(() => parseD1ApiResponse({ success: true, result: [{}] })).toThrow();
   });
 
   it("findMissingObjects 找出缺失对象；全部存在时返回空数组", () => {
