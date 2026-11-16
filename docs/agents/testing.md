@@ -83,6 +83,8 @@ node scripts/verify-article-ssr.mjs
 
 `ARTICLE_API_ORIGIN` 只在 dev 且显式设置时生效；生产构建忽略它，继续走 `WORKER_ORIGIN`（`src/utils/workerOrigin.ts`）。
 
+fixture 里 `MOTION_CHUNK_RE` 的匹配口径由根包 `tests/article-ssr-fixture.test.ts` 用手写 URL 字面量钉住（`@vitest-environment node`，3 项）：阻断 `/src/utils/motion.ts` 与构建后的 `motion-<hash>.js` / `motion.<hash>.js`，**放行** `#103` 拆出的静态引导模块 `src/scripts/layout/motion-boot.ts`。误命中引导模块会让 `data-motion-failed` 的 catch 兜底根本不注册，用例以「catch 兜底失效」假红并阻断部署——这条口径不要靠「看着像就改」，改前先跑该单测。
+
 ### 文章编辑器端到端（#68 / T7，CI + 手动）
 
 `scripts/verify-article-editor.mjs` 按 `docs/ARTICLE_EDITOR_UPGRADE.md` §10.3 的九条检查单拆成 12 个 `withScenario` 场景（检查单 1 / 5 / 7 各拆两个，8 拆三档视口）：安全 / lossy 语料的模式判定、WYSIWYG 编辑后的 `PUT` 请求体（Markdown、含 `data-embed="1"`、不含预览 HTML）、保存后文章 SSR 页正文仍可读（语义等价端到端证据）、未保存保护与锁释放、加载 / 保存失败态、草稿恢复 / 丢弃、锁冲突、280 / 375 / 1280px 响应式、控制台无报错。T7 重写后每个场景独立 browser context（按「新增回归检查单」固定 `locale` / 视口，避免状态与登录态串场）；字段级映射与状态机仍由 node 单测锁定，浏览器侧只锁完整页面才能确认的接线行为，同一行为不在单测和浏览器回归里重复测。

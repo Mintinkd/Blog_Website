@@ -41,20 +41,18 @@ export const PLACEHOLDER_PNG = Buffer.from(
  * `/motion-<hash>.js` 或 `/motion.<hash>.js`。脚本用同一规则阻断请求并过滤
  * 对应的资源报错。
  *
- * 必须排除 `src/scripts/layout/motion-boot.ts`（issue #103 / L4 从 BaseLayout
- * 内联脚本拆出的引导模块）：它是 BaseLayout 的静态 import，而 `data-motion-failed`
- * 的 catch 兜底就写在它里面。把它一并阻断，等于让兜底代码根本不注册，标记永远
- * 不出现——用例会以「动态 import 的 catch 兜底失效」假红。
+ * 负向前瞻排除 `motion-boot` 开头的模块：issue #103 / L4 把 BaseLayout 的内联
+ * 脚本拆成 `src/scripts/layout/motion-boot.ts`，它是 BaseLayout 的静态 import，
+ * `data-motion-failed` 的 catch 兜底就写在里面。把它一并阻断等于让兜底代码根本
+ * 不注册，标记永不出现——「阻断 motion chunk」用例会以「catch 兜底失效」假红，
+ * CI 直接阻断部署（口径由 `tests/article-ssr-fixture.test.ts` 钉住）。
  */
-export const MOTION_CHUNK_RE = /\/motion(?:[.-][\w.-]+)?\.(?:m?js|ts)$/;
-
-/** 引导模块是静态 import，不属于「motion chunk」，阻断规则要放行。 */
-export const MOTION_BOOT_RE = /\/motion-boot(?:[.-][\w.-]+)?\.(?:m?js|ts)$/;
+export const MOTION_CHUNK_RE =
+  /\/motion(?!-boot(?:[.-]|$))(?:[.-][\w.-]+)?\.(?:m?js|ts)$/;
 
 export function isMotionChunkUrl(url) {
   try {
-    const pathname = new URL(url).pathname;
-    return MOTION_CHUNK_RE.test(pathname) && !MOTION_BOOT_RE.test(pathname);
+    return MOTION_CHUNK_RE.test(new URL(url).pathname);
   } catch {
     return false;
   }
