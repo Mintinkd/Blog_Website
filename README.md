@@ -678,6 +678,22 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 | `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（CI 部署/迁移需 Pages + Workers + **D1 编辑**；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                                   |
 
+### 访客 IP 签名密钥（#84 / H3，必配）
+
+点赞 / 评论去重与代理限流依赖访客真实 IP，而 SSR / 同源代理到 Worker 的第二跳 `CF-Connecting-IP` 是 Pages 出口地址。为防直连伪造 `X-Real-IP` 绕过去重 / 限流，需在 **Pages 与 Worker 两侧配置同名同值的服务端 secret**：
+
+```bash
+# Worker 侧（验签）：在 worker/ 目录执行
+cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
+
+# Pages 侧（签名）：在 Cloudflare Dashboard → Pages 项目 blog-website → Settings → Environment variables
+# 新增变量 VISITOR_IP_SIGNING_SECRET（Secret 类型，Production + Preview 都加），值与 Worker 侧相同
+```
+
+- 两侧缺任一侧：Worker 侧 fail-closed——不采信 `X-Real-IP`，回退边缘 `CF-Connecting-IP`。功能不中断，但经 Pages 的访客会共用出口 IP（去重 / 限流精度下降），故**生产必须两侧都配**。
+- 算法：`HMAC-SHA256("client-ip:v1:" + ip, secret)`，前端 `src/utils/visitorIpSigning.ts` 与 Worker `worker/src/utils/client_ip.ts` 逐字一致，跨端一致性由 `tests/visitor-ip-signing.test.ts` 守卫。
+- 轮换 secret 会使存量 IP 签名瞬间失效（仅影响去重精度，无安全问题），无需迁移数据。
+
 ### Cloudflare 资源
 
 需要提前在 Cloudflare Dashboard 中创建：

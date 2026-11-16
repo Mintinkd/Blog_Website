@@ -1,4 +1,5 @@
 import { Env } from "../index";
+import { getClientIpString } from "../utils/client_ip";
 
 /**
  * 外链图片智能代理（GET /img-proxy?url=...）
@@ -140,13 +141,15 @@ export function isBlockedIp(host: string): boolean {
   return false;
 }
 
-export function clientIp(request: Request): string {
-  return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("X-Real-IP") ||
-    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
+/**
+ * #84 / H3：委托 client_ip 单点（含可信跳验签）。保留导出名供 text_proxy 复用；
+ * 由调用方传入共享 secret，未配置时 fail-closed 不采信 X-Real-IP。
+ */
+export function clientIp(
+  request: Request,
+  secret?: string | null
+): Promise<string> {
+  return getClientIpString(request, secret);
 }
 
 export async function sha1Hex(input: string): Promise<string> {
@@ -440,7 +443,7 @@ export async function handleImgProxy(
   const tu = validation.url;
 
   // 每 IP 限流（独立于全局 rate_limit，避免拖垮普通图片直连）
-  const ip = clientIp(request);
+  const ip = await clientIp(request, env.VISITOR_IP_SIGNING_SECRET);
   const rlKey = `imgproxy:${ip}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
   const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
   if (rlCount >= RATE_MAX) {

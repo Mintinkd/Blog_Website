@@ -91,7 +91,7 @@ export async function handleTextProxy(
   const tu = validation.url;
 
   // 每 IP 限流（独立键，与图片代理互不影响）
-  const ip = clientIp(request);
+  const ip = await clientIp(request, env.VISITOR_IP_SIGNING_SECRET);
   const rlKey = `textproxy:${ip}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
   const rlCount = parseInt((await env.RATE_LIMIT.get(rlKey)) || "0", 10);
   if (rlCount >= RATE_MAX) {

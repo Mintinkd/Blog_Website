@@ -8,6 +8,8 @@ export interface Env {
 
   EDIT_LOCK: KVNamespace;
   API_PREFIX: string;
+  /** #84 / H3：与 Pages 共享的访客 IP 签名密钥（wrangler secret）；未配置时 fail-closed 不采信 X-Real-IP */
+  VISITOR_IP_SIGNING_SECRET?: string;
 }
 
 export default {

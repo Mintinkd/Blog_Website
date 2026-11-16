@@ -1,5 +1,6 @@
 import { Env } from "../index";
 import { rateLimited } from "../utils/response";
+import { getClientIpString } from "../utils/client_ip";
 
 interface RateLimitConfig {
   window_ms: number;
@@ -33,14 +34,6 @@ const METHOD_DEFAULTS: Record<string, RateLimitConfig> = {
   PUT: { window_ms: 60000, max_requests: 60 },
   DELETE: { window_ms: 60000, max_requests: 10 },
 };
-
-function getClientIp(request: Request): string {
-  return (
-    request.headers.get("CF-Connecting-IP") ||
-    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
-}
 
 // 把 pathname 归一为路由模板：纯数字资源 id 段替换为 :id。
 //   /articles/1/comments   → /articles/:id/comments
@@ -84,7 +77,7 @@ export async function rateLimitMiddleware(
     return null;
   }
 
-  const ip = getClientIp(request);
+  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const windowStart = Math.floor(Date.now() / config.window_ms);
   const key = `rate_limit:${ip}:${method}:${normalizedPathname}:${windowStart}`;
 

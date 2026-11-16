@@ -1,25 +1,48 @@
-import { Env } from '../index';
-import { successResponse, error, ErrorCodes, forbidden, unauthorized, notFound } from '../utils/response';
-import { validate } from '../utils/validator';
-import { sanitizeHtml, escapeHtml } from '../utils/sanitizer';
-import { SubmitCommentRequest } from '../models/comment';
-import type { AuthResult } from '../middleware/auth';
+import { Env } from "../index";
+import {
+  successResponse,
+  error,
+  ErrorCodes,
+  forbidden,
+  unauthorized,
+  notFound,
+} from "../utils/response";
+import { validate } from "../utils/validator";
+import { sanitizeHtml, escapeHtml } from "../utils/sanitizer";
+import { SubmitCommentRequest } from "../models/comment";
+import type { AuthResult } from "../middleware/auth";
+import { getClientIpString } from "../utils/client_ip";
 
-export async function handleListComments(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
+export async function handleListComments(
+  request: Request,
+  env: Env,
+  params: Record<string, string>
+): Promise<Response> {
   const { article_id } = params;
   const url = new URL(request.url);
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const page_size = Math.min(50, Math.max(1, parseInt(url.searchParams.get('page_size') || '20', 10)));
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const page_size = Math.min(
+    50,
+    Math.max(1, parseInt(url.searchParams.get("page_size") || "20", 10))
+  );
 
-  const comments = await env.DB.prepare(`
+  const comments = await env.DB.prepare(
+    `
     SELECT id, article_id, nickname, content, created_at
     FROM comments
     WHERE article_id = ? AND status = 'approved'
     ORDER BY created_at ASC
     LIMIT ? OFFSET ?
-  `).bind(article_id, page_size, (page - 1) * page_size).all();
+  `
+  )
+    .bind(article_id, page_size, (page - 1) * page_size)
+    .all();
 
-  const countResult = await env.DB.prepare('SELECT COUNT(*) as total FROM comments WHERE article_id = ? AND status = ?').bind(article_id, 'approved').first<{ total: number }>();
+  const countResult = await env.DB.prepare(
+    "SELECT COUNT(*) as total FROM comments WHERE article_id = ? AND status = ?"
+  )
+    .bind(article_id, "approved")
+    .first<{ total: number }>();
 
   return successResponse({
     items: comments.results,
@@ -29,127 +52,211 @@ export async function handleListComments(request: Request, env: Env, params: Rec
   });
 }
 
-export async function handleSubmitComment(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>): Promise<Response> {
+export async function handleSubmitComment(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  params: Record<string, string>
+): Promise<Response> {
   const { article_id } = params;
-  const body = await request.json() as Record<string, unknown>;
+  const body = (await request.json()) as Record<string, unknown>;
 
   const result = validate(body, [
-    { field: 'nickname', required: true, type: 'string', minLength: 1, maxLength: 100 },
-    { field: 'content', required: true, type: 'string', minLength: 1, maxLength: 1000 },
+    {
+      field: "nickname",
+      required: true,
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+    },
+    {
+      field: "content",
+      required: true,
+      type: "string",
+      minLength: 1,
+      maxLength: 1000,
+    },
   ]);
 
   if (!result.valid) {
-    return error(ErrorCodes.VALIDATION_FAILED, result.errors.map(e => e.message).join('; '));
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      result.errors.map((e) => e.message).join("; ")
+    );
   }
 
   const nickname = escapeHtml(String(body.nickname).trim());
   const content = sanitizeHtml(String(body.content).trim());
 
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const ip_hash = await hashIp(ip);
 
-  const articleExists = await env.DB.prepare('SELECT id FROM articles WHERE id = ?').bind(article_id).first();
+  const articleExists = await env.DB.prepare(
+    "SELECT id FROM articles WHERE id = ?"
+  )
+    .bind(article_id)
+    .first();
   if (!articleExists) {
-    return notFound('Article not found');
+    return notFound("Article not found");
   }
 
-  await env.DB.prepare(`
+  await env.DB.prepare(
+    `
     INSERT INTO comments (article_id, nickname, content, status, ip_hash)
     VALUES (?, ?, ?, 'pending', ?)
-  `).bind(article_id, nickname, content, ip_hash).run();
+  `
+  )
+    .bind(article_id, nickname, content, ip_hash)
+    .run();
 
-  return successResponse(null, 'Comment submitted and awaiting review');
+  return successResponse(null, "Comment submitted and awaiting review");
 }
 
-export async function handleListAllComments(request: Request, env: Env, ctx: ExecutionContext, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
+export async function handleListAllComments(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
   const url = new URL(request.url);
-  const status = url.searchParams.get('status') || '';
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const page_size = Math.min(50, Math.max(1, parseInt(url.searchParams.get('page_size') || '20', 10)));
+  const status = url.searchParams.get("status") || "";
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const page_size = Math.min(
+    50,
+    Math.max(1, parseInt(url.searchParams.get("page_size") || "20", 10))
+  );
 
-  let whereClause = '';
+  let whereClause = "";
   const bindParams: unknown[] = [];
 
-  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
-    whereClause = 'WHERE c.status = ?';
+  if (status && ["pending", "approved", "rejected"].includes(status)) {
+    whereClause = "WHERE c.status = ?";
     bindParams.push(status);
   }
 
-  if (authResult && authResult.role === 'editor') {
-    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(authResult.username).first<{ id: number }>();
+  if (authResult && authResult.role === "editor") {
+    const user = await env.DB.prepare("SELECT id FROM users WHERE username = ?")
+      .bind(authResult.username)
+      .first<{ id: number }>();
     if (user) {
-      whereClause += whereClause ? ' AND a.author_id = ?' : 'WHERE a.author_id = ?';
+      whereClause += whereClause
+        ? " AND a.author_id = ?"
+        : "WHERE a.author_id = ?";
       bindParams.push(user.id);
     } else {
       // 审查报告 H2 修复：用户无法解析时 fail-closed，不再回退为「不过滤」
-      whereClause += whereClause ? ' AND 1 = 0' : 'WHERE 1 = 0';
+      whereClause += whereClause ? " AND 1 = 0" : "WHERE 1 = 0";
     }
   }
 
-  const comments = await env.DB.prepare(`
+  const comments = await env.DB.prepare(
+    `
     SELECT c.id, c.article_id, c.nickname, c.content, c.status, c.created_at, a.title as article_title
     FROM comments c
     JOIN articles a ON c.article_id = a.id
     ${whereClause}
     ORDER BY c.created_at DESC
     LIMIT ? OFFSET ?
-  `).bind(...bindParams, page_size, (page - 1) * page_size).all();
+  `
+  )
+    .bind(...bindParams, page_size, (page - 1) * page_size)
+    .all();
 
   return successResponse(comments.results);
 }
 
 /** 审查报告 H2 修复：评论管理（审批/否决/删除）须为管理员或评论所属文章的作者；否则返回错误响应 */
-async function ensureCommentManageable(env: Env, commentId: string, authResult?: AuthResult): Promise<Response | null> {
-  if (!authResult) return unauthorized('Authentication required');
+async function ensureCommentManageable(
+  env: Env,
+  commentId: string,
+  authResult?: AuthResult
+): Promise<Response | null> {
+  if (!authResult) return unauthorized("Authentication required");
 
-  const row = await env.DB.prepare('SELECT article_id FROM comments WHERE id = ?').bind(commentId).first<{ article_id: number }>();
-  if (!row) return notFound('Comment not found');
+  const row = await env.DB.prepare(
+    "SELECT article_id FROM comments WHERE id = ?"
+  )
+    .bind(commentId)
+    .first<{ article_id: number }>();
+  if (!row) return notFound("Comment not found");
 
-  const { checkArticleOwnership } = await import('../services/article_service');
+  const { checkArticleOwnership } = await import("../services/article_service");
   const owned = await checkArticleOwnership(env, row.article_id, authResult);
-  if (!owned) return forbidden('仅可管理自己文章下的评论');
+  if (!owned) return forbidden("仅可管理自己文章下的评论");
 
   return null;
 }
 
-export async function handleApproveComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
+export async function handleApproveComment(
+  request: Request,
+  env: Env,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
   const { id } = params;
   const denied = await ensureCommentManageable(env, id, authResult);
   if (denied) return denied;
 
-  const result = await env.DB.prepare("UPDATE comments SET status = 'approved' WHERE id = ?").bind(id).run();
-  if (result.meta.changes === 0) return notFound('Comment not found');
+  const result = await env.DB.prepare(
+    "UPDATE comments SET status = 'approved' WHERE id = ?"
+  )
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return notFound("Comment not found");
 
-  await env.DB.prepare('UPDATE articles SET comment_count = (SELECT COUNT(*) FROM comments WHERE article_id = (SELECT article_id FROM comments WHERE id = ?) AND status = ?) WHERE id = (SELECT article_id FROM comments WHERE id = ?)').bind(id, 'approved', id).run();
+  await env.DB.prepare(
+    "UPDATE articles SET comment_count = (SELECT COUNT(*) FROM comments WHERE article_id = (SELECT article_id FROM comments WHERE id = ?) AND status = ?) WHERE id = (SELECT article_id FROM comments WHERE id = ?)"
+  )
+    .bind(id, "approved", id)
+    .run();
 
-  return successResponse(null, 'Comment approved');
+  return successResponse(null, "Comment approved");
 }
 
-export async function handleRejectComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
+export async function handleRejectComment(
+  request: Request,
+  env: Env,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
   const { id } = params;
   const denied = await ensureCommentManageable(env, id, authResult);
   if (denied) return denied;
 
-  const result = await env.DB.prepare("UPDATE comments SET status = 'rejected' WHERE id = ?").bind(id).run();
-  if (result.meta.changes === 0) return notFound('Comment not found');
+  const result = await env.DB.prepare(
+    "UPDATE comments SET status = 'rejected' WHERE id = ?"
+  )
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return notFound("Comment not found");
 
-  return successResponse(null, 'Comment rejected');
+  return successResponse(null, "Comment rejected");
 }
 
-export async function handleDeleteComment(request: Request, env: Env, params: Record<string, string>, authResult?: AuthResult): Promise<Response> {
+export async function handleDeleteComment(
+  request: Request,
+  env: Env,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
   const { id } = params;
   const denied = await ensureCommentManageable(env, id, authResult);
   if (denied) return denied;
 
-  const result = await env.DB.prepare('DELETE FROM comments WHERE id = ?').bind(id).run();
-  if (result.meta.changes === 0) return notFound('Comment not found');
+  const result = await env.DB.prepare("DELETE FROM comments WHERE id = ?")
+    .bind(id)
+    .run();
+  if (result.meta.changes === 0) return notFound("Comment not found");
 
-  return successResponse(null, 'Comment deleted');
+  return successResponse(null, "Comment deleted");
 }
 
 async function hashIp(ip: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(ip + '-salt-blog-2024');
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const data = encoder.encode(ip + "-salt-blog-2024");
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

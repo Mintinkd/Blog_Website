@@ -5,6 +5,7 @@ import {
   serverError,
   ErrorCodes,
 } from "../utils/response";
+import { getClientIpString } from "../utils/client_ip";
 
 async function hashIp(ip: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -22,7 +23,7 @@ export async function handleToggleLike(
   params: Record<string, string>
 ): Promise<Response> {
   const { article_id } = params;
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const ip_hash = await hashIp(ip);
 
   const article = await env.DB.prepare("SELECT id FROM articles WHERE id = ?")
@@ -71,7 +72,7 @@ export async function handleLikeStatus(
   params: Record<string, string>
 ): Promise<Response> {
   const { article_id } = params;
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ip = await getClientIpString(request, env.VISITOR_IP_SIGNING_SECRET);
   const ip_hash = await hashIp(ip);
 
   const existing = await env.DB.prepare(

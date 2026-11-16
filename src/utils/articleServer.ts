@@ -1,4 +1,9 @@
 import { resolveArticleApiOrigin } from "./workerOrigin";
+import {
+  IP_SIGNING_HEADER,
+  signVisitorIp,
+  visitorIpSigningSecret,
+} from "./visitorIpSigning";
 
 export interface ArticleCategory {
   id: number;
@@ -64,7 +69,7 @@ export async function loadArticleForPage(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const requestInit: RequestInit = { signal: controller.signal };
-  const forwardedHeaders = forwardVisitorHeaders(options.request);
+  const forwardedHeaders = await forwardVisitorHeaders(options.request);
   if (forwardedHeaders) requestInit.headers = forwardedHeaders;
   let response: Response;
 
@@ -128,14 +133,21 @@ const VISITOR_CONTEXT_HEADERS = [
  * Cookie 原样转发供阅读量去重；IP / 国家只认 Cloudflare 来源头，映射为内部约定；
  * 其余白名单头按实际存在转发，缺失不合成默认值（构建期 / 测试没有访客请求）。
  */
-function forwardVisitorHeaders(request?: Request): Headers | null {
+async function forwardVisitorHeaders(
+  request?: Request
+): Promise<Headers | null> {
   if (!request) return null;
 
   const headers = new Headers();
   const cookie = request.headers.get("cookie");
   if (cookie) headers.set("Cookie", cookie);
+  // #84 / H3：cf-connecting-ip → X-Real-IP 并加签；Worker 验签通过才采信。
   const clientIp = request.headers.get("cf-connecting-ip")?.trim();
-  if (clientIp) headers.set("X-Real-IP", clientIp);
+  if (clientIp) {
+    headers.set("X-Real-IP", clientIp);
+    const sig = await signVisitorIp(clientIp, visitorIpSigningSecret());
+    if (sig) headers.set(IP_SIGNING_HEADER, sig);
+  }
   const country = request.headers.get("cf-ipcountry")?.trim();
   if (country) headers.set("X-Visitor-Country", country);
 
