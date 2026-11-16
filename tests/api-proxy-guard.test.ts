@@ -12,7 +12,7 @@ import { ALL } from "../src/pages/api/v1/[...path]";
  * 已知缺陷用 `it.fails` 留痕：当前失败 = 整体通过；日后修复后测试会「意外通过」
  * 而变红，提示维护者移除 .fails 标记并关闭对应缺陷票。
  *
- * 缺陷票：D1（hop-by-hop）——上游 connection / transfer-encoding 等逐跳头被透传给浏览器。
+ * 缺陷票：D1（hop-by-hop）——已由 #110 修复，原 `it.fails` 留痕用例改回 `it`。
  */
 
 afterEach(() => {
@@ -36,21 +36,18 @@ describe("代理响应头（issue #98）", () => {
     expect(out.get("access-control-allow-headers")).not.toBe("X-Evil");
   });
 
-  it.fails(
-    "D1：上游 hop-by-hop 头应被剥离（RFC 7230 §6.1；已知缺陷，另票修）",
-    () => {
-      const upstream = new Headers({
-        "content-type": "application/json",
-        connection: "keep-alive, X-Internal-Token",
-        "x-internal-token": "should-not-leak",
-        "transfer-encoding": "chunked",
-      });
-      const out = buildProxyResponseHeaders(upstream, false, null);
-      expect(out.get("connection")).toBeNull();
-      expect(out.get("transfer-encoding")).toBeNull();
-      expect(out.get("x-internal-token")).toBeNull();
-    }
-  );
+  it("D1：上游 hop-by-hop 头应被剥离（RFC 7230 §6.1；已由 #110 修复）", () => {
+    const upstream = new Headers({
+      "content-type": "application/json",
+      connection: "keep-alive, X-Internal-Token",
+      "x-internal-token": "should-not-leak",
+      "transfer-encoding": "chunked",
+    });
+    const out = buildProxyResponseHeaders(upstream, false, null);
+    expect(out.get("connection")).toBeNull();
+    expect(out.get("transfer-encoding")).toBeNull();
+    expect(out.get("x-internal-token")).toBeNull();
+  });
 });
 
 describe("代理路径与超时（issue #98）", () => {
