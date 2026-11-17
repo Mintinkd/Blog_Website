@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleGetArticle } from "../src/handlers/article";
+import { IP_SIGNING_HEADER, signClientIp } from "../src/utils/client_ip";
 import type { Env } from "../src/index";
 import type { AuthResult } from "../src/middleware/auth";
 
@@ -27,14 +28,28 @@ const ADMIN: AuthResult = {
   mustChangePassword: false,
 };
 
-/** 通过 §4.1 七条规则、且带 SSR 转发的 X-Real-IP 的浏览器请求 */
+/** 通过 §4.1 七条规则、且带**验签通过**的 SSR 转发 X-Real-IP 的浏览器请求 */
+const VIEW_SIGNING_SECRET = "article-view-ssr-signing-secret";
+const VISITOR_IP = "203.0.113.9";
+const OTHER_VISITOR_IP = "203.0.113.10";
+const VISITOR_SIGNATURE = await signClientIp(VISITOR_IP, VIEW_SIGNING_SECRET);
+const OTHER_SIGNATURE = await signClientIp(
+  OTHER_VISITOR_IP,
+  VIEW_SIGNING_SECRET
+);
+
 const BROWSER_HEADERS: Record<string, string> = {
   "user-agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36",
   accept: "text/html,application/xhtml+xml",
-  "x-real-ip": "203.0.113.9",
+  "x-real-ip": VISITOR_IP,
+  [IP_SIGNING_HEADER]: VISITOR_SIGNATURE!,
   "sec-fetch-mode": "navigate",
 };
+
+/** 直连口径：同时摘掉 IP 与签名，模拟不经 Pages 的请求 */
+const { [IP_SIGNING_HEADER]: _sig, ...NO_SIGNATURE_HEADERS } = BROWSER_HEADERS;
+const { "x-real-ip": _ip, ...DIRECT_HEADERS } = NO_SIGNATURE_HEADERS;
 
 interface DailyRow {
   article_id: number;
@@ -244,7 +259,10 @@ function makeEnv(state: State): Env {
       return [];
     },
   };
-  return { DB: db } as unknown as Env;
+  return {
+    DB: db,
+    VISITOR_IP_SIGNING_SECRET: VIEW_SIGNING_SECRET,
+  } as unknown as Env;
 }
 
 function visit(
@@ -400,7 +418,7 @@ describe("issue #55：§4.1 过滤与直连口径", () => {
   it("直连 API（无 X-Real-IP）：requests +1，pv/uv 与阅读量不变", async () => {
     const state = makeState();
     const env = makeEnv(state);
-    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+    const directHeaders = DIRECT_HEADERS;
 
     const res = await visit(env, { headers: directHeaders });
 
@@ -421,10 +439,33 @@ describe("issue #55：§4.1 过滤与直连口径", () => {
     expect(res.headers.get("set-cookie")).toBe(VIEW_COOKIE);
   });
 
+  it("伪造 X-Real-IP（无签名）按直连处理：不得计入 pv / uv（2026-11-17 审查）", async () => {
+    const state = makeState();
+    const env = makeEnv(state);
+
+    await visit(env, {
+      headers: { ...DIRECT_HEADERS, "x-real-ip": "203.0.113.66" },
+    });
+
+    expect(state.daily).toEqual([
+      {
+        article_id: 7,
+        day: "2026-11-04",
+        pv: 0,
+        uv: 0,
+        requests: 1,
+        bot_filtered: 0,
+        engaged: 0,
+      },
+    ]);
+    expect(state.viewCount).toBe(1);
+    expect(state.tokens).toHaveLength(0);
+  });
+
   it("被过滤的直连请求既不计 requests 也不计 bot_filtered", async () => {
     const state = makeState();
     const env = makeEnv(state);
-    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+    const directHeaders = DIRECT_HEADERS;
 
     await visit(env, {
       headers: { ...directHeaders, "user-agent": "curl/8.0" },
@@ -452,7 +493,11 @@ describe("issue #56：维度桶随去重访客计数写入", () => {
       headers: { ...RICH_HEADERS, "x-real-ip": "203.0.113.9" },
     });
     await visit(env, {
-      headers: { ...RICH_HEADERS, "x-real-ip": "203.0.113.10" },
+      headers: {
+        ...RICH_HEADERS,
+        "x-real-ip": OTHER_VISITOR_IP,
+        [IP_SIGNING_HEADER]: OTHER_SIGNATURE!,
+      },
     });
 
     expect(state.dimRows).toEqual([
@@ -484,7 +529,7 @@ describe("issue #56：维度桶随去重访客计数写入", () => {
   it("Cookie 命中 / 令牌命中 / 直连 / 被过滤都不写维度桶", async () => {
     const state = makeState();
     const env = makeEnv(state);
-    const { "x-real-ip": _ip, ...directHeaders } = BROWSER_HEADERS;
+    const directHeaders = DIRECT_HEADERS;
 
     await visit(env);
     expect(state.dimRows).toHaveLength(3);

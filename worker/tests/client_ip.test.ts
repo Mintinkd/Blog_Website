@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   IP_SIGNING_HEADER,
   resolveClientIp,
+  resolveSignedProxyIp,
   signClientIp,
 } from "../src/utils/client_ip";
 
@@ -127,6 +128,64 @@ describe("伪造防护（issue #84）", () => {
 
   it("空 IP 不签名", async () => {
     expect(await signClientIp("   ", SECRET)).toBeNull();
+  });
+});
+
+/**
+ * `resolveSignedProxyIp`：只要验签通过的 X-Real-IP，不做边缘 / XFF 回退。
+ * 阅读统计用 null 表示「直连」，回退会把它伪装成 SSR 链路（2026-11-17 审查）。
+ */
+describe("resolveSignedProxyIp（SSR 链路判定专用）", () => {
+  it("签名通过 → 返回 IP", async () => {
+    const sig = await signClientIp(VISITOR_IP, SECRET);
+    expect(
+      await resolveSignedProxyIp(
+        req({
+          "X-Real-IP": VISITOR_IP,
+          [IP_SIGNING_HEADER]: sig!,
+          "CF-Connecting-IP": EDGE_IP,
+        }),
+        SECRET
+      )
+    ).toBe(VISITOR_IP);
+  });
+
+  it("直连（只有边缘 CF-Connecting-IP）→ null，不回退", async () => {
+    expect(
+      await resolveSignedProxyIp(req({ "CF-Connecting-IP": EDGE_IP }), SECRET)
+    ).toBeNull();
+  });
+
+  it("伪造 / 未签名 / 缺 secret → null（即便另有 CF-Connecting-IP）", async () => {
+    expect(
+      await resolveSignedProxyIp(
+        req({ "X-Real-IP": VISITOR_IP, "CF-Connecting-IP": EDGE_IP }),
+        SECRET
+      )
+    ).toBeNull();
+
+    const sig = await signClientIp(VISITOR_IP, SECRET);
+    expect(
+      await resolveSignedProxyIp(
+        req({
+          "X-Real-IP": VISITOR_IP,
+          [IP_SIGNING_HEADER]: "deadbeef",
+          "CF-Connecting-IP": EDGE_IP,
+        }),
+        SECRET
+      )
+    ).toBeNull();
+
+    expect(
+      await resolveSignedProxyIp(
+        req({
+          "X-Real-IP": VISITOR_IP,
+          [IP_SIGNING_HEADER]: sig!,
+          "CF-Connecting-IP": EDGE_IP,
+        }),
+        undefined
+      )
+    ).toBeNull();
   });
 });
 

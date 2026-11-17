@@ -279,7 +279,7 @@ D1 (SQLite) 共 13 张表：
 
 ## API 接口
 
-所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理（issue #98 / M18 补测）：上游 CORS 头按白名单重建、10s 超时映射 502；`%2e%2e` / `../` 点段由入口 URL 规范化拦截（不以原样进入代理 handler）。响应头剥离（issue #110，闭合 #98 的 Deferred）：RFC 7230 §6.1 的 8 类 hop-by-hop 头（`connection` / `keep-alive` / `proxy-authenticate` / `proxy-authorization` / `te` / `trailer` / `transfer-encoding` / `upgrade`）以及 `Connection` 头逐项点名的自定义头，全部从上游响应中删除，不再透传给浏览器（否则代理会替上游"接管"逐跳语义，且 `Connection: X` 可借道删掉本不该动的头）。**顺序有讲究**：先剥 hop-by-hop，再清掉上游 CORS 头并按请求 Origin 精确重建——反过来做的话，`Connection: access-control-allow-origin` 就能把刚重建的 CORS 头删掉（`buildProxyResponseHeaders` 的注释与 `tests/api-proxy-hop-by-hop.test.ts` 的「CORS 重建共存」用例一起锁定这个次序）。
+所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理（issue #98 / M18 补测）：上游 CORS 头按白名单重建、10s 超时映射 502（502 响应带 `Content-Type: application/json` 与白名单 CORS，不复用预检头）；`%2e%2e` / `../` 点段由入口 URL 规范化拦截（不以原样进入代理 handler）。响应头剥离（issue #110，闭合 #98 的 Deferred）：RFC 7230 §6.1 的 8 类 hop-by-hop 头（`connection` / `keep-alive` / `proxy-authenticate` / `proxy-authorization` / `te` / `trailer` / `transfer-encoding` / `upgrade`）以及 `Connection` 头逐项点名的自定义头，全部从上游响应中删除，不再透传给浏览器（否则代理会替上游"接管"逐跳语义，且 `Connection: X` 可借道删掉本不该动的头）。**顺序有讲究**：先剥 hop-by-hop，再清掉上游 CORS 头并按请求 Origin 精确重建——反过来做的话，`Connection: access-control-allow-origin` 就能把刚重建的 CORS 头删掉（`buildProxyResponseHeaders` 的注释与 `tests/api-proxy-hop-by-hop.test.ts` 的「CORS 重建共存」用例一起锁定这个次序）。`Vary` 只摘掉 `Origin` 后与上游剩余 token 合并（保留 `Vary: Accept-Encoding`，`Vary: *` 原样保留），不再整条删除。
 
 ### 公开接口
 
@@ -411,8 +411,8 @@ D1 (SQLite) 共 13 张表：
 文章详情由 Astro 在请求时服务端渲染（issue #36 / [ADR 0004](docs/adr/0004-article-ssr-request-time-rendering.md)）：
 
 - **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重，带 `HttpOnly`）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
-- **计数**：Worker 侧 `recordArticleView` 只计已发布文章 200；按 `docs/READER_ANALYTICS.md` §4.1 过滤爬虫 / 预取 / 非导航请求，SSR 链路（带 `X-Real-IP`）写日聚合 `pv` / `uv` / `requests` 与累计 `view_count`，直连 API 只累加 `requests`，被过滤的直连请求不写库；`view_<id>` Cookie 按 Cookie 快路径 + 24h HMAC 令牌去重，草稿预览不计数；新访客（去重命中）在同一 D1 `batch()` 内写 `device` / `country` / `referrer` 三个单篇维度桶（#56），全站分布由 `GET /admin/analytics/dimensions` 查询时 `GROUP BY` 聚合。
-- **访客上下文**：同时转发白名单 `User-Agent` / `Accept` / `Referer` / `Accept-Language` / `Sec-Fetch-Mode` / `Sec-Fetch-Dest` / `Sec-Purpose` / `Purpose` / `X-Purpose` / `Sec-CH-UA*`；`CF-IPCountry` 映射为 `X-Visitor-Country`。缺失的头不合成默认 UA / Accept，Worker 侧提供 `readVisitorContext` 按缺失还原为访客上下文，供机器人过滤与维度使用。
+- **计数**：Worker 侧 `recordArticleView` 只计已发布文章 200；按 `docs/READER_ANALYTICS.md` §4.1 过滤爬虫 / 预取 / 非导航请求，SSR 链路（带**验签通过**的 `X-Real-IP`）写日聚合 `pv` / `uv` / `requests` 与累计 `view_count`，直连 API 或伪造 / 未签名的 `X-Real-IP` 只累加 `requests`，被过滤的直连请求不写库；`view_<id>` Cookie 按 Cookie 快路径 + 24h HMAC 令牌去重，草稿预览不计数；新访客（去重命中）在同一 D1 `batch()` 内写 `device` / `country` / `referrer` 三个单篇维度桶（#56），全站分布由 `GET /admin/analytics/dimensions` 查询时 `GROUP BY` 聚合。IP 验签走 `worker/src/utils/client_ip.ts` 单点（`resolveSignedProxyIp`），访客上下文不再直读 `X-Real-IP`。
+- **访客上下文**：同时转发白名单 `User-Agent` / `Accept` / `Referer` / `Accept-Language` / `Sec-Fetch-Mode` / `Sec-Fetch-Dest` / `Sec-Purpose` / `Purpose` / `X-Purpose` / `Sec-CH-UA*`；`CF-IPCountry` 映射为 `X-Visitor-Country`。缺失的头不合成默认 UA / Accept，Worker 侧提供 `readVisitorContext` 按缺失还原为访客上下文，供机器人过滤与维度使用；其中 `ip` 只取验签通过的 `X-Real-IP`（未签名 / 签名错误 / 缺 secret 一律 null）。
 - **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
 - **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 404 以外的非 2xx / 2xx 响应体非法 / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
 - **缓存**：响应 `Cache-Control: private, no-cache`（HTML 护栏再追加 `no-transform`），含访客 Cookie 的页面不会被共享缓存复用。
@@ -708,7 +708,7 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 
 ### 访客 IP 签名密钥（#84 / H3，必配）
 
-点赞 / 评论去重与代理限流依赖访客真实 IP，而 SSR / 同源代理到 Worker 的第二跳 `CF-Connecting-IP` 是 Pages 出口地址。为防直连伪造 `X-Real-IP` 绕过去重 / 限流，需在 **Pages 与 Worker 两侧配置同名同值的服务端 secret**：
+点赞 / 评论去重、代理限流与阅读统计依赖访客真实 IP，而 SSR / 同源代理到 Worker 的第二跳 `CF-Connecting-IP` 是 Pages 出口地址。为防直连伪造 `X-Real-IP` 绕过去重 / 限流（并污染阅读统计），需在 **Pages 与 Worker 两侧配置同名同值的服务端 secret**：
 
 ```bash
 # Worker 侧（验签）：在 worker/ 目录执行
@@ -718,7 +718,7 @@ cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
 # 新增变量 VISITOR_IP_SIGNING_SECRET（Secret 类型，Production + Preview 都加），值与 Worker 侧相同
 ```
 
-- 两侧缺任一侧：Worker 侧 fail-closed——不采信 `X-Real-IP`，回退边缘 `CF-Connecting-IP`。功能不中断，但经 Pages 的访客会共用出口 IP（去重 / 限流精度下降），故**生产必须两侧都配**。
+- 两侧缺任一侧：Worker 侧 fail-closed——不采信 `X-Real-IP`，回退边缘 `CF-Connecting-IP`。功能不中断，但经 Pages 的访客会共用出口 IP（点赞 / 评论去重与限流精度下降）；阅读统计则按「直连」口径只累加 `requests`（不写 pv / uv / 维度桶），故**生产必须两侧都配**。
 - 算法：`HMAC-SHA256("client-ip:v1:" + ip, secret)`，前端 `src/utils/visitorIpSigning.ts` 与 Worker `worker/src/utils/client_ip.ts` 逐字一致，跨端一致性由 `tests/visitor-ip-signing.test.ts` 守卫。
 - 轮换 secret 会使存量 IP 签名瞬间失效（仅影响去重精度，无安全问题），无需迁移数据。
 

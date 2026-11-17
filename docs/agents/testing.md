@@ -16,6 +16,12 @@
 2. **导入侧两条新守卫**：`media_assets` 为空数组时**不得**清理 KV（DELETE 对空表跳过，旧行仍引用这些 key，清理会留「有记录、无文件」）；`articles` 可导入列必须含 `reading_time`，`admin_export.test.ts` 同步钉导出列，否则备份往返把阅读时长打回 `DEFAULT 1`。
 3. **签名跨端契约改字面量**：`worker/tests/client_ip.test.ts` 与 `tests/visitor-ip-signing.test.ts` 各用手写十六进制钉同一契约（`HMAC-SHA256("client-ip:v1:"+ip, secret)`），**不再**跨包 import 对方实现互证；`tests/visitor-ip-signing.test.ts` 另钉 secret 来源顺序（运行时 `Astro.locals.runtime.env` 优先，构建期 `import.meta.env` 仅兜底）。
 
+**2026-11-17 审查待办 9–11（访客 IP / 代理头 / 502）**：三处口径变更，改前先看这里 ——
+
+1. **访客上下文只认验签 IP**：`readVisitorContext(request, secret)` 改为 async，`ip` 走 `client_ip.ts` 的 `resolveSignedProxyIp`（只要签名通过的 `X-Real-IP`，**不做**边缘 / XFF 回退，否则直连会被伪装成 SSR）。`worker/tests/client_ip.test.ts` 钉 `resolveSignedProxyIp` 三态（签名通过 / 直连 / 伪造或缺 secret）；`worker/tests/visitor_context.test.ts` 钉「未签名、签名错误、缺 secret 一律 `ip: null`，且不回退 `CF-Connecting-IP`」；`worker/tests/article_view.test.ts` 的 SSR 头改为带签名，并新增「伪造 `X-Real-IP` 按直连处理：只累加 `requests`」。
+2. **代理 `Vary` 合并**：`buildProxyResponseHeaders` 不再整条删 `vary`，只摘掉 `Origin` 后与上游剩余 token 合并（保留 `Accept-Encoding`，`Vary: *` 原样保留）。`tests/api-proxy-headers.test.ts` 的「上游 Vary 合并」用例逐字面量钉住四种输入。
+3. **502 错误响应头**：`src/pages/api/v1/[...path].ts` 的 catch 分支改用 `buildProxyErrorHeaders`（白名单 CORS + 安全头 + `application/json; charset=utf-8`），不再复用预检头。`tests/api-proxy-guard.test.ts` 把原来的「源码文本断言」换成真实行为：`fetch` 拒绝 → 502 JSON、上游挂起 → 10s abort → 502。
+
 ## Lint 门禁（ESLint）
 
 根包 `npm run lint`（`eslint .`）与 worker 的 `npm run lint`（`eslint --config ../eslint.config.mjs src tests`）复用**同一份** `eslint.config.mjs`；CI 在 `Check Frontend Types` 之后、`Test Frontend` 之前运行，pre-commit 由 lint-staged 对暂存文件跑 `eslint --fix --max-warnings=0`。范围**刻意不含 `.astro`**（`astro check` 已覆盖，两套 parser 重叠只会互相打架），只启用与正确性相关的规则（`@typescript-eslint/no-unused-vars` 及 `no-redeclare` / `no-dupe-keys` / `no-dupe-class-members` / `no-unreachable`），不启用风格规则（交给 prettier）。配置本身由 `tests/lint-config.test.ts` 钉住（脚本存在、规则等级、忽略生成物与 `.workbuddy`、pre-commit 与 CI 都接了且顺序正确）；启用时清掉存量 22 处真告警（含死函数 `buildLikeClause`、整段未用 import、`worker/tests/user_service.test.ts` 的多余 `vi`）。

@@ -261,8 +261,8 @@ export interface ArticleViewResult {
  * 已发布文章详情 200 的计数入口，替换 `incrementViewCount`。
  *
  * 口径（§2 / §4）：
- * - 过滤命中：仅 SSR 链路（带 `X-Real-IP`）累加 `bot_filtered`；直连被丢弃的请求不写库；
- * - 直连 API（无 `X-Real-IP`）：过滤后只累加 `requests`；
+ * - 过滤命中：仅 SSR 链路（带**验签通过**的 `X-Real-IP`）累加 `bot_filtered`；直连被丢弃的请求不写库；
+ * - 直连 API（无签名 `X-Real-IP`）：过滤后只累加 `requests`；
  * - SSR 链路：每次过滤后 200 都累加 `pv` / `requests`；Cookie 命中或令牌命中时
  *   跳过 UV 与累计阅读量（快路径）；首次命中按 §4.2 用一次 D1 batch 原子写入。
  * - 新访客（#56）：同一 batch 追加 device / country / referrer 三个单篇维度桶，
@@ -276,7 +276,10 @@ export async function recordArticleView(
   request: Request,
   articleId: number
 ): Promise<ArticleViewResult> {
-  const context = readVisitorContext(request);
+  const context = await readVisitorContext(
+    request,
+    env.VISITOR_IP_SIGNING_SECRET
+  );
   const ip = context.ip;
   const userAgent = context.userAgent;
   const cookieHit = hasViewCookie(request.headers.get("cookie"), articleId);

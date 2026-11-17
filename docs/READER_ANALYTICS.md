@@ -58,14 +58,14 @@
 
 Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`、`Accept`、`Referer`、`Accept-Language`、`Sec-Fetch-Mode`、`Sec-Fetch-Dest`、`Sec-Purpose`、`Purpose`、`Sec-CH-UA*`、`X-Real-IP`，以及由 `CF-IPCountry` 映射的 `X-Visitor-Country`。转发头按 advisory 数据处理，不另加共享密钥：直连 Worker 的请求本来就能伪造 UA/Referer，加密钥只能防自欺，却要引入 Pages↔Worker 的轮换面。
 
-| 维度     | 数据来源                                            | 识别/处理逻辑                                       | 对准确性的作用                                   | 形态与保留                     |
-| -------- | --------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------ | ------------------------------ |
-| 访问计数 | Worker 请求路径（仅带 `X-Real-IP` 的 SSR 详情请求） | 每个 published 文章每次通过过滤的请求 +1            | 基准 PV                                          | `(article_id, day)` 聚合，长期 |
-| 去重访客 | `X-Real-IP` + `User-Agent` + `article_id` + 日期    | `HMAC-SHA256(secret, ...)` 得令牌；24h 内重复即丢弃 | 消除刷新/多标签重复；Cookie 被清也能兜住         | 令牌表 24h，到期删除           |
-| 来源     | `Referer`                                           | 只取域名，剥掉 path/query；同站记为 `internal`      | 区分站内跳转与外部引流，避免把站内点击算成新读者 | 每日桶计数，400 天             |
-| 地区     | `X-Visitor-Country`（SSR 转发 `CF-IPCountry`）      | 国家两位码；不保留省级/地区                         | 读者构成；不参与去重                             | 每日桶计数，400 天             |
-| 设备类别 | UA-CH `Sec-CH-UA-Mobile`，回退 UA 解析              | `desktop / mobile / tablet / unknown`               | 发现移动端预取、桌面端爬虫占比异常               | 每日桶计数，400 天             |
-| 机器人   | UA、`Sec-Fetch-*`、`cf.botManagement`               | 见 §4                                               | 直接决定 PV 是否虚高                             | 单独计数                       |
+| 维度     | 数据来源                                                      | 识别/处理逻辑                                       | 对准确性的作用                                   | 形态与保留                     |
+| -------- | ------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------ | ------------------------------ |
+| 访问计数 | Worker 请求路径（仅带验签通过的 `X-Real-IP` 的 SSR 详情请求） | 每个 published 文章每次通过过滤的请求 +1            | 基准 PV                                          | `(article_id, day)` 聚合，长期 |
+| 去重访客 | `X-Real-IP` + `User-Agent` + `article_id` + 日期              | `HMAC-SHA256(secret, ...)` 得令牌；24h 内重复即丢弃 | 消除刷新/多标签重复；Cookie 被清也能兜住         | 令牌表 24h，到期删除           |
+| 来源     | `Referer`                                                     | 只取域名，剥掉 path/query；同站记为 `internal`      | 区分站内跳转与外部引流，避免把站内点击算成新读者 | 每日桶计数，400 天             |
+| 地区     | `X-Visitor-Country`（SSR 转发 `CF-IPCountry`）                | 国家两位码；不保留省级/地区                         | 读者构成；不参与去重                             | 每日桶计数，400 天             |
+| 设备类别 | UA-CH `Sec-CH-UA-Mobile`，回退 UA 解析                        | `desktop / mobile / tablet / unknown`               | 发现移动端预取、桌面端爬虫占比异常               | 每日桶计数，400 天             |
+| 机器人   | UA、`Sec-Fetch-*`、`cf.botManagement`                         | 见 §4                                               | 直接决定 PV 是否虚高                             | 单独计数                       |
 
 > **实施裁定（#56）**：维度桶按**去重访客**计（与日聚合 `uv` 列同口径），不按每次页面请求 —— 只在 #55 的新访客分支随 D1 `batch()` 写入，与令牌 / 日聚合 / `view_count` 原子一致；直连、Cookie / 令牌命中、被过滤的请求都不写桶。
 >
@@ -121,7 +121,7 @@ Tier 0 的所有维度都来自 SSR 转发的白名单请求头：`User-Agent`�
 
 本部署为免费版，`cf.botManagement` 不可用（Bot Management 为付费项），规则 5/6 保留为守卫分支、永不触发；`bot_filtered` 的解释文案需注明这一点。面向后台的解释文案由 #58「统计」面板落地（#55 只写数据，不含 UI）。
 
-未携带 `X-Real-IP` 的请求（直连 API）不产生 `pv`/`uv`，只在通过上述规则后累加 `requests`；被规则丢弃的直接请求不计 `requests`、也不计 `bot_filtered`——它们不在观测链路上，不是「被判定的机器人」。
+未携带**验签通过**的 `X-Real-IP` 的请求（直连 API、或伪造 / 未签名的头）不产生 `pv`/`uv`，只在通过上述规则后累加 `requests`；被规则丢弃的直接请求不计 `requests`、也不计 `bot_filtered`——它们不在观测链路上，不是「被判定的机器人」。
 
 ### 4.2 去重
 
@@ -361,7 +361,7 @@ worker（vitest，`worker/tests/`）：
 - 跨日同一 IP+UA：各 +1；
 - 爬虫 UA / `Sec-Purpose: prefetch` / `Sec-Fetch-Mode: no-cors`：不计数，`bot_filtered` +1；
 - 草稿预览（admin 拉取未发布文章）：不计数；
-- 直连 API（无 `X-Real-IP`）：不产生 `pv`/`uv`，但 `requests` +1（过滤后）；
+- 直连 API（无验签通过的 `X-Real-IP`）：不产生 `pv`/`uv`，但 `requests` +1（过滤后）；
 - 维度桶映射：表驱动覆盖 device/country/referrer 边界值；只写单篇行，全站查询按 `GROUP BY` 聚合；
 - 清理任务：过期令牌被删、未过期保留、400 天边界、心跳写入；
 - 后台接口：未登录 401、editor 403、`range=abc` 400、`dim=abc` 400。
@@ -378,15 +378,15 @@ SSR（`tests/` 与 `docs/agents/testing.md` 既有回归）：
 
 ## 11. 已定决策（2026-11-04）
 
-| #   | 问题                | 决定                                                            | 影响                                             |
-| --- | ------------------- | --------------------------------------------------------------- | ------------------------------------------------ |
-| 1   | `view_` Cookie 去留 | 保留，并加 `HttpOnly`；隐私政策声明为必要 Cookie                | GLOSSARY「去重访客」补去重键；逐字断言测试更新   |
-| 2   | 站点时区            | 常量 `Asia/Shanghai`，导出 `dayKey()`；不进 `site_settings`     | 改时区按数据迁移处理，不在本期                   |
-| 3   | 地区粒度            | 只到国家；`dim` 列表删除 `region`                               | §3、§5 同步                                      |
-| 4   | 维度桶              | 只写单篇行；全站 `GROUP BY bucket` 聚合                         | 删除 `article_id = 0` 约定                       |
-| 5   | 清理与保留          | 每日 cron；令牌 24h、聚合 400 天；写 `analytics_last_job_at`    | 新增 `scheduled` 与 `triggers.crons`             |
-| 6   | 迁移路径            | 追加 `schema.sql`（全部 `IF NOT EXISTS`）；M12 迁移工具另开工单 | README 升级片段补三条 DDL                        |
-| 7   | 计数谓词            | 仅带 `X-Real-IP` 的详情 200 计 PV；`requests` 记全部过滤后 200  | 直连 JSON 不计数；后台预览已发布文章不再污染数据 |
-| 8   | 隐私披露            | 新建 `/privacy`（中英）+ 页脚入口；不引入同意弹窗               | 需同步 `HTML_ROUTE_PATTERNS` 护栏                |
-| 9   | 图表实现            | 手写 SVG，不引入图表库                                          | 无新依赖                                         |
-| 10  | 历史起点标注        | 查询 `MIN(day)`，为空不显示                                     | 无回填                                           |
+| #   | 问题                | 决定                                                                     | 影响                                             |
+| --- | ------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| 1   | `view_` Cookie 去留 | 保留，并加 `HttpOnly`；隐私政策声明为必要 Cookie                         | GLOSSARY「去重访客」补去重键；逐字断言测试更新   |
+| 2   | 站点时区            | 常量 `Asia/Shanghai`，导出 `dayKey()`；不进 `site_settings`              | 改时区按数据迁移处理，不在本期                   |
+| 3   | 地区粒度            | 只到国家；`dim` 列表删除 `region`                                        | §3、§5 同步                                      |
+| 4   | 维度桶              | 只写单篇行；全站 `GROUP BY bucket` 聚合                                  | 删除 `article_id = 0` 约定                       |
+| 5   | 清理与保留          | 每日 cron；令牌 24h、聚合 400 天；写 `analytics_last_job_at`             | 新增 `scheduled` 与 `triggers.crons`             |
+| 6   | 迁移路径            | 追加 `schema.sql`（全部 `IF NOT EXISTS`）；M12 迁移工具另开工单          | README 升级片段补三条 DDL                        |
+| 7   | 计数谓词            | 仅带验签通过的 `X-Real-IP` 的详情 200 计 PV；`requests` 记全部过滤后 200 | 直连 JSON 不计数；后台预览已发布文章不再污染数据 |
+| 8   | 隐私披露            | 新建 `/privacy`（中英）+ 页脚入口；不引入同意弹窗                        | 需同步 `HTML_ROUTE_PATTERNS` 护栏                |
+| 9   | 图表实现            | 手写 SVG，不引入图表库                                                   | 无新依赖                                         |
+| 10  | 历史起点标注        | 查询 `MIN(day)`，为空不显示                                              | 无回填                                           |

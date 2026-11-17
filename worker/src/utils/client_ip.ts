@@ -104,3 +104,18 @@ export async function getClientIpString(
 ): Promise<string> {
   return (await resolveClientIp(request, secret)).ip;
 }
+
+/**
+ * 只要「可信 Pages 跳签名通过」的 `X-Real-IP`；其余来源一律 null。
+ *
+ * 与 `resolveClientIp` 的差别是**不做边缘 / XFF 回退**——阅读统计把
+ * 「有没有 SSR 转发」本身当作语义（SSR 链路计 pv/uv，直连只计 requests），
+ * 回退会把直连请求伪装成 SSR。验签仍复用同一份实现，不另写一份 HMAC。
+ */
+export async function resolveSignedProxyIp(
+  request: Request,
+  secret?: string | null
+): Promise<string | null> {
+  const result = await resolveClientIp(request, secret);
+  return result.source === "signed-proxy" ? result.ip : null;
+}

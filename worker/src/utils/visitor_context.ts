@@ -2,10 +2,13 @@
  * SSR 转发契约的 Worker 侧还原（issue #54 / READER_ANALYTICS §3）。
  *
  * 只读 SSR 白名单头：缺失或空值一律 null，不合成默认 UA / Accept；
- * IP 只认 `X-Real-IP`、国家只认 `X-Visitor-Country`，避免把第二跳的
- * `CF-Connecting-IP`（Pages 出口地址）当成访客地址。供 #55 的过滤 /
- * 去重与 #56 的维度映射使用；本票只锁定还原口径。
+ * IP 只认**验签通过**的 `X-Real-IP`（验签走 `client_ip.ts` 单点，2026-11-17
+ * 审查收口：此前直读头，直连者可伪造 IP 污染阅读统计）、国家只认
+ * `X-Visitor-Country`，避免把第二跳的 `CF-Connecting-IP`（Pages 出口地址）
+ * 当成访客地址。供 #55 的过滤 / 去重与 #56 的维度映射使用。
  */
+import { resolveSignedProxyIp } from "./client_ip";
+
 export interface VisitorContext {
   ip: string | null;
   userAgent: string | null;
@@ -22,7 +25,14 @@ export interface VisitorContext {
   clientHints: Readonly<Record<string, string>>;
 }
 
-export function readVisitorContext(request: Request): VisitorContext {
+/**
+ * @param secret 访客 IP 签名密钥（`VISITOR_IP_SIGNING_SECRET`）；缺失时 fail-closed，
+ *   `ip` 恒为 null（直连口径：只累加 requests）。
+ */
+export async function readVisitorContext(
+  request: Request,
+  secret?: string | null
+): Promise<VisitorContext> {
   const headers = request.headers;
   const clientHints: Record<string, string> = {};
   for (const [name, value] of headers) {
@@ -33,7 +43,7 @@ export function readVisitorContext(request: Request): VisitorContext {
   }
 
   return {
-    ip: headerValue(headers, "x-real-ip"),
+    ip: await resolveSignedProxyIp(request, secret),
     userAgent: headerValue(headers, "user-agent"),
     accept: headerValue(headers, "accept"),
     referer: headerValue(headers, "referer"),

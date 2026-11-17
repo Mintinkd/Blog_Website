@@ -78,9 +78,38 @@ export function buildPreflightHeaders(
 }
 
 /**
+ * 上游 `Vary` + 本地的 `Origin` 合并（2026-11-17 审查修正）。
+ *
+ * 此前整条 `headers.delete("vary")` 会连带丢掉上游的 `Vary: Accept-Encoding`
+ * 等缓存键，共用缓存可能把 gzip / br 变体发给不支持的客户端。现只摘掉
+ * `Origin`（由 `buildCorsHeaders` 重建），其余 token 原样保留；上游若为
+ * `Vary: *` 则整体保持 `*`（RFC 7234 §4.1）。
+ */
+function mergeVary(upstream: Headers): string {
+  const raw = upstream.get("vary");
+  if (!raw) return "Origin";
+  const tokens = raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.some((token) => token === "*")) return "*";
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const token of tokens) {
+    const key = token.toLowerCase();
+    if (key === "origin" || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(token);
+  }
+  merged.push("Origin");
+  return merged.join(", ");
+}
+
+/**
  * 上游响应 → 浏览器响应头。
  * 先剥离 hop-by-hop 头（#110），再清掉上游与本地的所有 CORS 头，
- * 最后按请求 Origin 精确回显，杜绝 `*` 透传/残留。
+ * 最后按请求 Origin 精确回显，杜绝 `*` 透传/残留；`Vary` 只摘除 `Origin`
+ * 后与上游剩余 token 合并，不整条丢弃。
  */
 export function buildProxyResponseHeaders(
   upstream: Headers,
@@ -88,6 +117,7 @@ export function buildProxyResponseHeaders(
   origin: string | null | undefined
 ): Headers {
   const headers = new Headers(upstream);
+  const vary = mergeVary(upstream);
   for (const name of hopByHopHeaderNames(upstream)) {
     headers.delete(name);
   }
@@ -96,7 +126,6 @@ export function buildProxyResponseHeaders(
     "access-control-allow-methods",
     "access-control-allow-headers",
     "access-control-max-age",
-    "vary",
   ]) {
     headers.delete(key);
   }
@@ -104,9 +133,26 @@ export function buildProxyResponseHeaders(
   for (const [key, value] of cors) {
     headers.set(key, value);
   }
+  headers.set("vary", vary);
   if (dev) {
     headers.delete("content-encoding");
     headers.delete("content-length");
   }
+  return headers;
+}
+
+/**
+ * 代理自身生成的 JSON 错误响应头（2026-11-17 审查修正）。
+ *
+ * 502 兜底此前复用 `buildPreflightHeaders`：带上了预检专用的
+ * `Access-Control-Allow-Methods` / `-Headers` / `Max-Age`，却漏了
+ * `Content-Type: application/json`，客户端按文本解析。这里保留与正常代理
+ * 响应同口径的白名单 CORS + 安全头，并补上 JSON 类型。
+ */
+export function buildProxyErrorHeaders(
+  origin: string | null | undefined
+): Headers {
+  const headers = buildPreflightHeaders(origin);
+  headers.set("content-type", "application/json; charset=utf-8");
   return headers;
 }

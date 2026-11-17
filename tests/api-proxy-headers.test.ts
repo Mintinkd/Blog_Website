@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCorsHeaders,
   buildPreflightHeaders,
+  buildProxyErrorHeaders,
   buildProxyResponseHeaders,
 } from "../src/utils/api-proxy";
 import { ALLOWED_ORIGINS } from "../src/generated/cors-origins";
@@ -129,6 +130,53 @@ describe("OPTIONS 预检安全头（issue #85 / H4）", () => {
     const headers = buildPreflightHeaders("https://evil.test");
     expect(headers.get("access-control-allow-origin")).toBeNull();
     expect(headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});
+
+describe("上游 Vary 合并（2026-11-17 审查）", () => {
+  it("保留上游 Vary: Accept-Encoding，并补本地 Origin", () => {
+    const upstream = upstreamHeaders();
+    upstream.set("vary", "Accept-Encoding");
+    const headers = buildProxyResponseHeaders(upstream, false, null);
+    expect(headers.get("vary")).toBe("Accept-Encoding, Origin");
+  });
+
+  it("上游 Vary 已含 Origin 时不重复、不改变其余 token 顺序", () => {
+    const upstream = upstreamHeaders();
+    upstream.set("vary", "Origin, Accept-Encoding");
+    const headers = buildProxyResponseHeaders(upstream, false, null);
+    expect(headers.get("vary")).toBe("Accept-Encoding, Origin");
+  });
+
+  it("Vary: * 原样保留（RFC 7234 §4.1）", () => {
+    const upstream = upstreamHeaders();
+    upstream.set("vary", "*");
+    const headers = buildProxyResponseHeaders(upstream, false, null);
+    expect(headers.get("vary")).toBe("*");
+  });
+
+  it("无上游 Vary 时仍写 Origin", () => {
+    expect(
+      buildProxyResponseHeaders(upstreamHeaders(), false, null).get("vary")
+    ).toBe("Origin");
+  });
+});
+
+describe("代理 502 错误响应头（2026-11-17 审查）", () => {
+  it("application/json + 白名单 CORS + 安全头，不套预检专属字段之外的语义", () => {
+    const headers = buildProxyErrorHeaders("https://blog.zenfishlog.dpdns.org");
+    expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(headers.get("access-control-allow-origin")).toBe(
+      "https://blog.zenfishlog.dpdns.org"
+    );
+    expect(headers.get("vary")).toBe("Origin");
+    expect(headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("非白名单 Origin 不写 ACAO，但仍带 JSON 类型", () => {
+    const headers = buildProxyErrorHeaders("https://evil.test");
+    expect(headers.get("access-control-allow-origin")).toBeNull();
+    expect(headers.get("content-type")).toBe("application/json; charset=utf-8");
   });
 });
 

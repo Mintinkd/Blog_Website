@@ -1,6 +1,7 @@
 import { WORKER_ORIGIN } from "../../../utils/workerOrigin";
 import {
   buildPreflightHeaders,
+  buildProxyErrorHeaders,
   buildProxyResponseHeaders,
 } from "../../../utils/api-proxy";
 import {
@@ -86,11 +87,13 @@ export async function ALL({
       headers: responseHeaders,
     });
   } catch {
+    // 502 兜底：与正常代理响应同口径的 CORS / 安全头 + application/json
+    // （此前复用预检头，缺 Content-Type）。
     return new Response(
       JSON.stringify({ code: 502, message: "Worker unreachable" }),
       {
         status: 502,
-        headers: buildPreflightHeaders(requestOrigin),
+        headers: buildProxyErrorHeaders(requestOrigin),
       }
     );
   } finally {

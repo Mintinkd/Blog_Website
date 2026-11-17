@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
 import { buildProxyResponseHeaders } from "../src/utils/api-proxy";
 import { ALL } from "../src/pages/api/v1/[...path]";
 
@@ -18,6 +17,7 @@ import { ALL } from "../src/pages/api/v1/[...path]";
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("代理响应头（issue #98）", () => {
@@ -79,16 +79,48 @@ describe("代理路径与超时（issue #98）", () => {
     ).toBe("/admin/import");
   });
 
-  it("handler 含 10s AbortController 超时与 502 兜底（静态守卫）", () => {
-    const src = readFileSync(
-      new URL("../src/pages/api/v1/[...path].ts", import.meta.url),
-      "utf8"
+  it("上游 fetch 拒绝 → 502 JSON（真实行为，2026-11-17 审查替换源码文本断言）", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      })
     );
-    expect(src).toMatch(/PROXY_TIMEOUT_MS\s*=\s*10_000/);
-    expect(src).toMatch(
-      /setTimeout\(\(\) => controller\.abort\(\), PROXY_TIMEOUT_MS\)/
+    const request = new Request("https://site.example/api/v1/articles");
+    const url = new URL("https://site.example/api/v1/articles");
+
+    const res = await ALL({ request, url });
+
+    expect(res.status).toBe(502);
+    expect(res.headers.get("content-type")).toBe(
+      "application/json; charset=utf-8"
     );
-    expect(src).toMatch(/status:\s*502/);
-    expect(src).toMatch(/clearTimeout\(timer\)/);
+    await expect(res.json()).resolves.toEqual({
+      code: 502,
+      message: "Worker unreachable",
+    });
+  });
+
+  it("上游挂起 → 10s 预算到点 abort 并落 502", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      (_url?: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError"))
+          );
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new Request("https://site.example/api/v1/articles");
+    const url = new URL("https://site.example/api/v1/articles");
+
+    const pending = ALL({ request, url });
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect((await pending).status).toBe(502);
   });
 });
