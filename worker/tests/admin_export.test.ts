@@ -86,6 +86,9 @@ describe("handleExport 分片与列裁剪（#73 / M22）", () => {
     // 每篇阅读时长打回 DEFAULT 1（#73 / M22 补列后的回归点，手写字面量钉住）。
     const articleStmt = stmts.find((s) => /FROM articles/i.test(s.sql));
     expect(articleStmt?.sql).toContain("reading_time");
+    // taxonomy v2 / #79：tags 导出含 category_id（新备份可完整还原归属）
+    const tagStmt = stmts.find((s) => /FROM tags/i.test(s.sql));
+    expect(tagStmt?.sql).toContain("category_id");
   });
 
   it("table 参数只导指定表", async () => {

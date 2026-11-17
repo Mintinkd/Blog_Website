@@ -352,6 +352,11 @@ describe("handleImport R2 孤儿清理", () => {
               return { results: snapshotRows };
             return { results: [] };
           },
+          // #79 起 handleImport 会用 .first() 查「未分类」id（tags 归一化），与 all() 同源取首行
+          async first() {
+            const { results } = await api.all();
+            return results[0] ?? null;
+          },
           async run() {
             return { success: true };
           },

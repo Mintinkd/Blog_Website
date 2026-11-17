@@ -32,6 +32,7 @@ import {
   handleListTags,
   handleGetTag,
   handleCreateTag,
+  handleUpdateTag,
   handleDeleteTag,
 } from "./handlers/tag";
 import {
@@ -369,6 +370,14 @@ addRoute(
   "/tags",
   async (req, env, _ctx, params, auth) =>
     handleCreateTag(req, env, _ctx, params, auth),
+  true
+);
+// taxonomy v2 / #79：移动标签归属（只消费 category_id，不改 name/slug）
+addRoute(
+  "PUT",
+  "/tags/:id",
+  async (req, env, _ctx, params, auth) =>
+    handleUpdateTag(req, env, _ctx, params, auth),
   true
 );
 addRoute(

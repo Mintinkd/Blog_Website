@@ -6,7 +6,11 @@ import { buildCategoryRequest } from "../src/admin/panels/categories.logic";
 import { buildTagRequest } from "../src/admin/panels/tags.logic";
 import { commentsPath } from "../src/admin/composables/useAdminCatalog";
 import { resolveMediaUrl } from "../src/admin/panels/media.logic";
-import { formatDate, canEditCategory } from "../src/admin/panels/shared.logic";
+import {
+  formatDate,
+  canEditCategory,
+  canManageTag,
+} from "../src/admin/panels/shared.logic";
 
 describe("CategoriesPanel — buildCategoryRequest 纯 payload 构造", () => {
   it("编辑（有 id）用 PUT /categories/:id，新建（null）用 POST /categories，body 原样", () => {
@@ -61,5 +65,21 @@ describe("shared.logic — formatDate / canEditCategory", () => {
     expect(canEditCategory("editor", null, 1)).toBe(true);
     expect(canEditCategory("editor", 1, 1)).toBe(true);
     expect(canEditCategory("editor", 42, 1)).toBe(false);
+  });
+
+  it("canManageTag 权限矩阵（#79 / ADR 0008 决策 5）：admin 全部；editor 仅创建者或目标分类所有者；无主从严拒绝", () => {
+    // admin 不受限
+    expect(canManageTag("admin", null, null, 1)).toBe(true);
+    expect(canManageTag("admin", 42, 42, 1)).toBe(true);
+    // editor 是标签创建者 → 可管理（目标分类无主也可）
+    expect(canManageTag("editor", 1, null, 1)).toBe(true);
+    // editor 是目标分类所有者 → 可管理（即使不是标签创建者）
+    expect(canManageTag("editor", 42, 1, 1)).toBe(true);
+    // 两边都不是 → 403
+    expect(canManageTag("editor", 42, 42, 1)).toBe(false);
+    // 无主标签 + 无主分类（迁移期遗留形态）→ 从严拒绝，与 worker handleUpdateTag 同口径
+    expect(canManageTag("editor", null, null, 1)).toBe(false);
+    // undefined 同 null 处理
+    expect(canManageTag("editor", undefined, undefined, 1)).toBe(false);
   });
 });

@@ -194,6 +194,20 @@ export async function handleDeleteCategory(
 ): Promise<Response> {
   const { id } = params;
 
+  // taxonomy v2（#79 / ADR 0008 决策 1）：分类名下仍有标签时拒绝删除——
+  // 标签不能悬空，先在后台把标签移走或批量移到未分类。
+  const tagCount = await env.DB.prepare(
+    "SELECT COUNT(*) as count FROM tags WHERE category_id = ?"
+  )
+    .bind(id)
+    .first<{ count: number }>();
+  if (tagCount && tagCount.count > 0) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      `Cannot delete category. ${tagCount.count} tags are assigned to it. Move them or batch-move to uncategorized first.`
+    );
+  }
+
   const articleCount = await env.DB.prepare(
     "SELECT COUNT(*) as count FROM articles WHERE category_id = ?"
   )

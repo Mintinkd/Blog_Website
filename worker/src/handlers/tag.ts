@@ -3,6 +3,7 @@ import {
   successResponse,
   notFound,
   error,
+  forbidden,
   ErrorCodes,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
@@ -145,10 +146,43 @@ export async function handleCreateTag(
     created_by = await getUserIdByUsername(env, authResult.username);
   }
 
+  // taxonomy v2（#79 / ADR 0008 决策 1、5）：
+  // - 可选 category_id：非法值 400、分类不存在 400；
+  // - editor（非 admin）只能把新标签归属到自己拥有的分类，其余 403；
+  // - 缺省归「未分类」（uncategorized，schema 种子行）。
+  let categoryId: number | null;
+  const rawCategoryId = body.category_id;
+  if (rawCategoryId !== undefined && rawCategoryId !== null) {
+    const cid = Number(rawCategoryId);
+    if (!Number.isInteger(cid) || cid <= 0) {
+      return error(ErrorCodes.PARAM_ERROR, "Invalid category_id");
+    }
+    const category = await env.DB.prepare(
+      "SELECT id, created_by FROM categories WHERE id = ?"
+    )
+      .bind(cid)
+      .first<{ id: number; created_by: number | null }>();
+    if (!category) {
+      return error(ErrorCodes.VALIDATION_FAILED, "Category not found");
+    }
+    if (authResult && authResult.role !== "admin") {
+      const userId = await getUserIdByUsername(env, authResult.username);
+      if (userId === null || category.created_by !== userId) {
+        return forbidden("您没有权限把标签归属到该分类");
+      }
+    }
+    categoryId = cid;
+  } else {
+    const uncategorized = await env.DB.prepare(
+      "SELECT id FROM categories WHERE slug = 'uncategorized'"
+    ).first<{ id: number }>();
+    categoryId = uncategorized?.id ?? null;
+  }
+
   const res = await env.DB.prepare(
-    "INSERT INTO tags (name, slug, created_by) VALUES (?, ?, ?)"
+    "INSERT INTO tags (name, slug, category_id, created_by) VALUES (?, ?, ?, ?)"
   )
-    .bind(body.name, slug, created_by)
+    .bind(body.name, slug, categoryId, created_by)
     .run();
   const tag = await env.DB.prepare(
     `SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`
@@ -157,6 +191,68 @@ export async function handleCreateTag(
     .first();
 
   return successResponse(tag, "Tag created");
+}
+
+/**
+ * PUT /tags/:id（taxonomy v2 / #79）：仅移动归属。
+ * 请求体只消费 `category_id`（必填）；`name` / `slug` 刻意忽略——首批不改名，
+ * 避免 FTS external-content 刷新问题（ADR 0008 决策 3）。
+ * 权限（ADR 0008 决策 5）：admin 全部；editor 仅「标签创建者」或「目标分类所有者」，其余 403。
+ */
+export async function handleUpdateTag(
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  params: Record<string, string>,
+  authResult?: AuthResult
+): Promise<Response> {
+  const { id } = params;
+  const body = (await request.json()) as Record<string, unknown>;
+
+  const cid = Number(body.category_id);
+  if (!Number.isInteger(cid) || cid <= 0) {
+    return error(
+      ErrorCodes.PARAM_ERROR,
+      "category_id is required to move a tag"
+    );
+  }
+
+  const tag = await env.DB.prepare(
+    "SELECT id, created_by FROM tags WHERE id = ?"
+  )
+    .bind(id)
+    .first<{ id: number; created_by: number | null }>();
+  if (!tag) return notFound("Tag not found");
+
+  const category = await env.DB.prepare(
+    "SELECT id, created_by FROM categories WHERE id = ?"
+  )
+    .bind(cid)
+    .first<{ id: number; created_by: number | null }>();
+  if (!category) {
+    return error(ErrorCodes.VALIDATION_FAILED, "Category not found");
+  }
+
+  if (authResult && authResult.role !== "admin") {
+    const userId = await getUserIdByUsername(env, authResult.username);
+    if (
+      userId === null ||
+      (tag.created_by !== userId && category.created_by !== userId)
+    ) {
+      return forbidden("您没有权限移动此标签");
+    }
+  }
+
+  await env.DB.prepare("UPDATE tags SET category_id = ? WHERE id = ?")
+    .bind(cid, id)
+    .run();
+
+  const updated = await env.DB.prepare(
+    `SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`
+  )
+    .bind(id)
+    .first();
+  return successResponse(updated, "Tag moved");
 }
 
 export async function handleDeleteTag(

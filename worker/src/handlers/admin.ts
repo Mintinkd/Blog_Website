@@ -61,7 +61,9 @@ const IMPORTABLE_TABLES: Record<string, ImportableTable> = {
     insertRank: 1,
   },
   tags: {
-    columns: ["id", "name", "slug", "created_at", "created_by"],
+    // taxonomy v2（#79 / ADR 0008）：导出/导入含 category_id；旧备份缺列由
+    // 导入侧归一化到「未分类」（保证导入后 null category 为 0）。
+    columns: ["id", "name", "slug", "category_id", "created_at", "created_by"],
     deleteRank: 5,
     insertRank: 2,
   },
@@ -386,7 +388,12 @@ function buildDeleteStatements(
 function buildInsertStatements(
   env: Env,
   rowsByTable: Map<string, Array<Record<string, unknown>>>,
-  options: { sanitize: boolean; skipSecrets: boolean }
+  options: {
+    sanitize: boolean;
+    skipSecrets: boolean;
+    /** 旧备份 tags 行缺 category_id 时归一化到的「未分类」分类 id（taxonomy v2 / #79） */
+    defaultTagCategoryId?: number | null;
+  }
 ): {
   statements: PreparedWrite[];
   imported: Record<string, number>;
@@ -403,11 +410,23 @@ function buildInsertStatements(
 
     const writable = rawRows
       .map((row) => {
-        if (!options.sanitize || !descriptor.sanitizeColumns) return row;
-        const out = { ...row };
-        for (const key of descriptor.sanitizeColumns) {
-          if (typeof out[key] === "string")
-            out[key] = sanitizeHtml(out[key] as string);
+        let out = row;
+        if (options.sanitize && descriptor.sanitizeColumns) {
+          out = { ...row };
+          for (const key of descriptor.sanitizeColumns) {
+            if (typeof out[key] === "string")
+              out[key] = sanitizeHtml(out[key] as string);
+          }
+        }
+        // taxonomy v2（#79）：旧备份的 tags 行没有 category_id（或为 null）时，
+        // 归一化到「未分类」——旧备份导入后 `category_id IS NULL` 必须为 0。
+        // 新→旧方向不保证：旧 worker 的列白名单会拒绝带 category_id 的行。
+        if (
+          table === "tags" &&
+          (out.category_id === undefined || out.category_id === null)
+        ) {
+          if (out === row) out = { ...row };
+          out.category_id = options.defaultTagCategoryId ?? null;
         }
         return out;
       })
@@ -609,10 +628,18 @@ export async function handleImport(
     // 再分批交给 env.DB.batch()；D1 batch 是 SQL 事务，批内任一句失败即整批回滚。
     // 跨批失败时用阶段 1.5 的本机快照自动回滚，不留「旧数据已删、新数据未写完」的半空库。
     const touchedTables = new Set(byTable.keys());
-    const inserts = buildInsertStatements(env, byTable, {
+    // taxonomy v2（#79）：未分类分类 id 单点（旧备份 tags 缺列归一化的目标值）
+    const uncategorized = (
+      await env.DB.prepare(
+        "SELECT id FROM categories WHERE slug = 'uncategorized'"
+      ).first<{ id: number }>()
+    )?.id;
+    const insertOptions = {
       sanitize: true,
       skipSecrets: true,
-    });
+      defaultTagCategoryId: uncategorized ?? null,
+    };
+    const inserts = buildInsertStatements(env, byTable, insertOptions);
     const statements = [
       ...buildDeleteStatements(env, touchedTables, byTable),
       ...inserts.statements,
@@ -640,6 +667,8 @@ export async function handleImport(
             sanitize: false,
             // 本机密钥/心跳行从未被导入 DELETE 触及（NOT IN 名单），回滚时同样跳过
             skipSecrets: true,
+            // 回滚快照来自本机（已迁移库），tags 行自带 category_id；归一化仅兜缺列
+            defaultTagCategoryId: uncategorized ?? null,
           }).statements,
         ]);
         restored = true;

@@ -54,18 +54,23 @@ function recordingDb(options: RecordingDbOptions = {}): {
   const prepare = (sql: string) => {
     const stmt: RecordedStatement = { sql, binds: [] };
     statements.push(stmt);
+    const resolveResults = (): Promise<{ results: unknown[] }> => {
+      if (/COUNT\(\*\)/i.test(sql))
+        return Promise.resolve({ results: [{ count: existingCount }] });
+      const table = /FROM\s+(\w+)/i.exec(sql)?.[1];
+      return Promise.resolve({
+        results: (table && options.selectRows?.[table]) || ([] as unknown[]),
+      });
+    };
     const api = {
       bind: (...binds: unknown[]) => {
         stmt.binds = binds;
         return api;
       },
-      all: () => {
-        if (/COUNT\(\*\)/i.test(sql))
-          return Promise.resolve({ results: [{ count: existingCount }] });
-        const table = /FROM\s+(\w+)/i.exec(sql)?.[1];
-        return Promise.resolve({
-          results: (table && options.selectRows?.[table]) || ([] as unknown[]),
-        });
+      all: () => resolveResults(),
+      first: async <T = unknown>() => {
+        const { results } = await resolveResults();
+        return (results[0] ?? null) as T | null;
       },
       run: () => Promise.resolve({ success: true, meta: { last_row_id: 0 } }),
     };
@@ -292,6 +297,67 @@ describe("handleImport 表/列白名单拒绝（issue #23 / #12 基线）", () =
       message: expect.stringContaining("未知列 evil_col"),
     });
     expect(statements).toEqual([]);
+  });
+});
+
+describe("handleImport tags category_id 归一化（#79 / taxonomy v2）", () => {
+  it("旧备份 tags 行缺 category_id / 显式 null → INSERT 归一化到未分类 id；显式值原样保留", async () => {
+    const { batches } = await runImport(
+      {
+        categories: [
+          {
+            id: 1,
+            name: "C",
+            slug: "c",
+            description: null,
+            created_at: "2024-01-01",
+            updated_at: "2024-01-01",
+            created_by: null,
+          },
+        ],
+        tags: [
+          // 旧备份形态：无 category_id 列
+          {
+            id: 1,
+            name: "T1",
+            slug: "t1",
+            created_at: "2024-01-01",
+            created_by: null,
+          },
+          // 新备份形态：显式归属原样保留
+          {
+            id: 2,
+            name: "T2",
+            slug: "t2",
+            category_id: 7,
+            created_at: "2024-01-01",
+            created_by: null,
+          },
+          // 显式 null（异常备份）→ 同样归一化，保证导入后 null category 为 0
+          {
+            id: 3,
+            name: "T3",
+            slug: "t3",
+            category_id: null,
+            created_at: "2024-01-01",
+            created_by: null,
+          },
+        ],
+      },
+      { dbOptions: { selectRows: { categories: [{ id: 5 }] } } }
+    );
+
+    const tagInserts = batches
+      .flat()
+      .filter((s) => s.sql.startsWith("INSERT INTO tags"));
+    expect(tagInserts).toHaveLength(3);
+    for (const s of tagInserts) {
+      expect(s.sql, "tags INSERT 应含 category_id 列").toContain("category_id");
+    }
+    // 未分类 id = 5（来自 selectRows 桩的 uncategorized 查询结果）
+    expect(tagInserts[0].binds).toContain(5); // 缺列 → 归一化
+    expect(tagInserts[1].binds).toContain(7); // 显式 7 → 保留
+    expect(tagInserts[2].binds).toContain(5); // null → 归一化
   });
 });
 

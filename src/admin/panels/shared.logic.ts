@@ -15,3 +15,19 @@ export function canEditCategory(
 ): boolean {
   return role === "admin" || !createdBy || createdBy === currentUserId;
 }
+
+/**
+ * taxonomy v2（#79 / ADR 0008 决策 5）：标签归属管理权限，与 worker 侧
+ * handleCreateTag / handleUpdateTag 同口径。admin 全部；editor 仅
+ * 「自己创建的标签」或「目标分类所有者」；两处归属均为空（无主）时从严拒绝。
+ */
+export function canManageTag(
+  role: string,
+  tagCreatedBy: unknown,
+  categoryCreatedBy: unknown,
+  currentUserId: number
+): boolean {
+  if (role === "admin") return true;
+  if (tagCreatedBy === currentUserId) return true;
+  return categoryCreatedBy === currentUserId;
+}
