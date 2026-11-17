@@ -5,12 +5,53 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 硬编码配置迁移：站点 / Worker / Pages / D1 / KV / R2 的可调参数统一收敛到
+# GitHub Actions variables（非敏感）与 secrets（敏感）。所有 vars 都带默认值，
+# 仓库未配置时行为与迁移前完全一致；改值只需在 Settings → Secrets and variables
+# → Actions 里改，不必改代码。R2 访问密钥只通过 secrets 注入，不落仓库。
+env:
+  NODE_VERSION: ${{ vars.NODE_VERSION || '22' }}
+  PLAYWRIGHT_VERSION: ${{ vars.PLAYWRIGHT_VERSION || '1.64.1' }}
+
+  # 站点 / API
+  # 兼容历史配置：SITE_URL 曾经以 Secret 形式存在，仍读取它作为次级回退。
+  SITE_URL: ${{ vars.SITE_URL || secrets.SITE_URL || 'https://blog.zenfishlog.dpdns.org' }}
+  PUBLIC_SITE_URL: ${{ vars.SITE_URL || secrets.SITE_URL || 'https://blog.zenfishlog.dpdns.org' }}
+  WORKER_ORIGIN: ${{ vars.WORKER_ORIGIN || 'https://blog-api.zen-13467.workers.dev' }}
+  PUBLIC_WORKER_ORIGIN: ${{ vars.WORKER_ORIGIN || 'https://blog-api.zen-13467.workers.dev' }}
+  SITEMAP_API_BASE: ${{ vars.SITEMAP_API_BASE }}
+  SITEMAP_PAGE_SIZE: ${{ vars.SITEMAP_PAGE_SIZE || '50' }}
+
+  # Cloudflare 资源标识（部署标识，不是机密；均可在仓库变量里覆盖）
+  PAGES_PROJECT_NAME: ${{ vars.PAGES_PROJECT_NAME || 'blog-website' }}
+  WORKER_NAME: ${{ vars.WORKER_NAME || 'blog-api' }}
+  D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID || '5c759ce7-82e0-4205-8d01-fea18db55cd7' }}
+  D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'blog-db' }}
+  KV_MEDIA_ID: ${{ vars.KV_MEDIA_ID || 'c4f354b6c61e43e798a679fb6733edd8' }}
+  KV_EDIT_LOCK_ID: ${{ vars.KV_EDIT_LOCK_ID || '8a63eee2d516410d8e6e5ec7d420a0b1' }}
+  KV_RATE_LIMIT_ID: ${{ vars.KV_RATE_LIMIT_ID || 'e18fbfafedf048a380e6fe4e2a6f96d6' }}
+
+  # R2 媒体桶（新上传写 R2；桶名由 render-worker-config 注入 wrangler 配置）
+  R2_BUCKET_NAME: ${{ vars.R2_BUCKET_NAME || 'blog-media' }}
+  R2_REGION: ${{ vars.R2_REGION || 'auto' }}
+  R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+  R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # 部署就绪轮询
+  DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL || 'https://blog-website-page.pages.dev' }}
+  DEPLOY_TIMEOUT_SEC: ${{ vars.DEPLOY_TIMEOUT_SEC || '180' }}
+  DEPLOY_INTERVAL_SEC: ${{ vars.DEPLOY_INTERVAL_SEC || '5' }}
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       deployments: write
+
+    env:
+      # secrets 不能直接出现在 if 里；在 job 级映射成布尔标记，供 R2 secret 同步步骤判断。
+      HAS_R2_CREDENTIALS: ${{ secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
 
     steps:
       - name: Checkout
@@ -19,7 +60,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: ${{ env.NODE_VERSION }}
 
       # issue #27 / ADR 0001：设置白名单生成物不得漂移——
       # 重新生成后 diff 非空即红（零依赖脚本，最早门禁，先于依赖安装）
@@ -69,8 +110,6 @@ jobs:
       # P3：Playwright 不入 package.json；CI 固定回归验证过的版本。
       - name: Install Playwright Chromium
         timeout-minutes: 10
-        env:
-          PLAYWRIGHT_VERSION: "1.64.1"
         run: |
           npm install --no-save "playwright@${PLAYWRIGHT_VERSION}"
           npx playwright install --with-deps chromium
@@ -140,6 +179,11 @@ jobs:
       - name: Build Astro site
         run: npm run build
 
+      # 供 D1 迁移 / Worker 部署共用：把 vars 里的资源标识与 R2 桶名渲染进
+      # worker/wrangler.deploy.jsonc（生成物，不入 git）。未配置的变量保留仓库默认值。
+      - name: Render Worker deploy config
+        run: node scripts/render-worker-config.mjs
+
       # D1 增量迁移（issue：CI/CD 自动迁移）：两个文件都是 IF NOT EXISTS 幂等，
       # 每次 push 安全重放；结构性历史迁移走 migrations/ 手动 apply（issue #94），
       # 不在此重放。全量 schema.sql 虽已幂等（#94），仍不作为 CI 迁移源。
@@ -150,8 +194,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx wrangler d1 execute blog-db --remote --yes --file=./schema-tier0-incremental.sql
-          npx wrangler d1 execute blog-db --remote --yes --file=./schema-m22-incremental.sql
+          npx wrangler d1 execute "$D1_DATABASE_NAME" --remote --yes --config=wrangler.deploy.jsonc --file=./schema-tier0-incremental.sql
+          npx wrangler d1 execute "$D1_DATABASE_NAME" --remote --yes --config=wrangler.deploy.jsonc --file=./schema-m22-incremental.sql
           node ../scripts/migrate-reading-time.mjs
 
       # 迁移命令返回 0 不等于对象真的建出来（表名错/前置列缺失会跳过），
@@ -167,14 +211,47 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=blog-website
+          command: pages deploy dist --project-name=${{ env.PAGES_PROJECT_NAME }}
 
-      - name: Deploy Worker
-        run: npx wrangler deploy
+      # R2 桶不存在时创建；已存在则忽略。需要 token 具备 R2 编辑权限。
+      - name: Ensure R2 bucket
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx wrangler r2 bucket create "$R2_BUCKET_NAME" 2>&1 | tee "$RUNNER_TEMP/r2-create.log" || {
+            grep -qi "already exists\|already owned" "$RUNNER_TEMP/r2-create.log"
+          }
+
+      - name: Deploy Worker
+        run: npx wrangler deploy --config=wrangler.deploy.jsonc
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 可选：把 R2 S3 兼容访问密钥同步为 Worker secret（迁移脚本 / 外部 S3 工具用）。
+      # 未配置 secrets 时整步跳过，不影响以 R2 绑定为主的运行时读写。
+      # 放在 Deploy Worker 之后：secret put 要求 Worker 已存在（首次部署时亦可用）。
+      # secrets 不能直接写进 if，故先映射到 step env 再判断。
+      - name: Sync R2 credentials to Worker
+        if: ${{ env.HAS_R2_CREDENTIALS == 'true' }}
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          printf '%s' "$R2_ACCESS_KEY_ID" | npx wrangler secret put R2_ACCESS_KEY_ID --config=wrangler.deploy.jsonc
+          printf '%s' "$R2_SECRET_ACCESS_KEY" | npx wrangler secret put R2_SECRET_ACCESS_KEY --config=wrangler.deploy.jsonc
+          printf '%s' "$R2_ACCOUNT_ID" | npx wrangler secret put R2_ACCOUNT_ID --config=wrangler.deploy.jsonc
+          printf '%s' "$R2_REGION" | npx wrangler secret put R2_REGION --config=wrangler.deploy.jsonc
+          if [ -n "$R2_ENDPOINT" ]; then
+            printf '%s' "$R2_ENDPOINT" | npx wrangler secret put R2_ENDPOINT --config=wrangler.deploy.jsonc
+          fi
 
       # issue #106 / L8：部署后轮询线上就绪，替代旧的「固定 sleep + 二次覆盖部署」。
       # 两条探针覆盖两条链路：`/`（Pages 产物）与 `/api/v1/health`（API Worker，
@@ -185,11 +262,11 @@ jobs:
           # GitHub Actions 的出网 IP 判成 bot（自定义域恒 403，实测 2026-11-17
           # run 43987529351），那是边缘拦截、不是部署没就绪，gate 会永久假红。
           # 别名同样覆盖两条链路：`/` 验 Pages 产物，`/api/v1/health` 走同源
-          # 代理验 Worker（含 D1 / KV 绑定）。自定义域的可达性仍需人工/Dashboard
+          # 代理验 Worker（含 D1 / KV / R2 绑定）。自定义域的可达性仍需人工/Dashboard
           # 侧放行 CI 出口 IP，属 #106 的未闭环项（见 README 部署段）。
-          DEPLOY_BASE_URL: https://blog-website-page.pages.dev
-          DEPLOY_TIMEOUT_SEC: "180"
-          DEPLOY_INTERVAL_SEC: "5"
+          DEPLOY_BASE_URL: ${{ env.DEPLOY_BASE_URL }}
+          DEPLOY_TIMEOUT_SEC: ${{ env.DEPLOY_TIMEOUT_SEC }}
+          DEPLOY_INTERVAL_SEC: ${{ env.DEPLOY_INTERVAL_SEC }}
         run: node scripts/wait-for-deploy.mjs
 
       # L8：原「sleep 120 + 二次覆盖部署」已删除。README「自动部署」要求关闭

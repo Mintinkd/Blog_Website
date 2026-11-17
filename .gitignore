@@ -34,3 +34,6 @@ d1_output.txt
 # 本地工具配置 / 设计预览：文件保留在本机，不进版本库
 .arts/
 ui-preview/
+
+# CI-rendered worker deploy config (scripts/render-worker-config.mjs)
+worker/wrangler.deploy.jsonc

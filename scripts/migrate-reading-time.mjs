@@ -62,7 +62,11 @@ function d1Config(repoRoot) {
     path.join(repoRoot, "worker", "wrangler.jsonc"),
     "utf8"
   );
-  const dbId = config.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1];
+  // CI 可用 D1_DATABASE_ID 覆盖（与 render-worker-config.mjs 的渲染口径一致）；
+  // 本地 / 未配置时仍读仓库默认配置。
+  const dbId =
+    process.env.D1_DATABASE_ID?.trim() ||
+    config.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1];
   if (!dbId) throw new Error("wrangler.jsonc 中找不到 database_id");
   return { token, accountId, dbId };
 }

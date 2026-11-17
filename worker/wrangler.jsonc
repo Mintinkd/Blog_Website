@@ -24,8 +24,15 @@
       "id": "e18fbfafedf048a380e6fe4e2a6f96d6",
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "blog-media",
+    },
+  ],
   "vars": {
     "API_PREFIX": "/api/v1",
+    "SITE_URL": "https://blog.zenfishlog.dpdns.org",
   },
   "triggers": {
     "crons": ["0 16 * * *"],

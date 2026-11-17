@@ -10,6 +10,12 @@ import {
 import type { AuthResult } from "../middleware/auth";
 import { MEDIA_COLUMNS } from "../utils/columns";
 import { isServableMediaKey } from "../utils/media_key";
+import {
+  activeMediaStorage,
+  deleteMediaObject,
+  putMediaObject,
+  readMediaObject,
+} from "../utils/media_storage";
 import { getUserIdByUsername } from "../services/user_service";
 
 const ALLOWED_MIME_TYPES = [
@@ -149,9 +155,8 @@ export async function handleUploadMedia(
   const uuid = crypto.randomUUID();
   const kv_key = `media/${year}/${month}/${uuid}.${ext}`;
 
-  await env.MEDIA.put(kv_key, arrayBuffer, {
-    metadata: { original_name: file.name, mime_type: file.type },
-  });
+  const storageType = activeMediaStorage(env);
+  await putMediaObject(env, kv_key, arrayBuffer, file.type, file.name);
 
   let uploaded_by: number | null = null;
   if (authResult) {
@@ -161,7 +166,7 @@ export async function handleUploadMedia(
   const result = await env.DB.prepare(
     `
     INSERT INTO media_assets (filename, original_name, mime_type, file_size, kv_key, storage_type, alt_text, uploaded_by)
-    VALUES (?, ?, ?, ?, ?, 'kv', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `
   )
     .bind(
@@ -170,6 +175,7 @@ export async function handleUploadMedia(
       file.type,
       file.size,
       kv_key,
+      storageType,
       "",
       uploaded_by
     )
@@ -243,7 +249,7 @@ export async function handleListMedia(
   });
 }
 
-/** 审查报告 H2 修复：媒体删除须为管理员或上传者本人；越权时 KV 对象与元数据均保持不动 */
+/** 审查报告 H2 修复：媒体删除须为管理员或上传者本人；越权时对象存储与元数据均保持不动 */
 export async function handleDeleteMedia(
   request: Request,
   env: Env,
@@ -255,10 +261,14 @@ export async function handleDeleteMedia(
   if (!authResult) return unauthorized("Authentication required");
 
   const media = await env.DB.prepare(
-    "SELECT kv_key, uploaded_by FROM media_assets WHERE id = ?"
+    "SELECT kv_key, storage_type, uploaded_by FROM media_assets WHERE id = ?"
   )
     .bind(id)
-    .first<{ kv_key: string; uploaded_by: number | null }>();
+    .first<{
+      kv_key: string;
+      storage_type: string | null;
+      uploaded_by: number | null;
+    }>();
   if (!media) return notFound("Media not found");
 
   if (authResult.role !== "admin") {
@@ -267,7 +277,7 @@ export async function handleDeleteMedia(
       return forbidden("仅可删除自己上传的媒体");
   }
 
-  await env.MEDIA.delete(media.kv_key);
+  await deleteMediaObject(env, media.kv_key, media.storage_type);
   await env.DB.prepare("DELETE FROM media_assets WHERE id = ?").bind(id).run();
 
   return successResponse(null, "Media deleted");
@@ -286,14 +296,9 @@ export async function handleServeMedia(
   // 只放行 media/ 下的安全 key；拒绝与「不存在」同形（404），不给存在性 oracle。
   if (!isServableMediaKey(key)) return notFound("Media not found");
 
-  const value = await env.MEDIA.get(key, { type: "arrayBuffer" });
-  if (!value) return notFound("Media not found");
-
-  const metadata = await env.MEDIA.getWithMetadata(key);
-  const meta = metadata.metadata as {
-    mime_type?: string;
-    original_name?: string;
-  } | null;
+  // 媒体存储迁移 R2：R2 优先、KV 兜底（存量对象无需一次性迁移仍可访问）
+  const stored = await readMediaObject(env, key);
+  if (!stored) return notFound("Media not found");
 
   // P1-8 / issue #13：防止「直接打开媒体链接」获得同源脚本执行能力 ——
   // 判定结果非白名单时不给可渲染类型；<img> 等子资源请求按浏览器规则会
@@ -301,12 +306,12 @@ export async function handleServeMedia(
   // issue #20：存量资产回退 —— 白名单判定落空（元数据缺失 / 历史非白名单类型）时，
   // 对已取回的字节按上传侧同一套魔数嗅探规则识别；命中白名单则以其真实 MIME 返回
   // （处置策略不变：attachment + nosniff），仍无法识别则维持 octet-stream 强制下载。
-  const rawMime = meta?.mime_type || guessMimeType(key);
+  const rawMime = stored.mimeType || guessMimeType(key);
   // 白名单命中路径不嗅探，行为与开销不变。
   const mimeType = ALLOWED_MIME_TYPES.includes(rawMime)
     ? rawMime
-    : sniffMime(new Uint8Array(value)) || "application/octet-stream";
-  const filename = meta?.original_name || key.split("/").pop() || "file";
+    : sniffMime(new Uint8Array(stored.body)) || "application/octet-stream";
+  const filename = stored.originalName || key.split("/").pop() || "file";
 
   const headers = new Headers({
     "Content-Type": mimeType,
@@ -315,7 +320,7 @@ export async function handleServeMedia(
     "Cache-Control": "public, max-age=31536000, immutable",
   });
 
-  return new Response(value, { headers });
+  return new Response(stored.body, { headers });
 }
 
 function guessMimeType(key: string): string {

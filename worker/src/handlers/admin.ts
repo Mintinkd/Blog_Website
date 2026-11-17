@@ -3,6 +3,7 @@ import { successResponse, error, ErrorCodes } from "../utils/response";
 import { sanitizeHtml } from "../utils/sanitizer";
 import { isPlainObject } from "../utils/object";
 import { isValidUrl } from "../utils/validator";
+import { deleteMediaObject } from "../utils/media_storage";
 
 /**
  * 管理端数据导出/导入（P1-7 / issue #12 安全改造）
@@ -456,34 +457,41 @@ async function executeBatchChunks(
 }
 
 /**
- * #87 / H9：找出将因 media_assets 替换而失去 DB 记录引用的 KV 对象。
- * 只处理 storage_type='kv' 且新导入未复用的非空 kv_key —— 复用同一 key 时对象仍是活的，
- * 误删会让新数据指向空对象。KV 删除不可与 D1 同事务，故只在 DB 全部提交后执行。
+ * #87 / H9：找出将因 media_assets 替换而失去 DB 记录的媒体对象。
+ * 只处理 storage_type 为 kv / r2 且新导入未复用的非空 kv_key —— 复用同一 key 时
+ * 对象仍是活的，误删会让新数据指向空对象。两类存储分别按行内类型删除；对象存储
+ * 删除不可与 D1 同事务，故只在 DB 全部提交后执行。
  */
+interface OrphanedMediaKey {
+  key: string;
+  storageType: string;
+}
+
 function orphanedMediaKeys(
   snapshot: Record<string, unknown[]>,
   importedRows: Array<Record<string, unknown>>
-): string[] {
+): OrphanedMediaKey[] {
   const reused = new Set(
     importedRows
       .map((row) => row.kv_key)
       .filter((key): key is string => typeof key === "string" && key.length > 0)
   );
-  const orphaned = new Set<string>();
+  const orphaned = new Map<string, string>();
   for (const row of (snapshot.media_assets ?? []) as Array<
     Record<string, unknown>
   >) {
     const key = row.kv_key;
+    const storageType = row.storage_type;
     if (
-      row.storage_type === "kv" &&
+      (storageType === "kv" || storageType === "r2") &&
       typeof key === "string" &&
       key.length > 0 &&
       !reused.has(key)
     ) {
-      orphaned.add(key);
+      orphaned.set(key, storageType);
     }
   }
-  return [...orphaned];
+  return [...orphaned].map(([key, storageType]) => ({ key, storageType }));
 }
 
 export async function handleImport(
@@ -654,27 +662,35 @@ export async function handleImport(
       );
     }
 
-    // 2c) KV 孤儿清理：只在 DB 全部提交后做，且跳过新导入复用的 key。
+    // 2c) 媒体孤儿清理：只在 DB 全部提交后做，且跳过新导入复用的 key。
     // 与 buildDeleteStatements 的「空表跳过 DELETE」对齐：media_assets 未提供或为
-    // 空数组时旧行根本没被删，这些 key 仍被 DB 引用，此时清理 KV 会留下
+    // 空数组时旧行根本没被删，这些 key 仍被 DB 引用，此时清理会留下
     // 「有记录、无文件」的破图（且接口仍回 success）。故只有真正替换过才清理。
     const importedMediaRows = byTable.get("media_assets") ?? [];
-    const orphanKeys =
+    const orphanObjects =
       importedMediaRows.length > 0
         ? orphanedMediaKeys(snapshot, importedMediaRows)
         : [];
-    const kvCleanupFailures: string[] = [];
-    for (const key of orphanKeys) {
+    const cleanupFailures: OrphanedMediaKey[] = [];
+    for (const orphan of orphanObjects) {
       try {
-        await env.MEDIA.delete(key);
+        await deleteMediaObject(env, orphan.key, orphan.storageType);
       } catch (e) {
-        kvCleanupFailures.push(key);
+        cleanupFailures.push(orphan);
         console.error(
-          "Media KV cleanup failed for an orphaned key:",
+          `Media ${orphan.storageType} cleanup failed for an orphaned key:`,
           e instanceof Error ? e.message : String(e)
         );
       }
     }
+    const failedKv = cleanupFailures.filter(
+      (o) => o.storageType === "kv"
+    ).length;
+    const failedR2 = cleanupFailures.filter(
+      (o) => o.storageType === "r2"
+    ).length;
+    const totalKv = orphanObjects.filter((o) => o.storageType === "kv").length;
+    const totalR2 = orphanObjects.filter((o) => o.storageType === "r2").length;
 
     const note =
       inserts.skippedSecretRows.length > 0
@@ -686,8 +702,10 @@ export async function handleImport(
         skipped_secret_rows: inserts.skippedSecretRows,
         backup_key: backupKey,
         batches,
-        kv_orphans_deleted: orphanKeys.length - kvCleanupFailures.length,
-        kv_cleanup_failed: kvCleanupFailures.length,
+        kv_orphans_deleted: totalKv - failedKv,
+        kv_cleanup_failed: failedKv,
+        r2_orphans_deleted: totalR2 - failedR2,
+        r2_cleanup_failed: failedR2,
       },
       "Data imported successfully" + note
     );

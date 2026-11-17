@@ -3,22 +3,33 @@ import { fileURLToPath } from "node:url";
 import vue from "@astrojs/vue";
 import sitemap from "@astrojs/sitemap";
 import cloudflare from "@astrojs/cloudflare";
+import {
+  DEFAULT_SITEMAP_PAGE_SIZE,
+  resolvePositiveInt,
+  resolveSiteUrl,
+  resolveSitemapApiBase,
+} from "./scripts/site-config.mjs";
+
+// 站点 origin / Worker origin / sitemap 拉取地址全部由环境变量驱动（默认值集中在
+// scripts/site-config.mjs）：SITE_URL、WORKER_ORIGIN、SITEMAP_API_BASE。
+const siteUrl = resolveSiteUrl(process.env);
+const sitemapApiBase = resolveSitemapApiBase(process.env);
+const sitemapPageSize = resolvePositiveInt(
+  process.env.SITEMAP_PAGE_SIZE,
+  DEFAULT_SITEMAP_PAGE_SIZE,
+  "SITEMAP_PAGE_SIZE"
+);
 
 // 构建时从线上 Worker API 拉取「已发布」文章的 slug，显式补进 sitemap。
 // 文章详情页是 SSR 动态路由（prerender=false），Astro 静态构建无法自动发现，
 // 所以必须在这里提供完整 URL，否则文章页不会出现在 sitemap 中（SEO 缺口）。
 async function getPublishedArticleUrls() {
   const urls = [];
-  // 用真实站点域名（同源）拉取，避免 workers.dev 在国内被屏蔽导致构建时拉不到；
-  // 也可用环境变量 SITEMAP_API_BASE 覆盖（如切换部署环境时）。
-  const apiBase =
-    process.env.SITEMAP_API_BASE ||
-    "https://blog.zenfishlog.dpdns.org/api/v1/articles";
   try {
     let page = 1;
     while (true) {
       const res = await fetch(
-        `${apiBase}?page=${page}&status=published&page_size=50`
+        `${sitemapApiBase}?page=${page}&status=published&page_size=${sitemapPageSize}`
       );
       if (!res.ok) break;
       const data = await res.json();
@@ -26,9 +37,7 @@ async function getPublishedArticleUrls() {
       for (const a of items) {
         // slug 可能含中文，必须编码进 URL（sitemap 协议要求合法 URL）
         if (a?.slug)
-          urls.push(
-            `https://blog.zenfishlog.dpdns.org/articles/${encodeURIComponent(a.slug)}`
-          );
+          urls.push(`${siteUrl}/articles/${encodeURIComponent(a.slug)}`);
       }
       const totalPages = data?.data?.total_pages || 1;
       if (page >= totalPages || items.length === 0) break;
@@ -43,7 +52,7 @@ async function getPublishedArticleUrls() {
 const articleUrls = await getPublishedArticleUrls();
 
 export default defineConfig({
-  site: "https://blog.zenfishlog.dpdns.org",
+  site: siteUrl,
   output: "static",
   // ClientRouter 默认 hover 预取（悬停生成 <link rel="prefetch">），浏览器会带上
   // Sec-Purpose: prefetch；Cloudflare 边缘对预取一律 503 空响应（cf-speculation-refused:

@@ -136,11 +136,14 @@ async function fetchRemoteRows(repoRoot) {
     );
   }
   // database_id 来自 wrangler.jsonc（与迁移/Worker 绑定同一来源），不另存常量。
+  // CI 可用 D1_DATABASE_ID 覆盖（与 render-worker-config.mjs 渲染口径一致）。
   const wranglerConfig = readFileSync(
     path.join(repoRoot, "worker", "wrangler.jsonc"),
     "utf8"
   );
-  const dbId = wranglerConfig.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1];
+  const dbId =
+    process.env.D1_DATABASE_ID?.trim() ||
+    wranglerConfig.match(/"database_id"\s*:\s*"([^"]+)"/)?.[1];
   if (!dbId)
     throw new Error("wrangler.jsonc 中找不到 d1_databases[].database_id");
   // SQL 去掉注释行后作为单条语句传入（REST API 不接受 --file）。
@@ -174,7 +177,7 @@ function fetchLocalRows(repoRoot) {
       "wrangler",
       "d1",
       "execute",
-      "blog-db",
+      process.env.D1_DATABASE_NAME?.trim() || "blog-db",
       "--json",
       "--local",
       "--file",

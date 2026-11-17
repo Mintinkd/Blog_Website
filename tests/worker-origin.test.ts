@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveArticleApiOrigin,
+  resolveWorkerOrigin,
   WORKER_ORIGIN,
 } from "../src/utils/workerOrigin";
 
@@ -38,5 +39,25 @@ describe("文章 SSR 的 Worker origin 解析", () => {
       resolveArticleApiOrigin({ DEV: true, ARTICLE_API_ORIGIN: "   " })
     ).toBe(WORKER_ORIGIN);
     expect(resolveArticleApiOrigin({ DEV: true })).toBe(WORKER_ORIGIN);
+  });
+});
+
+describe("Worker origin 环境变量解析", () => {
+  it("PUBLIC_WORKER_ORIGIN 优先于 WORKER_ORIGIN，并规范化尾部斜杠", () => {
+    expect(
+      resolveWorkerOrigin({
+        PUBLIC_WORKER_ORIGIN: "https://public-api.example/",
+        WORKER_ORIGIN: "https://plain-api.example",
+      })
+    ).toBe("https://public-api.example");
+    expect(
+      resolveWorkerOrigin({ WORKER_ORIGIN: "https://plain-api.example/" })
+    ).toBe("https://plain-api.example");
+  });
+
+  it("非法 origin fail-closed", () => {
+    expect(() =>
+      resolveWorkerOrigin({ PUBLIC_WORKER_ORIGIN: "https://example.com/api" })
+    ).toThrow();
   });
 });
