@@ -187,9 +187,9 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
   it("CI 流程与 README 一致：D1 迁移在部署前、L8 sleep120 二次部署已移除", () => {
     const workflow = read(".github/workflows/deploy.yml");
     const readme = read("README.md");
-    const applyAt = workflow.indexOf("name: Apply D1 migrations");
-    const verifyAt = workflow.indexOf("name: Verify D1 migrations");
-    const deployAt = workflow.indexOf("name: Deploy to Cloudflare Pages");
+    const applyAt = workflow.indexOf("name: 执行 D1 迁移");
+    const verifyAt = workflow.indexOf("name: 校验 D1 迁移");
+    const deployAt = workflow.indexOf("name: 部署到 Cloudflare Pages");
     expect(applyAt).toBeGreaterThan(-1);
     expect(verifyAt).toBeGreaterThan(applyAt);
     expect(deployAt).toBeGreaterThan(verifyAt); // 迁移+核对在部署之前
@@ -200,8 +200,8 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
     expect(readme).not.toMatch(/等待 120 秒待 Git 集成/);
 
     // issue #106 / L8：部署后必须轮询就绪（替代固定等待），且 README 同步该步骤。
-    const workerDeployAt = workflow.indexOf("name: Deploy Worker");
-    const readinessAt = workflow.indexOf("name: Wait for deployment readiness");
+    const workerDeployAt = workflow.indexOf("name: 部署 Worker");
+    const readinessAt = workflow.indexOf("name: 等待部署就绪");
     expect(workerDeployAt).toBeGreaterThan(deployAt);
     expect(readinessAt).toBeGreaterThan(workerDeployAt);
     expect(workflow).toContain("node scripts/wait-for-deploy.mjs");

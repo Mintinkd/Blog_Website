@@ -62,14 +62,14 @@ describe("ESLint 门禁契约（#102）", () => {
     expect(lintStaged).toMatch(/eslint --fix/);
 
     const workflow = read(".github/workflows/deploy.yml");
-    expect(workflow).toMatch(/^\s*- name: Lint$/m);
+    expect(workflow).toMatch(/^\s*- name: 代码静态检查$/m);
     expect(workflow).toMatch(/^\s*run: npm run lint$/m);
     // 顺序：类型检查之后、测试之前
-    expect(workflow.indexOf("name: Lint")).toBeGreaterThan(
-      workflow.indexOf("name: Check Frontend Types")
+    expect(workflow.indexOf("name: 代码静态检查")).toBeGreaterThan(
+      workflow.indexOf("name: 前端类型检查")
     );
-    expect(workflow.indexOf("name: Lint")).toBeLessThan(
-      workflow.indexOf("name: Test Frontend")
+    expect(workflow.indexOf("name: 代码静态检查")).toBeLessThan(
+      workflow.indexOf("name: 测试前端")
     );
   });
 
