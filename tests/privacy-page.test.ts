@@ -133,12 +133,15 @@ describe("issue #59：护栏与跨文档同步（验收 2–5）", () => {
     expect(block).toContain('Speculation-Rules: "/speculation-rules"');
   });
 
-  it("README 页面表含 /privacy，且 5 个统计接口与实际路由一致", () => {
-    const readme = read("README.md");
+  it("前台页面文档表含 /privacy，且 5 个统计接口与实际路由一致", () => {
+    // 跨文档同步：页面表迁至 FRONTEND_FEATURES.md，接口表迁至 API_REFERENCE.md
+    // （README 已收敛为纯部署指南，独立来源见 docs/agents/testing.md）。
+    const pages = read("docs/FRONTEND_FEATURES.md");
+    const api = read("docs/API_REFERENCE.md");
     const router = read("worker/src/router.ts");
-    expect(readme).toMatch(/\| `\/privacy`\s*\|/);
+    expect(pages).toMatch(/\| `\/privacy`\s*\|/);
     for (const route of ADMIN_STAT_ROUTES) {
-      expect(readme, `README ${route}`).toContain(route);
+      expect(api, `API docs ${route}`).toContain(route);
       expect(router, `router ${route}`).toContain(route);
     }
   });

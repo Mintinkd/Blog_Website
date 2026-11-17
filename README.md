@@ -1,652 +1,107 @@
-# Blog Website
-
-基于 Astro + Cloudflare 技术栈的个人独立博客系统，前后端分离架构，部署在 Cloudflare Pages + Workers 上。
-
-## 技术栈
-
-### 前端
-
-- **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
-- **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
-- **Milkdown 7（ProseMirror + remark）/ Crepe** — 后台文章编辑器的所见即所得内核，固定 `@milkdown/*` 7.23.0 一组；`defineAsyncComponent + import()` 懒加载，只在首次打开编辑器时进入增量 chunk（实测 gzip 约 182 KiB，预算 350 KiB），不进后台首屏（issue #65 / ADR 0006）
-- **Element Plus** — 后台管理UI组件库
-- **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览复用同一 `renderMarkdown`；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
-
-### 后端
-
-- **Cloudflare Workers** — 无服务器API后端
-- **Cloudflare D1** — SQLite数据库（文章、分类、标签、评论等）
-- **Cloudflare R2** — 对象存储（媒体文件；新上传写 R2）
-- **Cloudflare KV** — 键值存储（存量媒体读取兜底 + 编辑锁 + 代理/限流缓存）
-- **JWT** — 管理员/编辑者认证
-
-### 部署
-
-- **Cloudflare Pages** — 前端静态托管
-- **GitHub Actions** — CI/CD 自动部署
-
-## 项目结构
-
-```
-├── .github/workflows/
-│   └── deploy.yml              # CI/CD 自动部署
-├── public/
-│   ├── .assetsignore             # Workers+Assets 排除 _worker.js
-│   ├── _headers                  # 生成物：安全响应头 + HTML 护栏 + _assets 指纹资产 immutable 长缓存（模块单源渲染，禁止手工编辑，issue #28 / #96）
-│   └── bg-placeholder.svg       # 默认全站背景图
-├── src/
-│   ├── admin/
-│   │   ├── App.vue             # 后台壳层：登录 / 标签页编排 / 跨面板状态（T8 #69，226 行）
-│   │   ├── AdminSidebar.vue    # 导航定义 / admin-only 角色可见性 / 登出入口（T8 #69）
-│   │   ├── admin-shared.css    # 后台共享样式单源（由 App.vue 的 <style scoped> 整块抽出，T3 #64）
-│   │   ├── composables/        # 壳层依赖：会话 / 请求 / 反馈 / 共享数据 / 编辑器桥接（T8 #69）
-│   │   │   ├── useSession.ts        # token / 角色 / 登录 / 登出 / 10003 失效（草稿清理分叉）
-│   │   │   ├── useAdminApi.ts       # /api/v1 认证请求 + 10003 / 10004 错误码
-│   │   │   ├── useFeedback.ts       # 包装现有 alert / confirm，不引入新 toast UI
-│   │   │   ├── useAdminCatalog.ts   # 跨面板共享列表数据 + loadInitialData 预加载
-│   │   │   ├── useAdminEditor.ts    # 编辑器装配 + overlay 事件 + 抓取草稿转文章
-│   │   │   └── adminContext.ts      # 依赖聚合与 provide / inject 单一注入点
-│   │   ├── panels/             # 11 个领域面板，各配一个 *.logic.ts 纯逻辑（T8 #69）
-│   │   │   ├── CategoriesPanel.vue / TagsPanel.vue / CommentsPanel.vue / MediaPanel.vue
-│   │   │   ├── ConfigPanel.vue / AboutPanel.vue / AppearancePanel.vue
-│   │   │   ├── UsersPanel.vue / FriendLinksPanel.vue
-│   │   │   └── ScrapePanel.vue / AnalyticsPanel.vue   # 壳层 defineAsyncComponent 懒加载
-│   │   ├── articles/
-│   │   │   ├── ArticlesPanel.vue         # 文章列表 / 筛选 / 操作列（T3 #64）
-│   │   │   └── ArticleEditorOverlay.vue  # 文章编辑器全屏壳层（T3 #64）
-│   │   └── editor/                       # 编辑器组件、状态机与锁（T3 #64 / T4 #65）
-│   │       ├── EditorMetaFields.vue      # 标题 / slug / 分类 / 状态 / 标签 / 摘要 / 封面
-│   │       ├── MarkdownWorkspace.vue     # WYSIWYG / 源码 / 分屏 / 线上预览四档 + 源码工具栏
-│   │       ├── EditorPreviewDialog.vue   # 只读线上预览（同一个 renderMarkdown）
-│   │       ├── LinkDialog.vue            # 普通链接 / 内嵌网页预览
-│   │       ├── UnsavedChangesDialog.vue  # 保存并关闭 / 放弃修改 / 继续编辑
-│   │       ├── DraftRecoveryBar.vue      # 本地草稿恢复 / 丢弃 / 过期提示
-│   │       ├── useArticleEditor.ts       # 显式状态机 + 副作用编排 + 回写守卫（消费 T1 reducer）
-│   │       ├── useLocalDraft.ts          # 1.5s 防抖 / pagehide 同步 / 配额提示一次
-│   │       ├── useEditLock.ts            # 获取 / 10 分钟心跳 / 保存前校验 / 释放
-│   │       └── milkdown/                 # T4 编辑内核（懒加载）
-│   │           ├── MilkdownEditor.vue    # 异步组件壳层：打开时不回写正文，只有实际编辑才更新
-│   │           ├── createEditor.ts       # CrepeBuilder 7 项装配 / uploader 覆盖 / 响应式文案
-│   │           ├── embedLink.ts          # data-embed 专用内联节点 + NodeView + remark 合并
-│   │           └── milkdownService.ts    # 守卫用同装配隐藏实例做 Markdown 往返
-│   ├── components/
-│   │   ├── article/
-│   │   │   └── ArticleCard.astro
-│   │   ├── common/
-│   │   │   ├── Pagination.astro
-│   │   │   ├── EmptyState.astro
-│   │   │   └── ScrollProgress.astro  # 顶部滚动进度条
-│   │   └── layout/
-│   │       └── BaseLayout.astro  # 全局布局（毛玻璃导航栏 + 移动端下拉菜单）
-│   ├── islands/                 # Vue交互组件（Astro岛屿架构）
-│   │   ├── ThemeToggle.vue
-│   │   ├── SearchBox.vue
-│   │   ├── CommentSection.vue
-│   │   ├── LikeButton.vue
-│   │   └── FriendLinkList.vue
-│   ├── pages/
-│   │   ├── index.astro          # 首页
-│   │   ├── articles/
-│   │   │   ├── index.astro      # 文章列表
-│   │   │   └── [slug].astro      # 文章详情（SSR：正文 + 每篇 SEO + 阅读量 Cookie）
-│   │   ├── categories/
-│   │   │   ├── index.astro      # 分类云（SSR）
-│   │   │   └── [slug].astro     # 分类文章（SSR）
-│   │   ├── tags/
-│   │   │   ├── index.astro      # 标签云（SSR）
-│   │   │   └── [slug].astro     # 标签文章（SSR）
-│   │   ├── api/v1/[...path].ts      # API代理路由（SSR）
-│   │   ├── rss.xml.ts               # RSS订阅源（SSR）
-│   │   ├── speculation-rules.ts     # 空预取规则集端点（SSR，覆盖 Cloudflare Speed Brain）
-│   │   ├── robots.txt.ts            # robots.txt 由构建期站点 origin 生成（sitemap 绝对地址跟随 SITE_URL）
-│   │   ├── archives.astro       # 归档
-│   │   ├── about.astro          # 关于
-│   │   ├── privacy.astro        # 隐私与阅读统计披露（中英、页脚入口，#59）
-│   │   ├── search.astro         # 搜索
-│   │   ├── admin/index.astro    # 后台管理入口
-│   │   └── 404.astro
-│   ├── i18n/                     # 多语言翻译
-│   │   ├── zh.json               # 中文
-│   │   └── en.json               # 英文
-│   ├── styles/
-│   │   ├── variables.css        # 设计令牌（颜色、字体、阴影、背景、动效等）
-│   │   ├── global.css           # 全局样式（含 .site-bg 固定背景层）
-│   │   ├── responsive.css       # 响应式层（断点 / 流式留白 / 触控 / 移动导航）
-│   │   ├── motion.css           # 动效样式（入场/磁吸/hover/强度分级/加载失败兜底）
-│   │   └── prose.css            # 文章排版样式
-│   ├── generated/
-│   │   ├── settings-rules.ts    # 生成物：设置白名单规则（双端同构，禁止手工编辑，issue #27）
-│   │   └── cors-origins.ts      # 生成物：CORS 白名单（cors.origins.json → 双端同构，issue #85）
-│   ├── scripts/layout/          # 布局脚本模块（issue #103：从 BaseLayout 内联脚本拆出 11 个模块）
-│   ├── middleware.ts            # SSR 安全响应头 + HTML 护栏中间件（消费两个单源，issue #28 / ADR 0002）
-│   ├── utils/
-│   │   ├── api.ts               # API请求工具
-│   │   ├── analyticsView.ts     # 统计面板纯函数（SVG 路径 / 空态 / 比率 / 小样本 / 失败接口格式化 / Tier 0 白名单，#58）
-│   │   ├── articleDate.ts       # 文章发布日期格式化（服务端首屏与客户端 locale 切换共用）
-│   │   ├── articleMeta.ts       # 文章页 SEO 元信息构造（title/description/canonical/OG，纯函数）
-│   │   ├── articleServer.ts     # 文章详情页服务端取数接缝（三态映射、访客 Cookie 转发、Set-Cookie 回传、私有缓存）
-│   │   ├── visitorIpSigning.ts  # Pages 转发点访客 IP 签名（HMAC-SHA256，secret 取运行时 env，issue #84）
-│   │   ├── taxonomyServer.ts    # 分类 / 标签页 SSR 取数接缝（三态映射，issue #97）
-│   │   ├── taxonomyRender.ts    # 分类 / 标签页首屏渲染共用（列表 / 分页 / 空态，issue #97）
-│   │   ├── markdown.ts          # Markdown渲染（DOMPurify 消毒，消费共享正文白名单）
-│   │   ├── markdownPolicy.ts    # 文章正文标签/属性/URL scheme 白名单（DOMPurify 与 sanitize-html 共用）
-│   │   ├── markdownServer.ts    # 服务端 Markdown 渲染（marked + sanitize-html，Workers 可用）
-│   │   ├── escape.ts            # 转义工具（escapeHtml/escapeAttr/safePathSegment/sanitizeHighlight）
-│   │   ├── theme.ts             # 主题切换
-│   │   ├── categoryColors.ts    # 分类专属色映射（徽标/渐变横幅；hexToRgba/shade 等）
-│   │   ├── siteConfig.ts        # 站点基础配置读取与应用
-│   │   ├── siteTitleServer.ts   # 文章页 SSR 站点标题读取（公共 config，失败回退默认站名）
-│   │   ├── settings.ts          # 全站可视化配置（读取/注入CSS变量/功能开关/跨标签页同步）
-│   │   ├── motion.ts            # 动效初始化（reveal/磁吸/视差/滚动进度条/View Transition）
-│   │   ├── i18n.ts              # 多语言工具（initLocale, setLocale, t函数）
-│   │   ├── workerOrigin.ts      # Worker API origin 单一事实源（文章 SSR / RSS / API 代理共用；dev-only 文章取数覆盖）
-│   │   ├── scrape.ts            # 网页抓取管线（字符集嗅探 → Readability/selector → Turndown + GFM + 元数据/来源脚注，管理端浏览器执行）
-│   │   └── editor/                  # 文章编辑器纯函数基线（issue #62 / T4 #65）
-│   │       ├── markdownBridge.ts    # 语义等价回写守卫 / 规范化比较 / 模式判定 / 保存前二次守卫
-│   │       ├── editorCommands.ts    # 源码模式包裹选区 / 行前缀 / 列表续行 / 链接与图片插入、Markdown 转义、isEmbedSnippet 锚点判定（#74）
-│   │       ├── draftStore.ts        # 本地草稿键 / 序列化 / 用户+文章隔离 / 7 天过期 / 1MB 配额（storage 可注入）
-│   │       ├── uploadImage.ts       # 图片类型 / 10MB 预检、Bearer 上传、{ url, alt } 映射、失败保留正文
-│   │       ├── editorState.ts       # useArticleEditor 纯 reducer：脏状态 / 关闭决策 / 保存失败 / 锁丢失
-│   │       ├── slug.ts              # 标题生成 slug 与合法性（与 Worker generateSlug 对齐）
-│   │       ├── wordCount.ts         # 中英文字数与阅读时长（与 Worker calculateReadingTime 对齐）
-│   │       ├── focusTrap.ts         # 弹窗焦点陷阱纯 DOM 模块：Tab 循环 / 焦点归还（T6 #67）
-│   │       └── metaFields.ts        # 元信息纯函数：发布前校验 / 封面 URL 白名单 / slug 锁定 / 标签筛选 / 面板读数（T6 #67）
-│   └── types/
-│       ├── global.d.ts          # 运行时注入全局能力的 Window 类型声明（fetchWithProxy 等）
-│       └── turndown-plugin-gfm.d.ts  # turndown-plugin-gfm 的类型声明（包内无 .d.ts，#33）
-├── scripts/
-│   ├── security-headers.mjs      # 安全响应头单一事实源（5 头声明式常量 + 同目录 .d.mts 类型声明；middleware 直接 import，issue #28 / ADR 0002）
-│   ├── cloudflare-guards.mjs     # Cloudflare 注入护栏单源（HTML no-transform / Speculation-Rules 空规则集；同目录 .d.mts）
-│   ├── generate-headers.mjs      # public/_headers 生成器（prebuild 自动执行；CI 漂移断言）
-│   ├── patch-csp.mjs             # 构建后 CSP 收紧（astro:build:done 自动调用；以安全头模块为源构造 + 注入内联脚本 sha256 + 残留断言；同目录 .d.mts）
-│   ├── generate-settings-rules.mjs # 设置白名单规则生成器（settings.rules.json → 双端生成物）
-│   ├── generate-cors-origins.mjs # CORS 白名单生成器（cors.origins.json → 双端生成物）
-│   ├── generate-rich-text-policy.mjs # 富文本白名单生成器（rich-text-policy.json → worker 生成物，issue #92 / #99）
-│   ├── migrate-reading-time.mjs # reading_time 加列幂等迁移（CI 自动执行，issue #90）
-│   ├── repro-nav-home.mjs        # 客户端导航回归复现（Playwright 驱动，需先自行安装 playwright）
-│   ├── verify-all-pages-nav.mjs  # 全站客户端导航回归验证（Playwright 驱动，同上）
-│   ├── verify-article-ssr.mjs    # 文章详情 SSR 回归（CI 构建前执行；服务端正文 / 无 JS / motion 失败 / 404 / 502；自拉本地 mock）
-│   ├── verify-admin-analytics.mjs # 后台「统计」面板回归（Playwright；空库 / 有数据 / 错误态三场景，#58）
-│   ├── verify-privacy-page.mjs   # 隐私页回归（Playwright；页脚入口 / 中英切换 / 无 JS 文案，#59）
-│   ├── visual-contrast.mjs       # 观感检查的颜色数学（零依赖；WCAG 对比度 / 半透明背景逐层合成；同目录 .d.mts）
-│   ├── verify-visual-friendliness.mjs # 页面观感友好度检查（CI + 手动；13 条规则 / 亮暗主题 / 多视口 / 带源码定位的报告）
-│   ├── verify-admin-responsive.mjs # 后台移动端回归（CI + 手动；T7 #68 补编辑器遮罩 / fixture）
-│   ├── verify-editor-responsive.mjs # 编辑器元信息 / 响应式 / 可访问性回归（T6 #67；CI 门禁）
-│   ├── verify-article-editor.mjs # 文章编辑器端到端回归（T7 #68；§10.3 九条检查单 / 12 个独立 context 场景 / 有状态 mock 双通道 / CI 门禁）
-│   ├── mock-admin-api.mjs        # 有状态 admin mock 纯状态机（T7 #68；登录 / 列表 / edit 详情 / PUT / 编辑锁 / 上传 / 公开读取）
-│   ├── mock-admin-api.d.mts      # 上述 mock 的类型声明
-│   ├── mock-article-api.mjs      # 同一进程同时服务文章 SSR 回归（#41）与 admin 回归（#68）；/__stats / /__control / /__reset
-│   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
-│   ├── editor-meta-fixture.mjs   # 编辑器两脚本共用的入口选择器 / 视口矩阵 / /api/v1/** fixture（T6 #67）
-│   ├── site-config.mjs           # 站点 / Worker origin / sitemap 环境配置单源（默认值集中一处；同目录 .d.mts）
-│   ├── render-worker-config.mjs  # CI 部署配置渲染（vars → worker/wrangler.deploy.jsonc，生成物不入库）
-│   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
-│   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
-├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.jsonc            # Worker配置（D1/KV/R2 绑定 + 每日 cron，本地默认生效）
-│   ├── schema.sql                    # 数据库 Schema（全新库形态，可重复执行，issue #94）
-│   ├── migrations/                   # wrangler d1 migrations 迁移文件（0001_baseline 等，issue #94）
-│   ├── migrations-baseline.sql       # 存量/全新库标记 0001 已应用（幂等，issue #94）
-│   ├── schema-tier0-incremental.sql  # 阅读统计 Tier 0 增量 DDL（已有部署升级直接 --file 执行）
-│   ├── package.json             # 后端依赖与脚本（typecheck / test）
-│   ├── tsconfig.json            # 后端 TS 配置（tests typecheck 走 tsconfig.test.json）
-│   ├── vitest.config.mjs        # Worker 测试配置（node 环境，避免继承根级 jsdom）
-│   ├── tests/                   # Worker 单元测试（vitest：代理 SSRF 解析后 IP 复核、抓取代理 robots/限流等）
-│   └── src/
-│       ├── generated/
-│       │   └── settings-rules.ts # 生成物：设置白名单规则（与根包同构，禁止手工编辑，issue #27）
-│       ├── index.ts             # Worker入口（fetch + scheduled 每日清理）
-│       ├── router.ts            # 路由注册与分发
-│       ├── middleware/
-│       │   ├── auth.ts          # JWT认证
-│       │   ├── cors.ts          # 跨域
-│       │   ├── rate_limit.ts    # 限流策略（规则表 + method/路由模板分桶，issue #48；算法委托 utils/rate_limiter.ts，issue #91）
-│       │   ├── rate_limiter.ts  # 统一限流算法（滑动窗口计数 + KV 幂等键，四处限流共用，issue #91）
-│       │   └── security_headers.ts  # API 安全响应头（CSP default-src 'none'，渗透报告 002）
-│       ├── handlers/            # API处理器
-│       │   ├── article.ts
-│       │   ├── category.ts
-│       │   ├── tag.ts
-│       │   ├── comment.ts
-│       │   ├── search.ts
-│       │   ├── like.ts
-│       │   ├── media.ts          # 媒体上传 / 列表 / 删除 / serve（R2 优先、KV 兜底）
-│       │   ├── config.ts
-│       │   ├── settings.ts      # 可视化配置中心后端（site_config JSON blob）
-│       │   ├── friend_link.ts
-│       │   ├── img_proxy.ts     # 外链图片代理（防盗链兜底，SSRF/限流校验 + KV TTL 缓存）
-│       │   ├── text_proxy.ts    # 外链文字/接口代理（CORS + text/json/xml 白名单 + KV TTL 缓存）
-│       │   ├── scrape.ts        # 网页抓取代理（admin-only；SSRF/robots/2MB/10s/每管理员限流）
-│       │   ├── auth_handler.ts
-│       │   ├── edit_lock.ts
-│       │   ├── admin.ts
-│       │   └── analytics.ts         # 阅读统计后台只读接口（概览 / 分布 / 明细 / 质量 / 趋势，#55–#58）
-│       ├── services/
-│       │   ├── user_service.ts          # 按 username 取 id / id+display_name 单点（#101 / M21）
-│       │   ├── article_service.ts       # 文章列表/详情/写入 + slugExists + loadArticleTags（#89/#101）
-│       │   ├── edit_lock_service.ts     # 编辑锁（用户查询委托 user_service，#101）
-│       │   ├── analytics_service.ts      # dayKey / 清理 / HMAC 密钥 / recordArticleView（#53、#55）
-│       │   └── analytics_dimensions.ts   # Tier 0 维度桶映射 / upsert / 小样本保护（#56）
-│       ├── models/              # 数据模型
-│       └── utils/               # 工具函数（media_storage：R2/KV 媒体存储抽象）
-├── astro.config.mjs
-├── package.json
-├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
-├── cors.origins.json            # CORS Origin 白名单描述符（手写单源，issue #85 / H4）
-├── rich-text-policy.json        # 富文本标签/属性/scheme 白名单描述符（手写单源，issue #92 / #99）
-├── wrangler.jsonc                # 根目录Workers+Assets部署配置
-├── tsconfig.json
-├── vitest.config.ts              # 根级 vitest（默认 jsdom）：抓取管线 / 文章服务端测试
-├── tests/                        # 前端单元测试（抓取管线 fixture + 文章 SSR 取数 / SEO / 站点标题 / dev-only origin 覆盖 + 编辑器纯函数行为基线 #62 + 回写守卫与守卫编排 #65）
-├── .node-version
-├── .npmrc
-├── AGENTS.md                    # 代理协作约定（技能 / issue tracker / CI-CD / shell 导航）
-├── CODING_STANDARDS.md          # 判断类编码规则（code-review Standards 轴依据）
-├── GLOSSARY.md                  # 领域术语表（domain-modeling 沉淀）
-└── docs/                         # 设计与功能文档
-    ├── responsive-design.md      # 响应式断点、布局策略与验证矩阵
-    ├── UI_MOTION_UPGRADE.md     # UI 动效升级方案
-    ├── BACKGROUND_IMAGE.md      # 全站背景图说明
-    ├── SITE_SETTINGS.md         # 可视化配置中心说明
-    ├── adr/                     # 架构决策记录（0001 设置白名单单源 / 0002 安全头单源 / 0003 抓取代理与浏览器端提取 / 0004 文章正文请求时 SSR）
-    ├── agents/                  # 代理工作流约定（issue-tracker / triage-labels / domain / testing / windows-shell）
-    ├── reviews/                 # 代码审查报告存档（YYYY-MM-DD-<topic>.md）
-    └── security/
-        ├── cloudflare-guards.md # Cloudflare 注入护栏（JSD CSP violation / Speed Brain 预取 503）
-        └── csp-evaluation.md    # CSP 收紧评估（script-src 内联哈希 / style-src 取舍）
-```
-
-## 数据库设计
-
-D1 (SQLite) 共 13 张表：
-
-| 表名                      | 说明                                                                                                                                                                                         |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`                   | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                                                                                                 |
-| `categories`              | 文章分类（含 created_by 所有权）                                                                                                                                                             |
-| `tags`                    | 标签（含 created_by 所有权；`category_id` 归属分类，1:N——每个标签只属于一个分类，taxonomy v2 / ADR 0008，迁移期可空、回填后由应用层保证必填）                                                |
-| `articles`                | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；`reading_time` 落库的阅读分钟数，创建/更新时写入，列表读它不再搬正文；author_id 作者，category_id 默认1） |
-| `article_tags`            | 文章-标签多对多关联                                                                                                                                                                          |
-| `comments`                | 评论（含审核状态）                                                                                                                                                                           |
-| `article_likes`           | 点赞记录（IP去重）                                                                                                                                                                           |
-| `media_assets`            | 媒体文件元数据（`storage_type` 标识对象在 `r2` 还是存量 `kv`；含 uploaded_by 所有权）                                                                                                        |
-| `friend_links`            | 友情链接                                                                                                                                                                                     |
-| `site_config`             | 站点配置（KV结构，含JWT密钥、统计HMAC密钥与清理任务心跳）                                                                                                                                    |
-| `analytics_article_daily` | 阅读统计日聚合（PV/UV/requests/engaged/bot_filtered，按文章+站点时区日）                                                                                                                     |
-| `analytics_view_token`    | 24h 去重令牌（HMAC hex，不含 IP 明文；每日 cron 清理）                                                                                                                                       |
-| `analytics_dim_daily`     | 阅读统计维度桶（只写单篇行，全站查询时 GROUP BY；保留 400 天）                                                                                                                               |
-
-另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。Tier 1 的 `analytics_consent` 本批不建。
-
-> **taxonomy v2（issue #75 / [ADR 0008](docs/adr/0008-tag-as-category-subsystem.md)）**：标签系统改为分类子系统——`tags.category_id` 让每个标签归属一个分类（1:N），文章分类仍由 `articles.category_id` 权威决定、标签不反向决定文章分类（首批软约束，审计到 0 冲突后另行决策硬校验）。`tags.name` / `slug` 继续全局唯一，URL 结构不变；存量回填规则为「按引用文章的分类投票、平票取小 id、无文章归未分类」。五个决策的后果、边界与回滚原则见 ADR 0008。
-
-阅读统计三表为派生数据，不进入 `/admin/export` 备份与 `/admin/import` 恢复（短期令牌与可重算聚合不跨环境搬运）；`site_config` 的统计密钥与心跳行在导入时保留本机值。
-
-## API 接口
-
-所有接口前缀 `/api/v1`。浏览器请求通过 Astro API 路由代理到 Worker；文章详情 SSR 页与 RSS 在服务端直连 Worker origin（不走同源代理，避免 SSR 再绕一层自身路由）。路由参数分型（issue #100 / M20）：`:id` 及 `:*_id` 只匹配纯数字（非数字 → 404，不进入 handler 造成 `bind(NaN)`；纯数字但违反契约如 0 / 前导零 / 超 safe integer 仍由 handler 判 400），`:slug` 只匹配 URL-safe 字符与百分号编码（兼容中文 slug），通配统一具名 `*path`（不再用数字下标）；路由按 method 分桶注册。同源代理（issue #98 / M18 补测）：上游 CORS 头按白名单重建、10s 超时映射 502（502 响应带 `Content-Type: application/json` 与白名单 CORS，不复用预检头）；`%2e%2e` / `../` 点段由入口 URL 规范化拦截（不以原样进入代理 handler）。响应头剥离（issue #110，闭合 #98 的 Deferred）：RFC 7230 §6.1 的 8 类 hop-by-hop 头（`connection` / `keep-alive` / `proxy-authenticate` / `proxy-authorization` / `te` / `trailer` / `transfer-encoding` / `upgrade`）以及 `Connection` 头逐项点名的自定义头，全部从上游响应中删除，不再透传给浏览器（否则代理会替上游"接管"逐跳语义，且 `Connection: X` 可借道删掉本不该动的头）。**顺序有讲究**：先剥 hop-by-hop，再清掉上游 CORS 头并按请求 Origin 精确重建——反过来做的话，`Connection: access-control-allow-origin` 就能把刚重建的 CORS 头删掉（`buildProxyResponseHeaders` 的注释与 `tests/api-proxy-hop-by-hop.test.ts` 的「CORS 重建共存」用例一起锁定这个次序）。`Vary` 只摘掉 `Origin` 后与上游剩余 token 合并（保留 `Vary: Accept-Encoding`，`Vary: *` 原样保留），不再整条删除。
-
-### 公开接口
-
-| 方法 | 路径                                | 说明                                                                                                                                                |
-| ---- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET  | `/health`                           | 健康检查                                                                                                                                            |
-| POST | `/auth/login`                       | 登录（返回JWT token和用户信息；口令长度上限 200，超限直接 400 且不进入 KDF）                                                                        |
-| GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
-| GET  | `/articles/:slug`                   | 文章详情（Tier 0 计数：§4.1 过滤、`view_<id>` Cookie + 24h HMAC 令牌去重、日聚合 pv/uv/requests；草稿预览不计数）                                   |
-| GET  | `/categories`                       | 分类列表（含 `tag_count` 名下标签数，taxonomy v2）                                                                                                  |
-| GET  | `/categories/:slug`                 | 分类详情（含 `article_count` 与 `tag_count`；未知 slug 404）                                                                                        |
-| GET  | `/tags`                             | 标签列表（含 `category_id` / `category` / `article_count`——草稿不计入；支持 `?category_slug=` 按分类过滤，taxonomy v2）                             |
-| GET  | `/tags/:slug`                       | 标签详情（含分类归属与计数；未知 slug 404）                                                                                                         |
-| GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
-| POST | `/articles/:article_id/comments`    | 提交评论（每 IP 每分钟 3 次，跨文章共享配额，issue #48）                                                                                            |
-| GET  | `/search`                           | 全文搜索（每 IP 每分钟 10 次；FTS 与 LIKE 两条路径的结果项均含标签的 `category`，taxonomy v2）                                                      |
-| POST | `/articles/:article_id/like`        | 点赞/取消（每 IP 每分钟 10 次，跨文章共享配额，issue #48）                                                                                          |
-| GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
-| GET  | `/media/serve/*`                    | 媒体文件访问（仅 `media/` 命名空间；R2 优先、KV 存量兜底；`backup:` / `imgproxy/` / `textproxy/` 等 key 一律 404）                                  |
-| GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
-| GET  | `/config`                           | 公开站点配置                                                                                                                                        |
-| GET  | `/settings/public`                  | 公开白名单投影（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效），前台运行时套用                                                                       |
-| GET  | `/img-proxy?url=`                   | 外链图片代理（前端 img 直连失败自动降级；SSRF（含解析后 IP 复核）/域名/限流校验，KV TTL 24h 缓存）                                                  |
-| GET  | `/text-proxy?url=`                  | 外链文字/接口代理（前端 fetch 直连失败或 CORS 受限自动降级；与图片通道共用 SSRF（含解析后 IP 复核）/域名/限流校验，text/json/xml 白名单 + CORS 头） |
-
-### 需认证接口（需 `Authorization: Bearer <token>` 请求头）
-
-#### 通用接口
-
-| 方法   | 路径                    | 说明                                                                                                                                                                   |
-| ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/auth/refresh`         | 刷新Token（须改密状态下仍可调用，用于令牌续期）                                                                                                                        |
-| POST   | `/auth/change-password` | 修改本人口令（验证旧密 + 新密强度校验：≥ 12 位、非弱口令名单、非站点名/用户名变体；两端口令长度上限均为 200；须改密状态下与 `/auth/refresh` 同为仅有的两个豁免写接口） |
-| POST   | `/articles`             | 创建文章（自动设置author_id）                                                                                                                                          |
-| GET    | `/articles/:id/edit`    | 编辑器按稳定 id 取正文（认证；`ArticleEditDetail` 不含 `content_html`、无阅读统计副作用）                                                                              |
-| PUT    | `/articles/:id`         | 更新文章（editor仅自己的）                                                                                                                                             |
-| DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                                                                                             |
-| POST   | `/categories`           | 创建分类（自动设置created_by）                                                                                                                                         |
-| PUT    | `/categories/:id`       | 更新分类（editor仅自己的）                                                                                                                                             |
-| POST   | `/tags`                 | 创建标签（自动设置created_by；可选 `category_id` 指定归属分类，缺省归「未分类」；旧 `{name,slug}` 请求体仍兼容，taxonomy v2）                                          |
-| PUT    | `/tags/:id`             | 更新标签归属（仅移动 `category_id`；标签创建者或目标分类所有者可改，其余 403；首批不改 `name` / `slug`，taxonomy v2 / ADR 0008）                                       |
-| GET    | `/comments`             | 评论列表（editor仅自己文章的）                                                                                                                                         |
-| PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                                                                                         |
-| PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                                                                                         |
-| DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                                                                                         |
-| POST   | `/media/upload`         | 上传媒体（优先写 R2；未绑定 R2 时回退 KV；自动设置uploaded_by；每 IP 每分钟 10 次）                                                                                    |
-| GET    | `/media`                | 媒体列表（editor仅自己的）                                                                                                                                             |
-| DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                                                                         |
-
-> `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
-
-> **taxonomy v2 严格校验（issue #82 / ADR 0008，默认关）**：`POST /articles` 与 `PUT /articles/:id`（含只改 `category_id` 不传 `tags` 的情况，按库内现有标签集合校验生效后的分类）可开启「文章标签必须属于文章分类」的硬校验——开关为 `site_config` 行 `strict_tag_category_validation`（值 `1` 开启，缺省 / 其他值关闭），开启时冲突返回 400 且 message 提示具体标签名。开启 / 关闭 SQL 与回滚步骤见 `docs/reviews/2026-11-17-taxonomy-t6-audit.md`。
-
-> `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400（纯数字但违反 id 契约）/ 404（非数字，路由分型拦截，issue #100）、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。该切换已由 #64（T3）完成：`useArticleEditor` 统一走此接口，`src/admin/App.vue` 不再请求公开 slug 接口取正文。
-
-#### 编辑锁接口
-
-| 方法   | 路径                            | 说明                    |
-| ------ | ------------------------------- | ----------------------- |
-| POST   | `/articles/:id/edit-lock`       | 获取编辑锁（30分钟TTL） |
-| DELETE | `/articles/:id/edit-lock`       | 释放编辑锁              |
-| GET    | `/articles/:id/edit-lock`       | 查询编辑锁状态          |
-| POST   | `/articles/:id/edit-lock/force` | 强制接管编辑锁（admin） |
-
-#### 管理员专属接口（需 admin 角色）
-
-| 方法   | 路径                          | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DELETE | `/categories/:id`             | 删除分类（名下仍有标签时 400，提示先移动或批量移到未分类，taxonomy v2）                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| DELETE | `/tags/:id`                   | 删除标签                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| GET    | `/users`                      | 用户列表                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| POST   | `/users`                      | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| PUT    | `/users/:id`                  | 更新用户（密码、显示名、角色；重置口令长度上限 200，并同一步清除登录失败计数与锁定；重置后强制改密）                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| DELETE | `/users/:id`                  | 删除用户（至少保留一个admin）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| GET    | `/config/all`                 | 全部配置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| PUT    | `/config`                     | 更新配置（值必须为字符串；整批校验通过后才写入）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| GET    | `/friend-links/all`           | 全部友链                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| POST   | `/friend-links`               | 创建友链（URL 仅 http/https）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| PUT    | `/friend-links/:id`           | 更新友链（URL 仅 http/https）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| DELETE | `/friend-links/:id`           | 删除友链                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| GET    | `/admin/export`               | 导出数据（阅读统计三表不参与备份；`page`/`page_size` 分片，每表默认上限 5000 行，`table=` 只导单表；`has_more[table]` 标记是否还有下一页，须翻页取全）                                                                                                                                                                                                                                                                                                                                                                                             |
-| POST   | `/admin/import`               | 导入数据（`dry_run=1` 只预演并回报 `would_delete` / `needs_confirm`，破坏性规模须 `confirm=1`；友链 URL 同受 http/https 校验；`site_config` 密钥/心跳行保留本机值；成功响应含 `backup_key` / `batches` / `kv_orphans_deleted` / `kv_cleanup_failed`，500 时另给 `restored` 表示快照是否回滚成功；`media_assets` 为空时旧行未删，此时不做 KV 孤儿清理；taxonomy v2：`tags` 含 `category_id`，**旧备份缺列/为 null 时导入自动归一化到「未分类」**，**新备份导入旧 worker 不保证兼容**——旧列白名单会拒绝带 `category_id` 的行，回滚一律用迁移前备份） |
-| POST   | `/admin/reconcile-counters`   | 计数器对账（admin；按 `article_likes` / `comments` 的 `COUNT(*)` 重算 `like_count` / `comment_count`，返回修复条数与逐条前后差异；手动触发，无自动定时任务）                                                                                                                                                                                                                                                                                                                                                                                       |
-| GET    | `/admin/scrape`               | 网页抓取代理（admin；SSRF/robots 校验，2MB/10s/每管理员 10 次/分；仅透传 HTML 与 Content-Type；`Cache-Control: no-store`）                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| GET    | `/admin/analytics/overview`   | 阅读统计概览（admin；`range=today\|7d\|30d\|90d`，非法值 400；返回 PV / UV / 过滤 bot，Tier 0 的 `engaged` 为 `null`）                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| GET    | `/admin/analytics/dimensions` | 分布（admin；`dim=device\|country\|referrer`、`range` 白名单；省略 `article_id` 为全站 `GROUP BY`；桶 < 5 合并 `other`，总样本 < 20 返回 `insufficient`）                                                                                                                                                                                                                                                                                                                                                                                          |
-| GET    | `/admin/analytics/articles`   | 文章明细（admin；`range` 白名单、`page` 正整数；分页 20 / PV 降序 / 来源 Top1 / 固定 7 日 sparkline / `since` 起点；Tier 1 列为 `null`）                                                                                                                                                                                                                                                                                                                                                                                                           |
-| GET    | `/admin/analytics/quality`    | 数据质量（admin；bot 占比 / 代理覆盖率 / 清理心跳 / 3σ 波动 / 令牌行数及告警；分母为 0 的比率返回 `null`）                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| GET    | `/admin/analytics/trend`      | 趋势（admin；`range` 白名单；按日返回 `pv` / `uv` / `bot_filtered`，无数据的日补 0；供后台 PV/UV 双线图使用，#58）                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| GET    | `/settings`                   | 拉取全部可视化配置（全量视图，与 `/settings/all` 等价）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| GET    | `/settings/all`               | 拉取全部可视化配置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| PUT    | `/settings`                   | 更新可视化配置（配色 / 布局 / 背景 / 功能 / 文案 / 动效）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| POST   | `/settings/reset`             | 恢复默认可视化配置                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| GET    | `/settings/export`            | 导出配置 JSON                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| POST   | `/settings/import`            | 导入配置 JSON                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-
-### API 限流
-
-写操作（POST/PUT/DELETE）、`GET /search`、`GET /articles/:slug` 经统一 `RateLimiter` 限流（分桶口径 issue #48，算法 issue #91）：
-
-- **算法**：滑动窗口计数（当前窗口实计数 + 上一窗口按已流逝比例加权衰减）——窗口切换瞬间不再突发到 2× 配额（固定窗口的旧问题），边界突发上限压到 1 次（见 `worker/tests/rate_limiter.test.ts`）。四处调用点（全局中间件 / img-proxy / text-proxy / scrape）共用 `worker/src/utils/rate_limiter.ts` 一套算法与键名 `ratelimit:<scope>:<identity>:<windowIndex>`。
-- **局限**：KV 无原子自增、`get→put` 并发窗口仍可能少量超发；跨 PoP 最终一致（约 60s）导致计数低估。两者是残余风险，根治需 Durable Objects / Cloudflare Rate Limiting API（未纳入本批）。
-- 计数键按 `method + 路由模板` 分桶，资源 id 段归一为 `:id`——同一接口下不同文章/分类等共享配额，遍历资源 id 无法放大配额
-- 规则精确匹配（不做子串猜测）：评论 3 次/分、点赞 10 次/分、媒体上传 10 次/分、`/auth/*` 与 `/admin/import` 120 次/分、搜索 10 次/分、文章详情 120 次/分（每次访问写 D1，宽松限流抑制放大）
-- 未单列方法落到明确的方法级配额：POST/PUT 60 次/分、DELETE 10 次/分
-- 其余普通 GET 读接口（列表/配置/友链/媒体读取等）跳过限流，不产生 KV 写入
-
-## 前台页面
-
-| 路径                 | 说明                                                                    | 渲染模式 |
-| -------------------- | ----------------------------------------------------------------------- | -------- |
-| `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
-| `/articles`          | 文章列表（分页）                                                        | 静态     |
-| `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
-| `/categories`        | 分类目录（全部分类，含标签数与标签预览）                                | SSR      |
-| `/categories/:slug`  | 分类文章（支持 `?tag=<tag-slug>` 标签筛选）                             | SSR      |
-| `/tags`              | 标签目录（按分类分组，「未分类」固定最后，taxonomy v2）                 | SSR      |
-| `/tags/:slug`        | 标签文章（含分类面包屑与同分类标签跳转）                                | SSR      |
-| `/api/v1/*`          | API代理到Worker                                                         | SSR      |
-| `/rss.xml`           | RSS订阅源                                                               | SSR      |
-| `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
-| `/archives`          | 时间线归档                                                              | 静态     |
-| `/about`             | 关于页面                                                                | 静态     |
-| `/privacy`           | 隐私与阅读统计披露（中英、页脚入口）                                    | 静态     |
-| `/search`            | 搜索页                                                                  | 静态     |
-| `/admin`             | 后台管理                                                                | 静态     |
-
-> **分类 / 标签页 SSR 首屏（issue #97 / M17）**：四个分类 / 标签页在服务端直连 Worker 取数并渲染首屏 HTML（`src/utils/taxonomyServer.ts` + 共用 `taxonomyRender.ts`），非 JS 抓取器可见真实分类 / 标签 / 文章标题；客户端脚本在中文首屏已渲染时跳过重复 fetch（非中文用户主动刷新套用英文文案），分页与语言切换仍刷新。**只有取数失败（`error`）才降级为客户端接管**（`data-ssr="0"`）；`ok` 与 `empty` 都算 SSR 成功（`data-ssr="1"`），空数据由服务端渲染空态文案，客户端不再补一次请求。代价：每次访问多一次服务端同步 fetch Worker（8s 超时），首屏 TTFB 取决于 Worker 响应。
-
-`/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
-
-### 文章详情页 SSR
-
-文章详情由 Astro 在请求时服务端渲染（issue #36 / [ADR 0004](docs/adr/0004-article-ssr-request-time-rendering.md)）：
-
-- **取数**：服务端直连 Worker origin 的 `GET /api/v1/articles/:slug`（不走同源代理），转发访客 `Cookie` 与 `cf-connecting-ip`（映射为 `X-Real-IP`），并把上游 `Set-Cookie`（阅读量 24 小时去重，带 `HttpOnly`）原样回传浏览器；站点标题另读 `/api/v1/config`，失败回退默认站名。
-- **计数**：Worker 侧 `recordArticleView` 只计已发布文章 200；按 `docs/READER_ANALYTICS.md` §4.1 过滤爬虫 / 预取 / 非导航请求，SSR 链路（带**验签通过**的 `X-Real-IP`）写日聚合 `pv` / `uv` / `requests` 与累计 `view_count`，直连 API 或伪造 / 未签名的 `X-Real-IP` 只累加 `requests`，被过滤的直连请求不写库；`view_<id>` Cookie 按 Cookie 快路径 + 24h HMAC 令牌去重，草稿预览不计数；新访客（去重命中）在同一 D1 `batch()` 内写 `device` / `country` / `referrer` 三个单篇维度桶（#56），全站分布由 `GET /admin/analytics/dimensions` 查询时 `GROUP BY` 聚合。IP 验签走 `worker/src/utils/client_ip.ts` 单点（`resolveSignedProxyIp`），访客上下文不再直读 `X-Real-IP`。
-- **访客上下文**：同时转发白名单 `User-Agent` / `Accept` / `Referer` / `Accept-Language` / `Sec-Fetch-Mode` / `Sec-Fetch-Dest` / `Sec-Purpose` / `Purpose` / `X-Purpose` / `Sec-CH-UA*`；`CF-IPCountry` 映射为 `X-Visitor-Country`。缺失的头不合成默认 UA / Accept，Worker 侧提供 `readVisitorContext` 按缺失还原为访客上下文，供机器人过滤与维度使用；其中 `ip` 只取验签通过的 `X-Real-IP`（未签名 / 签名错误 / 缺 secret 一律 null）。
-- **渲染**：`articles.content`（Markdown）是唯一正文源；marked（GFM）渲染后经与后台预览共享的服务端白名单消毒，直接写入首屏 HTML。`articles.content_html` 是历史遗留列：正常发布流程不写入，页面也不读取（仅整库导入可携带旧值），渲染始终以 `content` 为准。
-- **错误口径**：文章不存在 / 未发布 → 404 + 未找到 UI；上游不可达 / 404 以外的非 2xx / 2xx 响应体非法 / 超时（8s）→ 502 + 重试入口；不保留客户端渲染兜底。
-- **缓存**：响应 `Cache-Control: private, no-cache`（HTML 护栏再追加 `no-transform`），含访客 Cookie 的页面不会被共享缓存复用。
-- **无 JS / 动效失败**：`<noscript>` 兜底保证禁用 JS 时标题 / 摘要 / 正文直接可见；motion chunk 动态 import 失败（或 3s 内未完成初始化）时写入 `<html data-motion-failed>`，`motion.css` 同样强制 `[data-reveal]` 可见，避免 JS 仍开启时首屏停在 `opacity:0`。
-- **回归**：dev 下可用 `ARTICLE_API_ORIGIN` 把文章页取数指向本地 mock；生产始终使用 `WORKER_ORIGIN`。CI 在构建前用同一 mock 跑文章 SSR 浏览器回归；两条导航回归仍手动。脚本启动后会先确认 mock 收到 SSR 取数，防止误连真实 Worker；运行方式见 `docs/agents/testing.md`。
-
-### 文章内嵌链接预览（统一内嵌容器）
-
-文章正文中的媒体 / 网页链接在浏览器端渲染为统一的内嵌容器（`src/utils/mediaEmbed.ts`，样式 `src/styles/media-embed.css`），容器 = 标题栏（类型徽标 + 标题链接 + 域名）+ 渲染主体：
-
-- **自动识别（历史文章零改动自动适配，识别规则与旧版一致）**：音频文件（.mp3/.wav/.ogg/.m4a/.flac/.aac）→ 内嵌容器 + 自定义音频播放器（播放/暂停、进度拖拽、倍速）；视频文件（.mp4/.webm/.mov/.m3u8）→ 封面点击加载原生 `<video>`；B 站视频页 / YouTube → 封面点击加载官方播放器 iframe。
-- **手动内嵌网页预览**：后台编辑器「插入链接」支持两种预览方式——普通链接（Markdown `[文字](url)`）与内嵌网页预览（写入 `<a href="…" data-embed="1">文字</a>`，`data-*` 属性可安全通过正文白名单消毒），前台把任意 https 链接渲染为内嵌 iframe（带加载态遮罩、`referrerpolicy=no-referrer`、懒加载）。
-- **降级与兜底**：非 https 链接与已知拒绝内嵌的头部站点（x/twitter/facebook/instagram/github）直接保留普通链接；iframe 加载失败或 12s 超时、媒体源 404/MIME 不符 → 容器内兜底面板（「在新窗口打开」/「转为普通链接」）。
-- **CSP**：`frame-src https:`（详见 `docs/security/csp-evaluation.md` 的 frame-src 放宽评估）；`media-src 'self' https:` 不变。
-- **后台预览一致**：编辑器分屏/预览模式复用同一增强逻辑与全站 `renderMarkdown` 消毒管线；单测 `tests/media-embed.test.ts`（识别 / 容器 / 幂等 / 降级 / 兜底 / 管线保留 data-embed）。
-
-## 后台管理
-
-访问 `/admin` 进入管理后台，功能包括：
-
-- **登录认证** — JWT Token，存储在 localStorage，登录返回用户信息和角色；口令长度上限 200（登录 / 建号 / 改密 / 重置同口径，超限 400 且不进入 KDF）；未知用户名只跑固定 1000 次迭代的假验证（不以等代价为目标；剩余账号存在性时序差是为阻断匿名 CPU 放大而接受的取舍）
-- **角色权限** — admin（全部功能）和 editor（文章/分类/标签/评论/图片，受所有权限制）
-- **文章管理** — 新建/编辑/删除，Markdown编辑器（所见即所得 / 源码 / 分屏 / 线上预览四档，插入链接支持普通链接 / 内嵌网页预览两种方式），Slug支持中文
-  - editor 只能编辑/删除自己的文章
-  - 组件化（T3 #64）：文章列表与全屏壳层在 `src/admin/articles/`，元信息 / 工作区 / 弹窗 / composables 在 `src/admin/editor/`；`App.vue` 不再包含文章编辑器主体，后台样式由 `src/admin/admin-shared.css` 单源提供
-  - 面板拆分（T8 #69）：11 个后台面板移到 `src/admin/panels/`，`App.vue`（226 行）只保留登录、侧栏编排、tab 编排与跨面板状态，不再包含领域模板 / 领域请求 / 面板样式；壳层依赖由 `src/admin/composables/` 的 `provide` / `inject` 注入，`scrape` 与 `analytics` 经 `defineAsyncComponent` 懒加载不进后台首屏 chunk；`about` 保持 Markdown 编辑与预览链接，不接 WYSIWYG；设置类面板只搬 UI，不改设置规则生成链
-  - 拆分度量（T8 #69）：`App.vue` 3206 → 226 行；后台首屏 chunk `App.0CFMjVT7.js` 113,837 B → `App.SP8Znihm.js` 117,975 B（壳层依赖胶水 +4,138 B；同期并行的 T6 #67 也改了后台代码，两次构建共用同一工作区，数字含其影响）；新增 `AnalyticsPanel.C5LZ1aSR.js` 12,876 B 与 `ScrapePanel.HHE3gfBI.js` 8,552 B 两个懒加载面板 chunk，抓取工具 `scrape.CBAiJISo.js` 54,639 B 保持不变
-  - 取数：打开已发布文章走认证接口 `GET /articles/:id/edit`（不经公开 slug 接口、不写阅读统计）；强制接管后重新加载详情并重建未保存基线
-  - 编辑锁：打开前获取、每 10 分钟心跳续期、保存前再次校验；取消 / X / Esc / 保存成功 / 放弃均释放，`beforeunload` 只提示，`pagehide`（`persisted === false`）尽力释放；冲突时禁止保存并提供复制正文 / 保留草稿 / 关闭
-  - 未保存保护：脏状态下关闭 / 取消 / Esc / 刷新触发三出口（保存并关闭 / 放弃修改 / 继续编辑）；加载正文失败不进入可编辑状态，保存失败保持编辑器打开、保持锁并保留内容
-  - 会话失效（`10003`）：先同步落盘本地草稿、尽力释放锁，再退出到登录页，不清除该用户草稿
-  - 所见即所得（T4 #65）：Milkdown 7 内核打开时懒加载；加载 / 模式切换 / 保存前均执行回写守卫，有损时默认进源码模式，作者可显式覆盖但保存前守卫仍失败会阻止保存；打开未编辑不改写正文，源码模式未修改保存保留原始字节
-  - 元信息面板（T6 #67）：标题 `maxlength=200`（与服务端 `validate` 一致）、slug「根据标题生成」后默认锁定可解锁手改、摘要字数计数、封面仅 http(s) 预览且失败占位、标签 chips + 本地筛选、字数 / 阅读时长读数复用 T1 纯函数；发布前检查标题与正文 trim 后非空，slug 冲突由服务端错误原样展示、不改写不加后缀。窄屏元信息折叠为抽屉、宽屏常显，触控目标 ≥44px，280/375px 无横向滚动、1280px 分屏并排；四个模态弹窗有 `role=dialog` / `aria-modal` / 焦点陷阱与焦点归还，保存 / 上传 / 锁丢失用 `aria-live="polite"` 播报
-- **分类管理** — 增改（editor仅自己的），删除仅admin
-- **标签管理** — 增（editor创建的），删除仅admin
-- **评论管理** — 筛选/审核/拒绝/删除（editor仅自己文章的评论）
-- **图片管理** — 上传/缩略图预览/复制链接/删除（editor仅自己上传的）
-- **网页抓取**（仅admin）— 粘贴静态文章 URL，经 Worker 的 SSRF/robots 护栏取回 HTML，在管理端浏览器用 Readability（或手动 CSS selector）提取正文并转成 GFM Markdown；支持 GBK/GB2312 字符集、相对 URL 绝对化、危险 scheme 剥除、嵌入内容降级与可能坏图提示；自动映射标题/摘要/封面/已有标签并追加来源脚注；预览支持 Markdown/渲染切换；「生成草稿并编辑」打开现有文章编辑器并预填标题/slug/summary/封面/正文/分类 1/标签/draft，保存前不创建任何数据
-- **关于页面** — Markdown 编辑 + 个人名片（姓名 / 职位 / 简介 / 头像 / 可增删社交链接）配置，保存后前台实时更新（仅admin）
-- **友情链接** — 增删改（仅admin；URL 仅 http/https，非法存量数据在列表降级为纯文本）
-
-#### 文章编辑器（T4 #65 / T5 #66 / T6 #67 / ADR 0006）
-
-- **正文契约**：`articles.content` 的 Markdown 是唯一正文源；保存只写 Markdown，绝不写 `content_html`（历史遗留列，不读不写，无 D1 迁移）。前台、后台预览、线上预览共用 `src/utils/markdown.ts` 的 `renderMarkdown`（marked + DOMPurify，白名单见 `markdownPolicy.ts`）。
-- **四档形态**：所见即所得（Milkdown 7 / ProseMirror）、源码（textarea + 轻量工具栏，复用 `editorCommands.ts`）、分屏（左侧编辑 + 右侧只读预览）、线上预览弹窗。分屏 ≥1024px 并排、768–1023px 堆叠、<768px 隐藏入口；预览 150ms 防抖、只在可见时渲染，`enhanceMediaLinks` 限定各自容器。
-- **装配**：`CrepeBuilder` 只装 7 项（toolbar / list-item / link-tooltip / table / block-edit / placeholder / cursor）。**不装 `image-block`**：7.23.0 的 `imageBlockSchema` 把图片 `alt` 当宽高比，会静默改写存量正文（T0 实测 15 条语料有 2 条 lossy，去掉后 15/15 语义等价）。也不装 code-mirror / latex / ai / top-bar。
-- **语义等价回写守卫**：`src/utils/editor/markdownBridge.ts` 比较「原文」与「编辑器解析后立即序列化结果」经同一 `renderMarkdown` 渲染、规范化后的 HTML；不要求字节相同（T0 实测 0/15 字节相同）。加载时判定，lossy 默认进源码模式并提示；作者可显式覆盖进 WYSIWYG，但**保存前二次守卫**独立重新判定，仍失败即阻止保存（不发请求、不改状态、保持锁），绝不静默改写。判定结果接入 `useArticleEditor`，不是孤立模块。
-- **内嵌链接**：`<a … data-embed="1">文字</a>` 由 `milkdown/embedLink.ts` 的专用内联节点 + NodeView 承接（编辑器内是真实可编辑 `<a>`，编辑态点击不导航），序列化按原开标签逐字还原；无法安全合并的复杂结构回退到内核原子 html 片段，保持逐字保真。
-- **图片**：工具栏「插入图片」、WYSIWYG 粘贴 / 拖拽统一走 `src/utils/editor/uploadImage.ts`：图片类型与 10MB 预检 → `POST /api/v1/media/upload`（Bearer + FormData `file`）→ `{ url, original_name }` 映射为 `{ url, alt }`（alt 取 `original_name` 去扩展名）。源码模式插入 `![alt](url)` 并选中 alt，alt 走 T1 的 Markdown 转义；上传中禁用工具栏重复提交，失败保留原正文。保留内置 `upload` 插件但覆盖 `uploadConfig.uploader`，写普通 `image` 节点；不写 `blob:` / base64 图片，不新增图片代理或转存，不扩大正文白名单。
-- **本地草稿**：复用 `src/utils/editor/draftStore.ts`，键为 `blog:article-draft:v1:u{userId}:a{articleId|new}`，只存白名单表单字段、`savedAt` 与基线哈希，不存 token。编辑后 1.5s 防抖写入，`pagehide` 同步落盘；打开时显示「恢复 / 丢弃」条，不自动覆盖服务端内容。保存 / 放弃 / 退出登录时清理；超过 1MB 跳过并只提示一次；超过 7 天视为过期并惰性清理。恢复后仍走正常保存 / 锁校验，并重新执行 T4 回写守卫，lossy 时进入源码模式；新建文章首次保存成功后清除 `new` 键，避免下次新建误恢复。
-- **能力边界**：启用的节点 / 标记不超过 `ARTICLE_BODY_TAGS` / `ARTICLE_BODY_ATTRS`；不做 LaTeX、任务列表、下划线、文字颜色、代码高亮、iframe。
-- **快捷键**（仅编辑器焦点内生效）：Ctrl/Cmd+S 保存、K 插入链接、B/I 粗体/斜体（源码模式）、Shift+P 线上预览、Shift+E 切换源码/所见即所得；Esc 在弹窗打开时由弹窗消费，否则走未保存保护。
-- **i18n / 主题**：编辑器文案进 `zh.json` / `en.json`；工具栏 label 用 Vue `reactive` 配置 + `locale-changed` 事件原地更新，切换语言不重建实例、不丢正文；`classic.css` 的 `--crepe-color-*` 映射到站点设计令牌，亮暗跟随 `[data-theme]`。
-- **包体 / CSP**：内核只在首次打开编辑器时加载（实测增量 gzip 约 182 KiB < 350 KiB 预算）；不使用 eval / CDN，`npm run build` 的 `patch-csp` 通过，静态与 SSR 两份 CSP 逐字符一致。
-- **测试**：`tests/editor-markdown-bridge.test.ts`（语料安全 / 有损分组）、`tests/editor-guard-integration.test.ts`（加载 / 模式切换 / 保存前守卫 / 显式覆盖仍阻止）、`tests/editor-upload.test.ts`（预检 / 上传映射 / 服务端错误 / 失败保留正文）、`tests/editor-draft.test.ts`（键 / 隔离 / 7 天过期 / 1MB 配额 / 基线哈希）、`tests/article-editor-flow.test.ts`（草稿恢复 / 丢弃 / 防抖 / pagehide / 保存清理）、`tests/markdown-preview-parity.test.ts`（真实渲染管线下的守卫判定）。`scripts/verify-article-editor.mjs` 已由 T7 #68 按 `docs/ARTICLE_EDITOR_UPGRADE.md` §10.3 重写为覆盖九条检查单的 12 个端到端场景（每个场景独立 browser context），用 `scripts/mock-admin-api.mjs` 的有状态 mock 串起后台 `PUT` 与文章 SSR `GET` 并接入 CI 部署门禁；真机中文输入法组合输入按 §10.4 仍属手工检查。
-- **元信息 / 响应式 / 可访问性测试（T6 #67）**：`tests/editor-meta-fields.test.ts`（node，25 项）钉住发布前校验、封面 http(s) 白名单、slug 锁定状态机、标签筛选、字数与阅读时长同服务端样例；`tests/editor-focus-trap.test.ts`（jsdom，12 项）钉住 Tab 循环、焦点归还与幂等。`scripts/verify-visual-friendliness.mjs` 的 `EDITOR_TARGETS` 独立量测元信息面板（280/375/1280 × 亮暗的对比度 / 裁切 / 触控目标 / 焦点环 / 溢出）；`scripts/verify-editor-responsive.mjs` 浏览器回归抽屉、焦点陷阱与归还、封面失败占位、发布前校验、slug 冲突原样展示、工具栏换行与中英最长标签不裁切（已由 T7 接入 CI 门禁）。两脚本的入口选择器 / 视口矩阵 / `/api/v1/**` fixture 共用 `scripts/editor-meta-fixture.mjs`（单一事实源）；`scripts/verify-editor-responsive.mjs` 已由 T7 #68 接入 CI 门禁。
-- **站点配置** — 标题、副标题、描述、关键词等（仅admin）
-- **外观与个性化** — 可视化配置中心（仅admin）：配色（日/夜 accent、背景、文字、边框）、布局（内容宽度/导航高度/圆角）、全站背景图、遮罩浓度、**背景雾化与亮度**、功能开关（评论/点赞/友链/搜索/RSS/暗色/双语）、文案覆盖（中/英）、动效强度与视差开关；支持导出 / 导入 / 一键恢复默认
-- **账户管理** — 多用户支持（admin/editor角色），增删改，密码修改，自我降级保护（仅admin）
-
-## 视觉与体验增强
-
-> 以下三项能力均通过「可视化配置中心」在 `/admin` 后台实时调整，无需重新部署。详细设计见 `docs/` 目录：`BACKGROUND_IMAGE.md`、`SITE_SETTINGS.md`、`UI_MOTION_UPGRADE.md`。
-
-### 全站背景图
-
-全站所有页面共享一张铺满视口的固定背景层，响应式适配桌面 / 平板 / 手机及横竖屏，不变形、不遮挡文字。
-
-- **实现**：`BaseLayout.astro` 注入 `<div class="site-bg">` 固定层（`position: fixed; inset: -10% 0; z-index: -1`）；背景图与遮罩色由 CSS 变量 `--bg-image` / `--bg-overlay` / `--bg-position` 控制（`variables.css` 中日 / 夜各一份）。
-- **默认图**：`public/bg-placeholder.svg`，可在配置中心替换为自定义图片 URL。
-- **文字对比度**：遮罩按主题背景色 + 配置的浓度（`bgOpacity`，默认 0.55）自动生成渐变，保证前景文字清晰；另支持**背景雾化**（`bgBlur`，0~30px，默认 6px 轻度雾化）与**背景亮度**（`bgBrightness`，0.7~1.3，默认 1），两者均可在后台「外观与个性化 → 背景」调节，让亮图/复杂图背景下的正文保持高可读性。
-- **主题 / 语言切换**：通过 View Transitions（`startViewTransition`）做平滑过渡，背景层同步切换。
-
-### 可视化配置中心
-
-所有个性化设置（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效）统一存为 `site_config` 表中的 JSON blob（key = `site_settings`），由后台「外观与个性化」面板可视化编辑，前后端实时生效。
-
-- **后端**：`worker/src/handlers/settings.ts` —— 读取时与 `getDefaultSettings()` 深度合并（缺失字段自动补默认、未知字段被过滤，防注入）；提供公开白名单投影读取（`GET /settings/public`）+ admin 全量读取 / 写 / 导出 / 导入 / 恢复默认接口。
-- **前端注入器**：`src/utils/settings.ts` 的 `applySettings()` 把配置转成可直接生效的视觉与行为：
-  1. **配色 / 布局 / 背景** → 注入 CSS 变量覆盖 `variables.css` 默认值（`!important` 保证生效），按 `[data-theme="light"/"dark"]` 分写，日 / 夜切换照常生效；
-  2. **功能开关** → 在 `<html>` 写 `data-feature-<name>="off"`，配合 `[data-feature]` 钩子隐藏对应模块（评论 / 点赞 / 友链 / 搜索 / RSS / 暗色 / 双语）；
-  3. **文案覆盖** → 写入 i18n 覆盖层并按当前 locale 刷新 `[data-i18n]` 文本，中 / 英切换照常生效；
-  4. **动效** → 写 `data-motion-intensity` 与 `data-parallax` 及 `--parallax-speed`。
-- **配置项**（见 `SiteSettings` 接口）：`theme`（light/dark 各 10 项配色）、`layout`（内容宽度 / 导航高度 / 三档圆角）、`background`（图片 URL / 遮罩浓度 / 雾化 / 亮度）、`features`（7 个开关）、`copy`（中 / 英文案覆盖）、`motion`（强度 / 视差开关 / 视差速度）。
-- **同步**：`initSettings()` 在页面加载时拉取并套用；保存后通过 `storage` 事件 + `settings-updated` 事件跨标签页实时刷新。
-- **数据安全**：这些设置不含任何密钥，`/settings/public` 白名单投影作为公开接口供前台拉取；全量读取（`/settings`、`/settings/all`）与写 / 导出 / 导入 / 恢复均为 admin 专属。
-- **合法性单源（issue #27 / ADR 0001）**：读侧回落与写侧拒绝共享同一套校验规则 —— 手写单源为仓库根 `settings.rules.json`（规则描述符），`npm run gen:settings` 从其生成 `src/generated/settings-rules.ts` 与 `worker/src/generated/settings-rules.ts` 两份字节一致的规则模块，两侧校验逻辑只消费生成物；生成物禁止手工编辑，CI 以「重新生成 → diff 必须为空」的漂移断言最早门禁守护，漂移修复流程为改描述符 → 重跑生成 → 一并提交。
-- **CORS 白名单单源（issue #85 / H4）**：Worker（`worker/src/middleware/cors.ts`）与同源 API 代理（`src/utils/api-proxy.ts`）共用一份 Origin 白名单 —— 手写单源为仓库根 `cors.origins.json`，`npm run gen:cors` 生成两端 `src/generated/cors-origins.ts` / `worker/src/generated/cors-origins.ts` 字节一致的模块。代理不再无条件写 `Access-Control-Allow-Origin: *`（此前会把 Worker 已收紧的白名单重新放开），改为白名单精确回显 + `Vary: Origin`；OPTIONS 预检补安全头，代理 fetch 加 10s 超时。CI 漂移断言同设置白名单。新增 Origin 只改 `cors.origins.json` 并重跑生成。
-- **富文本白名单单源（issue #92 / M6 + #99 / M19）**：Worker 消毒器（`worker/src/utils/sanitizer.ts`）与前端正文策略（`src/utils/markdownPolicy.ts`）共用一份标签 / 属性 / scheme 白名单 —— 手写单源为仓库根 `rich-text-policy.json`，`npm run gen:rich-text` 生成 `worker/src/generated/rich-text-policy.ts`；前端 markdownPolicy.ts 与描述符的一致性由 `tests/rich-text-policy.test.ts` 交叉守卫。Worker 消毒器从旧正则黑名单改为 `sanitize-html` 白名单消毒（5 类已知 XSS 绕过全部封堵，见 `worker/tests/sanitizer_whitelist.test.ts`），对外签名不变。当前单一源覆盖标签 / 属性 / scheme / 丢内容标签四维；`data-*` / `aria-*` 通配、img 额外 scheme 已纳入描述符。前端 `ARTICLE_BODY_FORBIDDEN_IDS`（DOM clobbering 防护）仍仅在前台 DOMPurify 渲染层生效——Worker 消毒后的正文交付前台会再过一次 DOMPurify，故兜底成立；将其纳入单一源是 #99 的深化项。新增标签 / 属性只改 `rich-text-policy.json` → 重跑生成 → 同步前端 markdownPolicy.ts → 一并提交；CI 漂移断言同设置白名单。**导入路径的净化范围**：`/admin/import` 只对 `content_html`（真正的 HTML 列）过白名单；`articles.content` 是 Markdown 源文、`comments.content` 是纯文本（渲染时由转义兜底），过 HTML 白名单会把 `<https://…>`、`<T>`、围栏里的 HTML 吃掉、把 `a < b` 变成实体，破坏「备份可还原」——正文 XSS 由渲染链（Worker `markdownServer` 消毒 + 前台 DOMPurify）兜底，评论写入路径仍按 #92 入库净化。
-
-### 外链内容智能代理
-
-当外链图片因防盗链 / 域名失效无法显示、或外链文字接口因网络 / CORS 受限无法拉取时，自动降级到本站代理，用户无感。
-
-- **图片通道** `/api/v1/img-proxy?url=`：前端全局监听 `<img>` 加载失败（`document` 捕获阶段 error 事件）→ 自动把 `src` 切换为代理地址；代理成功显示原图，代理也失败则隐藏占位（不显示破图）。仅本站之外的图片触发，同源图片不代理。
-- **文字通道** `/api/v1/text-proxy?url=`：前端提供全局 `window.fetchWithProxy(url, opts)`——直连成功原样返回；失败（网络 / CORS / 非 2xx）自动改请求代理地址。返回标准 `Response`，调用方仅作文本 / JSON 解析。悬浮一言组件已接入。
-- **安全**：仅 http/https、URL 长度限制、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`（防递归代理套娃）、请求头净化（去 Referer / Cookie）、**域名解析后 IP 复核**（DoH A/AAAA，任一结果落入受限段即拒绝；解析失败 / 超时 / 无记录 fail-closed 拒绝；每一跳重定向均复核）+ **双解析器一致性校验**（issue #109：主/备解析器答案集合必须完全一致，否则按 rebinding 拒绝并记 `[ssrf-blocked]`；Workers 无连接级 IP 绑定原语，理由与残余风险见 `docs/adr/0007-dns-rebinding-connection-binding.md`）、仅白名单 MIME（图片通道 image/_，文字通道 text/_ + json + xml）、≤10MB、每 IP 独立限流 120 次/分、10s 超时。**SVG 纵深防御（issue #93 / M7）**：以 `image/svg+xml` 返回的响应强制 `Content-Disposition: attachment` + 沙箱 CSP（`default-src 'none'; sandbox`）+ nosniff（attachment 口径与媒体 serve 一致，沙箱 CSP 是代理通道额外的纵深防御）；`<img src>` 展示不受 attachment 影响，代理层不净化 SVG 内容（评估见 #93 关票评论）。**保持严格 TLS 证书校验**，不做全局绕过。
-- **缓存自动过期删除**：代理结果写入 KV，`expirationTtl` 24h 到期自动清理，无需手动删除。
-- **CORS**：文字通道响应带 `Access-Control-Allow-Origin: *` 并处理 OPTIONS 预检，前端可跨域读取。
-- 代码：`worker/src/handlers/img_proxy.ts`、`worker/src/handlers/text_proxy.ts`；前端侧两个通道分别在 `src/scripts/layout/img-proxy-fallback.ts`（`<img>` 失败降级）与 `src/scripts/layout/fetch-proxy.ts`（`window.fetchWithProxy` + 域级 7 天标记），issue #103 起从 `BaseLayout.astro` 的内联脚本抽出。
-
-### 网页抓取（admin-only）
-
-管理端「网页抓取」标签页把静态文章 URL 变成可校对的 Markdown 草稿（issue #33 / #34 / #35 / ADR 0003）。职责切分为两段：Worker 只做「安全取回」，正文提取与格式转换在管理员浏览器执行（字符集嗅探 → Readability 或手动 selector → Turndown + GFM），原始 HTML 不进入管理页 DOM。
-
-注意：此「页面抓取」与上方「外链内容智能代理」是两条独立通道——代理负责前台运行时显示外链内容，抓取只服务管理端生成草稿。
-
-- **入口** `GET /api/v1/admin/scrape?url=`：路由层 `requireAuth + requireAdmin`（editor 403），handler 内再次校验角色；editor 在管理端也看不到该标签页。
-- **流程**：URL 校验（SSRF）→ robots.txt 预检 → 抓取目标 HTML（逐跳重定向复核）→ 返回原始 HTML 字节；前端按 BOM / `Content-Type` / `<meta charset>` 解码字节，以 `X-Final-URL` 绝对化相对链接、按 `X-Robots-Status` 决定是否显示「未做 robots 检查」警告，再生成预览。原始 HTML 保留在管理页内存，供 selector 本地重提取。
-- **提取与转换**：默认用 Readability；识别不出正文时回退 `<body>` 并显示 no-article 警告。手动 CSS selector 覆盖提取（多个命中按文档顺序拼接；命中表格行/单元格时保留表格与表头上下文），「重新提取」在已抓取的 HTML 上重跑、不重新请求源站；selector 语法错误 / 未命中给出明确错误并保留上一份预览。Markdown 保留标题、列表、引用、带语言标注的围栏代码、GFM 表格、图片与行内强调；正文中与标题同名的 h1 去重。懒加载图片先提升 `data-src` / `srcset` 中的真实地址；相对链接 / 图片按页面自带 `<base>` 或 final URL 解析；iframe/embed/object 在 http/https 时降级为链接，否则丢弃；`javascript:` / `data:` / `vbscript:` 地址一律剥除。
-- **元数据映射**：标题按 Readability → `og:title` → `<title>`（selector 模式优先所选子树 H1）；摘要按 meta/OG description → 正文前 120 字；封面只取 `og:image`（缺失留空）；标签只匹配站点已有标签（meta keywords + 正文区域 `article` / `main` 内的 tag 链接，未匹配项丢弃、不创建新标签）；slug 留空由创建接口生成并去重；分类默认 id 1（未分类）；状态 `draft`；作者由后端按当前管理员写入。
-- **来源脚注**：正文末尾自动追加 `---` + `> 原文：[标题](final URL)（抓取于 YYYY-MM-DD）`，使用最终 URL，标题中的 `[` / `]` 会转义；selector 重提取沿用首次抓取日期。
-- **字符集**：按 BOM → `Content-Type` → `<meta charset>` / XML 声明解码，覆盖 GBK / GB2312；未知或不支持的字符集回退 UTF-8 并显示警告。
-- **预览**：显示标题、摘要、封面缩略图（缺失 / 加载失败时显示占位）、字数、字符集与正文图片数量；缺少可用地址的图片提示可能坏图，其余外链图片提示防盗链风险；Markdown / 渲染切换复用全站 `renderMarkdown`（`marked + DOMPurify`，标签白名单），切换标签页后预览与视图模式保留；新抓取覆盖未保存预览前弹出确认，失败抓取保留旧预览并提供「重试」。
-- **安全**：与图片 / 文字通道共用 SSRF 护栏（仅 http/https、拒绝内网 / 保留 IP / 内部域名 / `*.workers.dev`、解析后 IP 复核、每一跳重定向复核）、仅 `text/html` 与 `application/xhtml+xml`、≤2MB、目标 10s 超时（robots 预检另有 5s 上限）、每管理员 10 次/分限流、仅透传上游 `Content-Type`（其余上游头一律剥离）、`Cache-Control: no-store`、不缓存不写库。
-- **robots.txt**：明确的 `Disallow` 命中 → 403 且不发起目标请求（响应里带命中规则）；404 / 410 / 非 2xx / 网络异常 / 超 500KB → 放行并置 `X-Robots-Status: unchecked`，UI 显示警告。
-- **草稿交接**：预览区「生成草稿并编辑」复用现有文章编辑器，预填标题 / 空 slug / 摘要 / 封面 / Markdown 正文 / 分类 1 / 匹配标签 / `draft`；所有字段仍可在编辑器中修改，取消不创建任何数据；保存仍走既有 `POST /articles`，slug 生成与去重、作者赋值、校验逻辑不变。
-- **范围（T3）**：元数据映射、来源脚注与预览体验已补齐；不做 `articles.source_url` 字段、抓取历史 / 查重、图片转存或自动发布。
-- 代码：`worker/src/handlers/scrape.ts`、`src/utils/scrape.ts`、管理端标签页在 `src/admin/App.vue`。
-
-### UI 动效升级
-
-基于 transform / opacity 的轻量动效体系，性能优先、尊重系统偏好，并可在配置中心按需开关。
-
-- **基建**：`src/styles/motion.css`（入场 / 磁吸 / hover 样式 + 强度分级 / 加载失败兜底）+ `src/utils/motion.ts`（初始化逻辑）。
-- **能力**：
-  - **入场动画** —— 通过 `[data-reveal]` / `[data-reveal="fade-up"]` 与 `[data-reveal-stagger]` 触发，IntersectionObserver 滚动进入视口时播放，支持错峰；
-  - **滚动进度条** —— `ScrollProgress.astro` 顶部细进度条；
-  - **磁吸 / hover 微动效** —— `[data-hover="magnetic"]` 按钮磁吸、卡片 / 图标 hover 反馈；
-  - **视差** —— 背景层极轻微视差（`data-parallax-fixed`，位移 = 滚动进度 × 视口高 × 速度系数，有界），速度可在配置中心调节（默认 0.04）；
-  - **主题 / 语言过渡** —— View Transitions 平滑过渡。
-- **分级与兜底**：
-  - 动效强度 `motion.intensity`：`normal`（全部）/ `reduced`（仅保留轻量入场与进度条，禁用磁吸 / 视差）/ `off`（全部禁用），写入 `<html data-motion-intensity>`；
-  - 视差开关 `motion.parallax`：关闭时写 `data-parallax="off"`；
-  - 全局 `prefers-reduced-motion` 兜底；移动端自动跳过磁吸 / 视差；
-  - motion chunk 动态 import 失败或 3s 内未完成初始化时，写入 `<html data-motion-failed>`，强制 `[data-reveal]` 可见（与禁用 JS 的 `<noscript>` 兜底互补）。
-- **生命周期**：`BaseLayout.astro` 引入 Astro `ClientRouter` 并在 `astro:page-load` 后调用 `initMotion()`；动态渲染的内容触发 `motion:refresh` 事件重新绑定。
-- **脚本组织（issue #103）**：`BaseLayout.astro` 里原来的 600 行内联脚本已拆成 `src/scripts/layout/` 下 11 个模块（`theme-locale` / `mobile-nav` / `dynamic-title` / `site-config` / `site-settings` / `motion-boot` / `back-to-top` / `fetch-proxy` / `hitokoto` / `img-proxy-fallback` / `favicon-light`），layout 里只剩 < 40 行的编排块（逐行 `initXxx()`）与文档头那个**必须保留**的 `is:inline` 主题初始化脚本（首屏防闪色，不能改成模块）。`bound` 幂等守卫在 `theme-locale` / `site-config` 里，防止重复初始化时事件委托叠层或重复打 `/config`。**拆分前后 SSR 产物一致性的证据**：本地构建产物归一化（抹掉 `data-v-*` / `astro-island` uid / 远端 `--bg-*` 变量）后结构零差异——这是人工核对，**未固化为 CI 断言**；仓库内可自动守的是「编排块 < 40 行 + 11 个模块都被 import 且被调用 + 无业务逻辑残留」（`tests/base-layout-modules.test.ts`）与两个有契约模块的行为（`tests/layout-modules.test.ts`），其余 9 个纯 DOM 装饰模块由 Playwright 脚本覆盖。
-
-### 响应式布局
-
-全站从 280px 极窄手机到 3440px 超宽屏使用同一套移动优先断点，详表与验证矩阵见
-[`docs/responsive-design.md`](docs/responsive-design.md)。
-
-- **全局层**：`src/styles/responsive.css` 在 `global.css` 之后单独引入，负责流式页边距
-  （`clamp(0.75rem, 4vw, 2rem)`）、页面标题字号、触控目标、安全区与浮动组件定位。
-- **布局**：首页 1 / 2 / 3 列（`768px`、`1280px`）；文章列表在 `< 768px` 用纵向卡片，
-  `≥ 768px` 改为封面在左的横向卡片；文章详情最大 760px；超宽屏保持版心宽度不拉伸正文。
-- **移动导航**：`< 768px` 显示汉堡按钮，复用同一份 `.nav-links` 作为下拉面板；
-  支持 `aria-expanded`、焦点管理、`Escape` / 点击外部关闭、ClientRouter 导航后复位。
-- **内容适配**：正文 16px 起、长标题 / 英文 / 链接可断行、宽表格与代码块在自身容器内
-  横向滚动；后台 6 张数据表在 `< 768px` 卡片化（字段名 + 值 + 底部操作），
-  不再把 7 列表格压进手机宽度；页头页脚与悬浮一言避让刘海和手势条。
-- **验证**：12 个视口 × 13 条路由（含文章详情、动态分类 / 标签页与 `/admin`）
-  检查无横向滚动、无溢出、无意外裁切；280 / 375 / 667×375 下移动菜单交互通过。
-
-## 站点配置动态化
-
-前台页面在加载时会自动从 `/api/v1/config` 读取站点配置并动态应用：
-
-| 配置项             | 前台应用位置                                              |
-| ------------------ | --------------------------------------------------------- |
-| `site_title`       | 导航栏Logo、页面标题（首页客户端 / 文章页 SSR）、页脚版权 |
-| `site_subtitle`    | 首页Hero区域副标题                                        |
-| `site_description` | 首页Hero描述、meta description、OG描述                    |
-| `site_keywords`    | meta keywords                                             |
-| `about_content`    | `/about` 页面 Markdown 正文                               |
-| `profile_card`     | `/about` 页面顶部个人名片（JSON 字符串）                  |
-
-- 页面级 description 优先级高于站点级（不会被覆盖）
-- 首页 Hero 区域的默认文案在无配置时显示，有配置后自动替换
-
-### 个人名片（`profile_card`）
-
-- **存储与更新**：`site_config` 的单个键，value 为 JSON 字符串。后台「关于页面」面板可编辑各字段、增删社交链接、上传头像（复用 `POST /api/v1/media/upload`）并保存；前台 `/about` 每次加载都从 `GET /api/v1/config` 读取最新值，无需重新构建页面。
-- **字段**：`name`（姓名，80 字）、`role`（职位 / 头衔，120 字）、`bio`（简介，500 字）、`avatar`（头像地址）、`links`（最多 6 条 `{ label, url }` 社交联系方式，可增删）。
-- **安全**：写入时 Worker 过滤未知字段、限制长度，URL 仅放行 `http(s)://`、`mailto:` 与站内 `/` 路径（拒绝 `javascript:` / `data:` / `//host`）；前台所有文本转义后才进入 `innerHTML`，头像地址同样做协议校验。
-- **降级**：键不存在 / 空串 / 坏 JSON / 接口失败时仍渲染卡片骨架 —— 空头像用姓名首字母色块，空姓名回退站点名（再回退「博主」），空职位与简介隐藏该行，无链接不渲染按钮区，完全未配置显示引导文案。
-- **无需 D1 迁移**：`PUT /config` 使用 UPSERT，老库首次保存自动建行（`is_public=1`）；`schema.sql` 的种子行只用于全新环境。
-
-## 本地开发
-
-### 前置要求
-
-- Node.js 22.12+（Worker 的 wrangler 4 要求；CI 使用 22.x 最新版）
-- npm
-
-### 安装依赖
+# Blog Website 部署指南
+
+从零部署本网站到 Cloudflare（Pages 前端 + Worker 后端），直到站点可正常访问。项目介绍、API、开发与功能说明见文末「相关文档」。
+
+## 一、环境要求
+
+| 项目            | 要求                                                                      |
+| --------------- | ------------------------------------------------------------------------- |
+| Node.js         | 22.12+（wrangler 4 要求）                                                 |
+| npm             | 随 Node.js 安装                                                           |
+| Cloudflare 账户 | 需开通 Pages、Workers、D1、KV、R2                                         |
+| API Token 权限  | Pages:Edit + Workers Scripts:Edit + D1:Edit + R2:Edit（与部署、迁移共用） |
+| GitHub 仓库     | 自动部署必需（GitHub Actions）；手动部署可不需要                          |
+
+## 二、前置依赖检查
+
+按顺序完成以下 6 项，全部通过后再部署。
+
+### 2.1 创建 Cloudflare 资源
+
+在 Cloudflare Dashboard 创建：
+
+| 资源        | 名称/标识                            | 说明                                                      |
+| ----------- | ------------------------------------ | --------------------------------------------------------- |
+| D1 数据库   | `blog-db`                            | 文章、分类、标签、评论、配置、统计                        |
+| KV 命名空间 | `MEDIA` / `EDIT_LOCK` / `RATE_LIMIT` | 存量媒体读取 + 编辑锁（TTL 30 分钟）+ 限流计数            |
+| R2 桶       | `blog-media`                         | 新上传媒体；CI 在 `Ensure R2 bucket` 步骤幂等创建         |
+| Pages 项目  | `blog-website`                       | 默认子域 `blog-website-page.pages.dev`                    |
+| Worker      | `blog-api`                           | **不可与 Pages 项目同名**，否则 Git 集成会覆盖 API Worker |
+
+**预期结果**：`npx wrangler d1 list`、`npx wrangler kv namespace list`、`npx wrangler r2 bucket list` 能列出上述资源。
+
+### 2.2 配置 GitHub Actions（Secrets / Variables）
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 中配置。**Variables 均有默认值，可留空**；改域名/资源标识只需改变量，无需改代码。
+
+**Secrets（敏感）**
+
+| Secret                  | 说明                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（Pages + Workers + D1 编辑 + R2 编辑；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                          |
+| `R2_ACCESS_KEY_ID`      | 可选。R2 S3 兼容 Access Key（供迁移脚本 / 外部工具）                                                                                        |
+| `R2_SECRET_ACCESS_KEY`  | 可选。R2 S3 兼容 Secret Key，与上项成对                                                                                                     |
+
+**Variables（非敏感，可留空用默认值）**
+
+| Variable              | 默认值                                   | 说明                                              |
+| --------------------- | ---------------------------------------- | ------------------------------------------------- |
+| `SITE_URL`            | `https://blog.zenfishlog.dpdns.org`      | 站点 origin，驱动 Astro `site` / robots / sitemap |
+| `WORKER_ORIGIN`       | `https://blog-api.zen-13467.workers.dev` | API Worker origin                                 |
+| `SITEMAP_API_BASE`    | 空（= `SITE_URL + /api/v1/articles`）    | sitemap 拉取文章列表的覆盖地址                    |
+| `SITEMAP_PAGE_SIZE`   | `50`                                     | sitemap 分页大小（非法值构建失败）                |
+| `PAGES_PROJECT_NAME`  | `blog-website`                           | Pages 项目名                                      |
+| `WORKER_NAME`         | `blog-api`                               | Worker 名称                                       |
+| `D1_DATABASE_ID`      | `5c759ce7-82e0-4205-8d01-fea18db55cd7`   | D1 数据库 UUID                                    |
+| `D1_DATABASE_NAME`    | `blog-db`                                | D1 数据库名                                       |
+| `KV_MEDIA_ID`         | `c4f354b6c61e43e798a679fb6733edd8`       | MEDIA KV 命名空间 id                              |
+| `KV_EDIT_LOCK_ID`     | `8a63eee2d516410d8e6e5ec7d420a0b1`       | EDIT_LOCK KV 命名空间 id                          |
+| `KV_RATE_LIMIT_ID`    | `e18fbfafedf048a380e6fe4e2a6f96d6`       | RATE_LIMIT KV 命名空间 id                         |
+| `R2_BUCKET_NAME`      | `blog-media`                             | R2 媒体桶名                                       |
+| `R2_REGION`           | `auto`                                   | R2 区域                                           |
+| `R2_ENDPOINT`         | 空                                       | R2 S3 兼容端点覆盖                                |
+| `R2_ACCOUNT_ID`       | 空（回退 `CLOUDFLARE_ACCOUNT_ID`）       | R2 S3 端点账户 ID                                 |
+| `DEPLOY_BASE_URL`     | `https://blog-website-page.pages.dev`    | 就绪探针基地址（打生产别名，**不打自定义域**）    |
+| `DEPLOY_TIMEOUT_SEC`  | `180`                                    | 就绪轮询超时（秒）                                |
+| `DEPLOY_INTERVAL_SEC` | `5`                                      | 就绪轮询间隔（秒）                                |
+| `NODE_VERSION`        | `22`                                     | CI Node 版本                                      |
+| `PLAYWRIGHT_VERSION`  | `1.64.1`                                 | CI 临时安装的 Playwright 版本                     |
+
+> 非法 D1 / KV / R2 / `SITE_URL` 值会让 `scripts/render-worker-config.mjs` 直接失败（fail-closed）。迁移到新域名时，除改 `SITE_URL` 外还须把新 origin 加进 `cors.origins.json` 并重跑 `npm run gen:cors`，否则浏览器跨域直连 Worker 的请求会被拒绝。
+
+**预期结果**：CI 能用这些值渲染出 `worker/wrangler.deploy.jsonc`（生成物，不入 git），且绑定指向正确资源。
+
+### 2.3 配置必填服务端密钥
+
+两项都是生产必配，缺任一项相关功能 fail-closed 或精度下降。
 
 ```bash
-npm install
+# ① 访客 IP 签名密钥：点赞/评论去重、代理限流、阅读统计依赖
+# Worker 侧（验签）
+cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
+# Pages 侧（签名）：Cloudflare Dashboard → Pages 项目 blog-website → Settings → Environment variables
+# 新增 Secret 变量 VISITOR_IP_SIGNING_SECRET（Production + Preview 都加），值与 Worker 侧相同
+
+# ② IP 哈希盐：点赞去重与评论溯源的 ip_hash 计算
+# Worker 侧（只需 Worker，Pages 侧不需要）
+cd worker && npx wrangler secret put IP_HASH_SECRET
 ```
 
-### 前端开发
+**预期结果**：`npx wrangler secret list`（在 `worker/` 下）能看到 `VISITOR_IP_SIGNING_SECRET` 与 `IP_HASH_SECRET`；Pages 环境变量页能看到同名 Secret。缺 `IP_HASH_SECRET` 时 `POST /articles/:id/like`、`GET /articles/:id/like-status`、`POST /articles/:id/comments` 一律 500。
 
-```bash
-npm run dev
-```
+### 2.4 关闭两条并行部署通道
 
-访问 `http://localhost:4321`
+**两条都必须断开**，否则每次 push 多出一条不受门禁约束的部署，线上版本取决于谁后完成。
 
-> 前端类型门禁：`npm run check`（astro check，含 `.astro`/`.vue`/`.ts`；存在类型错误即非零退出）。入口为 `scripts/run-astro-check.mjs`——Node < 22.12 时自动补 `--experimental-require-module` 旗标（language-server 以 require 拉取 ESM-only 的 astro2tsx，组合钉版说明见脚本头注）。
+| 通道               | 关闭位置                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Pages Git 自动部署 | Dashboard → Pages 项目 `blog-website` → Settings → Builds & deployments → 关闭 Automatic deployments               |
+| Workers Build 目标 | Dashboard → Workers & Pages → Worker `blog_website`（根 `wrangler.jsonc`）→ Settings → Build → Disconnect Git 连接 |
 
-### 前端单元测试
+**预期结果**：`npx wrangler pages project list` 显示项目存在且无 Automatic deployments 条目；Worker `blog_website` 的 Git 连接显示 Disconnected。仓库侧无法验证 Dashboard 状态，须人工核查（见第四节）。
 
-```bash
-npm test
-```
-
-根级 vitest（默认 jsdom）覆盖两块：一是抓取管线——`tests/` 内的 HTML/字节 fixture → `src/utils/scrape.ts` 的标题/Markdown、selector 命中/未命中、正文回退、懒加载图片、URL/嵌入降级、字符集解码、元数据映射（摘要/封面/标签/slug/分类/状态）、来源脚注与 CJK 字数；二是文章详情页的服务端接缝——stub `fetch` 验证已发布 / 404 / 未发布 / 上游失败 / 超时的三态映射、访客 Cookie / cf-connecting-ip 转发、Set-Cookie 逐字回传（含 `HttpOnly`）与 `Cache-Control: private, no-cache`；纯函数构造每篇文章的 SEO 元信息（唯一 title、summary / 正文摘录回退、canonical 编码、封面绝对化与缺省省略、`og:type=article` / 发布时间），以及 SSR 站点标题读取（stub `fetch` 验证成功 / 失败 / 脏数据回退）、dev-only `ARTICLE_API_ORIGIN` 解析（dev 生效并去尾斜杠 / 生产忽略 / 空值回退 `WORKER_ORIGIN`）；上述文件用 `@vitest-environment node` 覆盖默认 jsdom。该命令从仓库根目录运行，已接入 CI，位于前端类型检查之后、构建之前。文章 SSR 的浏览器回归（服务端正文 / 无 JS / motion 失败兜底 / 404 / 502）也已在构建前接入 CI，使用 Playwright + 本地 mock；T7 #68 又在同一 Playwright 步骤接入文章编辑器端到端回归 `scripts/verify-article-editor.mjs`（`docs/ARTICLE_EDITOR_UPGRADE.md` §10.3 的九条检查单拆成 12 个独立 browser context 场景、有状态 mock 双通道、`POST /__control` 故障注入）与 `scripts/verify-editor-responsive.mjs`，失败即阻断部署；两条导航回归仍是手动 Playwright 脚本，安装、启动与设计检查单见 `docs/agents/testing.md`。
-
-### Worker 后端开发
-
-```bash
-cd worker
-npm install
-npx wrangler dev
-```
-
-Worker 本地运行在 `http://localhost:8787`
-
-> 质量门禁：`npm run typecheck`（tsc，含 `tests/`）与 `npm test`（vitest）在 CI 部署前强制执行；CI 最先跑的是四份生成物漂移断言（设置白名单 `npm run gen:settings` issue #27 / ADR 0001、安全头 `npm run gen:headers` issue #28 / ADR 0002、CORS 白名单 `npm run gen:cors` issue #85 / H4、富文本白名单 `npm run gen:rich-text` issue #92 / #99，各自重新生成 → git diff 必须为空），随后才是 worker typecheck / worker 测试、前端 check、根级 vitest、文章 SSR 浏览器回归 / 文章编辑器端到端回归（`verify-article-editor`）/ 编辑器响应式回归（`verify-editor-responsive`）/ 后台移动端回归 / 页面观感友好度检查（`npm run verify:visual`，13 条规则，失败输出带规则 ID 与源码定位的问题清单）、构建；浏览器回归集中在同一 Playwright 步骤，失败即阻断部署，规则与复现命令见 `docs/agents/testing.md`。
-
-### 初始化数据库
+### 2.5 初始化数据库（仅首次部署）
 
 ```bash
 cd worker
@@ -655,210 +110,56 @@ npx wrangler d1 execute blog-db --remote --file=./migrations-baseline.sql   # �
 npm run db:seed          # 生成随机初始管理员口令（仅终端打印一次，首次登录强制改密）
 ```
 
-> **注意**：必须使用 `--remote` 标志操作远程数据库，否则只影响本地。
+- 必须使用 `--remote` 操作远程库，否则只影响本地。
+- `schema.sql` 可重复执行；存量库不要执行 `migrations/0001_baseline.sql`（会 duplicate column），用 `migrations-baseline.sql` 标记即可。
+- `npm run db:seed` 用 `randomUUID()` 生成随机口令、以 PBKDF2 哈希 UPSERT 写入 `admin` 账户，终端**仅打印一次**明文，请立即保存。
 
-> **数据库迁移框架（issue #94 / M12）**：`worker/schema.sql` 只保留「全新库」形态（历史 ALTER 列已并入 CREATE TABLE，可重复执行无 `duplicate column`）；历史增量 ALTER + UPDATE 收编在 `worker/migrations/0001_baseline.sql`，由 `wrangler d1 migrations` 管理（`wrangler.jsonc` 的 `migrations_dir: "migrations"`）。全新库与已迁移存量库**不要**执行 0001（会 duplicate column），改用上面的 `migrations-baseline.sql` 把 `0001_baseline.sql` 记为已应用（幂等，可重跑）；从未迁移过的极老库才用 `npx wrangler d1 migrations apply blog-db --remote` 执行 0001 补齐列。用 `npx wrangler d1 migrations list blog-db --remote` 查待应用列表——baseline 标记后应显示「No migrations to apply」。
->
-> **#83 / H1**：`schema.sql` 不再写入任何硬编码可登录口令。全新库初始化后**必须**执行 `npm run db:seed`（本地库加 `--` 传 `--local`），它用 `randomUUID()` 生成随机口令、以 PBKDF2 哈希 UPSERT 写入 `admin` 账户并在终端打印一次明文；该口令无法从仓库或响应复现。若种子命令失败，本次口令不打印、可安全重跑。可用 `SEED_ADMIN_USERNAME` 覆盖用户名。
+**预期结果**：`npx wrangler d1 migrations list blog-db --remote`（在 `worker/` 下）显示「No migrations to apply」；用 seed 打印的口令可登录 `/admin`，并强制跳转到改密。
 
-> **已有部署升级**：schema.sql 现为全新库形态、可重复执行，尾部不再有增量 ALTER。已迁移过的库如需接入迁移框架，执行 `migrations-baseline.sql` 标记 0001 已应用即可；新增结构变更写成 `worker/migrations/0002_*.sql`（命名 `{number}_{name}.sql`，按数字排序）后用 `wrangler d1 migrations apply` 应用。切勿把历史 0001 直接 apply 到已迁移库（duplicate column）。
+> **已有库升级**：新增结构变更写成 `worker/migrations/0002_*.sql` 后用 `wrangler d1 migrations apply` 应用，切勿把全量 `schema.sql` 当迁移跑。存量库的一次性列/索引增量（Tier0、M22、taxonomy v2）与迁移前置备份步骤见 `docs/LOCAL_DEVELOPMENT.md`。
 
-**阅读统计（Tier 0）增量 DDL**：已有库升级时执行 `worker/schema-tier0-incremental.sql`（5 条语句，均 `IF NOT EXISTS`，重复执行安全）。issue #94 后 `schema.sql` 已是幂等全新库形态、重跑不再报 duplicate；该文件仍作为「只补 Tier 0、不碰其他结构」的最小增量来源保留。它与 `worker/schema.sql` 的「阅读统计 Tier 0」段同义。`site_config` 的 `analytics_hmac_secret` 在首次计数时懒生成，`analytics_last_job_at` 由每日清理任务写入，无需手工预置；Tier 1 的 `analytics_consent` 本批不建。
+> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，依次重放幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）与 `scripts/migrate-reading-time.mjs`，再由 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在；`CLOUDFLARE_API_TOKEN` 须具备目标 D1 的**编辑权限**。CI 不执行 `scripts/remove-edge-cors.mjs`（zone 级 CORS 清理为手动项）。手动应急命令见 `docs/LOCAL_DEVELOPMENT.md`。
 
-```bash
-cd worker
-npx wrangler d1 execute blog-db --remote --file=./schema-tier0-incremental.sql
-```
+### 2.6 绑定自定义域名（可选）
 
-**M22 索引增量 DDL**：补 `media_assets(uploaded_by)`、`comments(article_id, status)`、`friend_links(is_active)` 三个二级索引（issue #73）。执行 `worker/schema-m22-incremental.sql`（3 条，均 `IF NOT EXISTS`，重复执行安全；前置条件是存量库已有 `uploaded_by` 迁移列）。该文件与 `worker/schema.sql` 中对应索引语句一致，由 `worker/tests/query_columns.test.ts` 机械守卫。
+在 Cloudflare Pages 项目设置中绑定自定义域（如 `blog.zenfishlog.dpdns.org`）。API Worker 无需单独配置域名：浏览器经 Astro 同源代理（`/api/v1/*`）访问，文章 SSR 与 RSS 服务端直连 Worker origin。
 
-```bash
-cd worker
-npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
-```
+**预期结果**：自定义域能打开首页，且 `/api/v1/health` 返回 200。
 
-**taxonomy v2 标签归属迁移（一次性，issue #75 / #77）**：`tags.category_id` 加列 + 索引 + 「未分类」种子 + 存量回填（回填规则见 [ADR 0008](docs/adr/0008-tag-as-category-subsystem.md) 决策 4）。全新库无需单独执行——`schema.sql` 已含同构 DDL；**存量库执行 `worker/schema-tag-category-incremental.sql` 只允许执行一次**：文件含不带 `IF NOT EXISTS` 的 `ALTER TABLE ADD COLUMN`，重复执行会报 `duplicate column`。执行前先 `wrangler d1 export` 导出备份并在副本上演练（行数不变 → `category_id` 空值归零 → 跨分类审计清单产出，三关都过才上生产）；执行后用 `PRAGMA table_info(tags)` / `PRAGMA index_list(tags)` 核对列与索引。回滚按 ADR 0008：只回代码不回 schema，数据用迁移前备份恢复。
+## 三、分步部署操作
 
-> 每日 cron（`0 16 * * *`，即 Asia/Shanghai 00:00）由 Worker `scheduled` 入口执行：删除过期令牌、删除 400 天保留窗口外的日聚合与维度桶，并写入 `site_config.analytics_last_job_at` 心跳。
+### 3.1 方式 A：GitHub Actions 自动部署（推荐）
 
-### 首次设置
-
-数据库初始化并执行 `npm run db:seed` 后，管理员账户（默认用户名 `admin`）以随机初始口令创建；首次登录响应返回 `must_change_password: true` 并强制要求改密。**须改密会话被服务端会话级闸门拦截**：未完成改密前，除 `POST /auth/refresh`（令牌续期）与 `POST /auth/change-password`（改密）外，所有携带该会话令牌的鉴权请求（含 GET 类管理接口）一律返回 403。
-
-> **存量库升级（#83 / H1）**：已执行过旧版 `schema.sql` 的库含硬编码种子口令账号，其 `must_change_password=1` 标记由迁移中的存量识别 UPDATE 完成。若目标库**缺 `must_change_password` 列**（从未跑过该迁移），鉴权采用 fail-closed：所有会话被视为「须改密」，仅续期/改密路径可达——正确出路是立即重放 `schema.sql` 中 `users` 三列迁移（`must_change_password` / `failed_login_attempts` / `locked_until`）。切勿在库未迁移状态下长期运行。
-
-**JWT 密钥**：
-
-- 首次读取时自动生成（48字节随机数据，经 base64url 编码），无需手动配置
-- 永不出现在任何 API 响应或公开设置中
-- 如需手动轮换（例如密钥泄露或重建环境），可通过以下命令更新：
-  ```sql
-  UPDATE site_config SET value = '<新的64字符密钥>', updated_at = datetime('now') WHERE key = 'jwt_secret';
-  ```
-  新密钥会立即生效，所有现有 token 在过期前仍可使用。
-
-## 部署
-
-> **数据库迁移由 CI 自动执行**：每次 push 在全部门禁通过后、部署前，GitHub Actions 依次重放两个幂等增量 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`，均 `IF NOT EXISTS`）以及 `scripts/migrate-reading-time.mjs`（加列类迁移，见下），再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引确实存在，缺一项即红。前提：`CLOUDFLARE_API_TOKEN` 须具备目标 D1 数据库的**编辑权限**（与 Pages/Worker 部署共用同一 token；无 D1 权限时迁移步骤会失败）。该 token **只**需目标 D1 的编辑权限；`scripts/remove-edge-cors.mjs` 是**手动**脚本（要用它清 zone 级通配 CORS，另需 `Zone:Read` + `Transform Rules:Edit`，见 `docs/security/cloudflare-guards.md`）——**CI 不执行它**，zone 上的 `Access-Control-Allow-Origin: *` 边缘规则仍属未闭环项，须人工在 Dashboard / 本地跑脚本清理（wrangler OAuth 无 zone 写权限）。
->
-> **新增对象类迁移**（表 / 索引）：写成独立 `worker/schema-<topic>-incremental.sql`（幂等 `IF NOT EXISTS`），在 `.github/workflows/deploy.yml` 的 `Apply D1 migrations` 步骤追加一行 `wrangler d1 execute --remote --file=...`，并把新对象加入 `scripts/verify-d1-migrations.mjs` 的 `EXPECTED_D1_OBJECTS`（`worker/schema-verify.sql` 同步；一致性由 `tests/d1-migration-verify.test.ts` 守卫）。
->
-> **新增列类迁移**（`ALTER TABLE ADD COLUMN`，无 `IF NOT EXISTS`）：不能塞进 SQL 文件重放（第二次报 `duplicate column`）。照 `scripts/migrate-reading-time.mjs` 的模式写幂等 JS：先查 `PRAGMA table_info` 判列存在，缺列才 ALTER + 回填，末尾再查一次 fail-closed；在 `Apply D1 migrations` 步骤追加一行 `node ../scripts/<name>.mjs`。`reading_time`（#90 / M2）即以此迁移：存量库加列后按与 Worker 一致的算法回填（`tests/reading-time-migration.test.ts` 守卫两端同值），已有列则跳过不覆盖。**禁止**把全量 `schema.sql` 当迁移跑。
->
-> **三套机制分工（issue #94 / M12 后）**：① `worker/migrations/*.sql` 是**结构性迁移的版本历史**（`wrangler d1 migrations`，手动 apply，按文件名去重）——0001 是历史 baseline，未来结构变更写 0002+、不进 CI 自动流程；② `schema-tier0-incremental.sql` / `schema-m22-incremental.sql` 与 `scripts/migrate-reading-time.mjs` 是 **CI 每次重放的幂等补丁**（`IF NOT EXISTS` / 判列存在），属防御性重放网，保留原样、不再新增内容——它们与 ① 不冲突：① 管「一次性演进」，② 管「每次部署的自愈兜底」；③ `schema.sql` 是全新库形态，可重复执行。新增幂等补丁请优先改写为 ① 的迁移文件 + ② 的重放脚本两处（如需 CI 自愈），并在关票说明。
->
-> 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）——CI 自动迁移 + 对象核对正是为防止此类漏跑。手动应急命令见上文「初始化数据库 / 增量 DDL」段。
-
-### GitHub Actions 配置（Secrets / Variables）
-
-在 GitHub 仓库的 Settings → Secrets and variables → Actions 中配置。**所有变量都有默认值**，不配置时行为与迁移前一致；改站点域名 / Worker origin / Cloudflare 资源标识只需改变量，不必改代码。
-
-**Secrets（敏感）**
-
-| Secret                  | 说明                                                                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（CI 部署/迁移需 Pages + Workers + **D1 编辑** + **R2 编辑**；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                                                 |
-| `R2_ACCESS_KEY_ID`      | 可选。R2 S3 兼容 Access Key；配置后 CI 同步为 Worker secret（供迁移脚本 / 外部 S3 工具用，运行时读写走 R2 绑定）                                                   |
-| `R2_SECRET_ACCESS_KEY`  | 可选。R2 S3 兼容 Secret Key，与上一项成对出现                                                                                                                      |
-
-**Variables（非敏感，均可留空用默认值）**
-
-| Variable              | 默认值                                   | 说明                                                         |
-| --------------------- | ---------------------------------------- | ------------------------------------------------------------ |
-| `SITE_URL`            | `https://blog.zenfishlog.dpdns.org`      | 站点 origin；驱动 Astro `site`、robots.txt、sitemap 绝对地址 |
-| `WORKER_ORIGIN`       | `https://blog-api.zen-13467.workers.dev` | API Worker origin（SSR / RSS / 同源代理）                    |
-| `SITEMAP_API_BASE`    | 空（= `SITE_URL + /api/v1/articles`）    | sitemap 构建期拉取文章列表的显式覆盖地址                     |
-| `SITEMAP_PAGE_SIZE`   | `50`                                     | sitemap 拉取分页大小（正整数，非法值构建失败）               |
-| `PAGES_PROJECT_NAME`  | `blog-website`                           | Cloudflare Pages 项目名                                      |
-| `WORKER_NAME`         | `blog-api`                               | API Worker 名称                                              |
-| `D1_DATABASE_ID`      | `5c759ce7-82e0-4205-8d01-fea18db55cd7`   | D1 数据库 UUID（迁移 / 部署配置）                            |
-| `D1_DATABASE_NAME`    | `blog-db`                                | D1 数据库名（迁移命令与 wrangler 绑定）                      |
-| `KV_MEDIA_ID`         | `c4f354b6c61e43e798a679fb6733edd8`       | MEDIA KV 命名空间 id（存量媒体读取 / 编辑锁外的缓存）        |
-| `KV_EDIT_LOCK_ID`     | `8a63eee2d516410d8e6e5ec7d420a0b1`       | EDIT_LOCK KV 命名空间 id                                     |
-| `KV_RATE_LIMIT_ID`    | `e18fbfafedf048a380e6fe4e2a6f96d6`       | RATE_LIMIT KV 命名空间 id                                    |
-| `R2_BUCKET_NAME`      | `blog-media`                             | R2 媒体桶名（小写字母 / 数字 / 连字符，3–63 位）             |
-| `R2_REGION`           | `auto`                                   | R2 区域（同步为 Worker secret，运行时通常无需读取）          |
-| `R2_ENDPOINT`         | 空                                       | R2 S3 兼容端点覆盖（外部工具 / 迁移脚本用）                  |
-| `R2_ACCOUNT_ID`       | 空（回退 `CLOUDFLARE_ACCOUNT_ID`）       | R2 S3 端点使用的账户 ID                                      |
-| `DEPLOY_BASE_URL`     | `https://blog-website-page.pages.dev`    | 部署就绪探针基地址                                           |
-| `DEPLOY_TIMEOUT_SEC`  | `180`                                    | 就绪轮询超时（秒）                                           |
-| `DEPLOY_INTERVAL_SEC` | `5`                                      | 就绪轮询间隔（秒）                                           |
-| `NODE_VERSION`        | `22`                                     | CI Node 版本                                                 |
-| `PLAYWRIGHT_VERSION`  | `1.64.1`                                 | CI 临时安装的 Playwright 版本（不入 package.json）           |
-
-> 资源标识属于部署坐标而非机密，因此放在 Variables；仓库未配置上述任何变量时，渲染出的 `worker/wrangler.deploy.jsonc` 与提交的 `worker/wrangler.jsonc` 一致。非法 D1 / KV / R2 / SITE_URL 值会让 `scripts/render-worker-config.mjs` 直接失败（fail-closed），避免部署到错误资源。
->
-> **`SITE_URL` 与 CORS 白名单**：`cors.origins.json` 是安全边界（只允许明确的站点 origin），刻意不环境化。迁移到新域名时除改 `SITE_URL` 外，还须把新 origin 加进该描述符并重跑 `npm run gen:cors`（双端生成物 + CI 漂移断言），否则浏览器跨域直连 Worker 的请求会被拒绝。
-
-### 访客 IP 签名密钥（#84 / H3，必配）
-
-点赞 / 评论去重、代理限流与阅读统计依赖访客真实 IP，而 SSR / 同源代理到 Worker 的第二跳 `CF-Connecting-IP` 是 Pages 出口地址。为防直连伪造 `X-Real-IP` 绕过去重 / 限流（并污染阅读统计），需在 **Pages 与 Worker 两侧配置同名同值的服务端 secret**：
+**执行**：确认 2.1–2.5 全部完成后，推送到 `main`。
 
 ```bash
-# Worker 侧（验签）：在 worker/ 目录执行
-cd worker && npx wrangler secret put VISITOR_IP_SIGNING_SECRET
-
-# Pages 侧（签名）：在 Cloudflare Dashboard → Pages 项目 blog-website → Settings → Environment variables
-# 新增变量 VISITOR_IP_SIGNING_SECRET（Secret 类型，Production + Preview 都加），值与 Worker 侧相同
+git push origin main
 ```
 
-- 两侧缺任一侧：Worker 侧 fail-closed——不采信 `X-Real-IP`，回退边缘 `CF-Connecting-IP`。功能不中断，但经 Pages 的访客会共用出口 IP（点赞 / 评论去重与限流精度下降）；阅读统计则按「直连」口径只累加 `requests`（不写 pv / uv / 维度桶），故**生产必须两侧都配**。
-- 算法：`HMAC-SHA256("client-ip:v1:" + ip, secret)`，前端 `src/utils/visitorIpSigning.ts` 与 Worker `worker/src/utils/client_ip.ts` 逐字一致，跨端一致性由 `tests/visitor-ip-signing.test.ts` 守卫。
-- 轮换 secret 会使存量 IP 签名瞬间失效（仅影响去重精度，无安全问题），无需迁移数据。
+CI（`.github/workflows/deploy.yml`）按顺序执行以下步骤，任一步失败即阻断后续：
 
-### IP 哈希盐（#104 / L5，必配）
+| #   | 步骤                       | 执行命令 / 配置项                                                                                                      | 预期结果                            |
+| --- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| 1   | 生成物漂移门禁             | `npm run gen:settings` / `gen:headers` / `gen:cors` / `gen:rich-text` + `git diff --exit-code`                         | 重新生成后 diff 为空                |
+| 2   | 安装依赖                   | `npm ci`（根目录 + `worker/`）                                                                                         | 依赖就绪                            |
+| 3   | Worker 类型检查与测试      | `npm run typecheck`、`npm test`（`worker/`）                                                                           | 全绿                                |
+| 4   | 前端类型检查 / Lint / 单测 | `npm run check`、`npm run lint`、`npm test`（根目录）                                                                  | 全绿                                |
+| 5   | 浏览器回归                 | Playwright：文章 SSR / 编辑器端到端 / 编辑器响应式 / 后台移动端 / 观感友好度                                           | 全绿                                |
+| 6   | 构建                       | `npm run build`（prebuild 生成 `public/_headers`，构建后收紧 CSP）                                                     | `dist/` 产物生成                    |
+| 7   | 渲染部署配置               | `node scripts/render-worker-config.mjs`                                                                                | 生成 `worker/wrangler.deploy.jsonc` |
+| 8   | D1 增量迁移                | `wrangler d1 execute ... --config=wrangler.deploy.jsonc --file=./schema-tier0-incremental.sql`（及 M22、reading-time） | 迁移命令成功，不报 duplicate column |
+| 9   | 核对 D1 迁移               | `node scripts/verify-d1-migrations.mjs`                                                                                | 3 表 + 5 索引齐全                   |
+| 10  | 部署 Pages                 | `wrangler pages deploy dist --project-name=blog-website`                                                               | Pages 部署成功                      |
+| 11  | 确保 R2 桶                 | `wrangler r2 bucket create "$R2_BUCKET_NAME"`（已存在视为成功）                                                        | 桶存在                              |
+| 12  | 部署 Worker                | `wrangler deploy --config=wrangler.deploy.jsonc`（`worker/`）                                                          | Worker 部署成功                     |
+| 13  | 同步 R2 凭据（可选）       | 配置了 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` 时同步为 Worker secret                                              | secret 写入成功                     |
+| 14  | 就绪轮询                   | `node scripts/wait-for-deploy.mjs`                                                                                     | 探针就绪，退出码 0（详见第四节）    |
 
-点赞去重与评论溯源存的 `ip_hash` 由服务端盐参与计算；盐缺失时**点赞与评论提交 fail-closed 返回 500**（宁不可用，也不写弱盐哈希）。
+> **L8 已清理**：旧的「sleep 120 + 二次覆盖部署」已删除，改为上表的轮询就绪检查。双通道须在 Dashboard 断开（见 2.4），由 Actions 单点管理。
 
-```bash
-# 生产：Worker 侧 secret（只需 Worker，Pages 侧不需要）
-cd worker && npx wrangler secret put IP_HASH_SECRET
+### 3.2 方式 B：手动部署
 
-# 本地开发：worker/.dev.vars 里写一行（该文件在 .gitignore，勿提交）
-echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
-```
-
-- 算法：`SHA-256("ip-hash:v1:<域>:<ip>:<secret>")`，`<域>` 为 `blog`（评论）或 `like`（点赞）——一份 secret 派生两域盐，两域哈希不可交叉比对。单点实现 `worker/src/utils/ip_hash.ts`，源码中不再有任何字面量盐（`worker/tests/ip_hash.test.ts` 静态守卫）。
-- 轮换 secret：`ip_hash` 全部变化，效果是**点赞去重一次性重置**（同一访客可再点一次）；评论的 `ip_hash` 仅用于溯源展示，无功能依赖。存量数据无法在不知明文 IP 的前提下重算，故**不迁移**。
-- 未配置 secret 时的症状：`POST /articles/:id/like`、`GET /articles/:id/like`（状态查询也要算 `ip_hash` 判断本人是否已赞）与 `POST /articles/:id/comments` 一律 500 + 通用文案（不回显缺哪个变量），文章列表 / 详情 / 搜索等读接口不受影响。
-
-### Cloudflare 资源
-
-需要提前在 Cloudflare Dashboard 中创建：
-
-1. **D1 数据库** — 名为 `blog-db`
-2. **KV 命名空间** — `MEDIA`（存量媒体读取兜底 + 代理/备份）+ `EDIT_LOCK`（编辑锁，TTL 30分钟）+ `RATE_LIMIT`（限流计数）
-3. **R2 桶** — 名为 `blog-media`（新上传媒体；CI 在 `Ensure R2 bucket` 步骤中幂等创建）
-4. **Pages 项目** — 名为 `blog-website`（默认子域 `blog-website-page.pages.dev`，自定义域 `blog.zenfishlog.dpdns.org`；2026-10-23 由 `blog-website-page` 改名而来，旧子域保留）
-5. **Worker** — 名为 `blog-api`
-
-> **注意**：Worker 名称必须为 `blog-api`，不能与 Pages 项目同名，否则 Git 集成自动部署时会覆盖 API Worker。
->
-> **媒体存储**：新上传写 R2；`GET /media/serve/*` 先查 R2、未命中再回退 KV，存量 KV 对象无需一次性迁移即可继续访问。删除按 `media_assets.storage_type` 选择存储（`r2` / `kv`），`remote` 等历史类型不触碰对象存储。因此 R2 绑定缺失时上传会回退 KV（本地开发 / 回滚），但删除 `storage_type=r2` 的行会 fail-closed 报错，避免静默留下孤儿对象。
-
-### 自动部署
-
-> **重要**：请在 Cloudflare Dashboard 中关闭所有 Pages 项目的 Git 自动部署（Settings → Builds & deployments → 关闭 Automatic deployments），统一由 GitHub Actions 管理部署，避免覆盖 API Worker。
->
-> **同样必须断开的第二条通道**：根 `wrangler.jsonc` 对应的 Workers Build（Worker `blog_website`，Settings → Build → 断开 Git 连接 / Disconnect）。这条通道与 Actions 并行运行、部署的是**另一份**前端 Worker，开着就会在每次 push 后多出一条不受门禁约束的部署，且线上实际返回哪个版本取决于两条通道谁后完成。**仓库侧无法验证 Dashboard 状态**（wrangler OAuth 无 zone 写权限），因此这条要求以人工核查为准，检查清单见本节末。
-
-推送到 `main` 分支后，GitHub Actions 自动执行：
-
-1. 生成物漂移断言（设置白名单 / 安全头 / CORS / 富文本策略）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ **ESLint 门禁**（`npm run lint`，死代码 / 未使用变量 / 重复定义 error 级，根配置同时覆盖根包与 `worker/`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏 + `_assets` immutable 长缓存），构建后钩子收紧 CSP 产物）
-2. **渲染部署配置**：`node scripts/render-worker-config.mjs` 把 Variables 中的 D1 / KV / R2 / `SITE_URL` / Worker 名写进 `worker/wrangler.deploy.jsonc`（生成物，`.gitignore` 已忽略；未配置的变量保留仓库默认值）
-3. **D1 增量迁移**：用生成的 `wrangler.deploy.jsonc` 重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
-4. 部署 `dist` 到 Cloudflare Pages（`PAGES_PROJECT_NAME`，默认 `blog-website`）
-5. **确保 R2 桶存在**：`wrangler r2 bucket create "$R2_BUCKET_NAME"`；已存在视为成功（需要 token 具备 R2 编辑权限）
-6. 部署 API Worker 到 Cloudflare Workers（`WORKER_NAME`，默认 `blog-api`）
-7. **可选 R2 凭据同步**：配置了 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` 时，把 S3 兼容凭据与 `R2_ACCOUNT_ID` / `R2_REGION` 同步为 Worker secret（运行时仍走 R2 绑定，不需要 S3 凭据）
-8. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**探针打 Pages 生产别名 `https://blog-website-page.pages.dev`，不打自定义域**：zone 的边缘安全规则会把 GitHub Actions 的出网 IP 判成 bot，自定义域恒 403（实测 run 43987529351，36 次全 403），那是**边缘拦截、不是部署未就绪**——探针遇 403 会在 detail 里标「边缘拦截」避免误导。别名同样覆盖两条链路（`/` 验 Pages 产物、`/api/v1/health` 经同源代理验 Worker + D1/KV/R2 绑定）；自定义域的可达性需在 Dashboard 侧放行 CI 出口 IP，属 #106 未闭环项。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
-
-> L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署与 `blog_website` 的 Workers Build 两条通道须在 Dashboard 断开（见上文「自动部署」），由 Actions 单点管理。
-
-**部署通道人工核查清单**（每次改动部署链路后过一遍，仓库内无法自动验证）：
-
-1. `npx wrangler pages project list` → `blog-website` 存在；再去 Dashboard → Settings → Builds & deployments，确认**没有** Automatic deployments 条目（关闭 Pages 的 Git 集成）。
-2. Dashboard → Workers & Pages → `blog_website` → Settings → Build，确认 Git 连接为 **Disconnected**。这一条是唯一的真判据——`npx wrangler deployments list` 只看得到部署时间，分不出是 push 触发还是 Actions 触发，不能当证据。
-3. 同一次 push 后，`gh run list --workflow=deploy.yml --limit 3` 只有**一个**运行在跑，且 Dashboard 里 `blog_website` 的部署条目不增加（说明那条并行通道确实没在动）。
-4. 就绪轮询失败时先看这个清单——轮询报「探针一直 200 但内容还是旧的」，通常是并行通道覆盖，而不是轮询本身有问题。
-
-### Cloudflare 平台注入护栏
-
-自定义域会在 HTML 上追加 JavaScript Detections 内联脚本与 `Speculation-Rules: "/cdn-cgi/speculation"`（Speed Brain），分别触发 CSP violation 与预取 503。仓库不依赖 Dashboard 关闭这些功能，而由 `scripts/cloudflare-guards.mjs` 单源声明两个响应头：
-
-- `Cache-Control: … no-transform` — 停 JavaScript Detections 注入（代价：HTML 不经边缘 gzip / brotli；此 no-transform 护栏只挂在预渲染 HTML 路由上，`/_assets/*` 等资产不受该护栏影响，而是由独立规则 `Cache-Control: public, max-age=31536000, immutable` 走指纹资产长缓存，issue #96）；
-- `Speculation-Rules: "/speculation-rules"` — 以自有空规则集覆盖 Speed Brain（端点 `src/pages/speculation-rules.ts`，MIME 必须为 `application/speculationrules+json`）。
-
-静态 / 预渲染页面由 `public/_headers` 的 HTML 路由块覆盖，SSR 路由由 `src/middleware.ts` 按 `content-type: text/html` 追加；资产不携带这两个头。新增预渲染 HTML 路由需同步 `HTML_ROUTE_PATTERNS`。验证步骤与已知边界（未知路径 404、zone 级响应头改写）见 `docs/security/cloudflare-guards.md`。
-
-### 部署架构
-
-| 项目           | 类型   | URL                              | 说明                                                                                |
-| -------------- | ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
-| `blog-website` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）                                                        |
-| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV + R2）                                                            |
-| `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐）；**须断开**，见「自动部署」 |
-
-浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
-
-### 部署通道禁令（H2）
-
-仓库内存在两份 wrangler 配置，对应两条互不相同的部署通道，**禁止混用**：
-
-| 配置文件                | 作用对象                             | 执行目录                                                 | 说明                                                                                                             |
-| ----------------------- | ------------------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                                | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT + MEDIA_BUCKET 绑定齐全；本地默认配置（CI 用生成的 `wrangler.deploy.jsonc`） |
-| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（**只在 Dashboard 侧 Git 连接未断开时**才被消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy，Git 连接须断开（见「自动部署」）                                   |
-
-**禁令：**
-
-- **Worker 部署必须在 `worker/` 目录下执行**（`cd worker && npx wrangler deploy`）。根目录禁止执行 `npx wrangler deploy`——根配置是前端 Build 目标，缺少 `DB` / `EDIT_LOCK` / `RATE_LIMIT` 绑定，部署出的 Worker 启动即报错。
-- **CI 与本地配置分离**：CI 用 `scripts/render-worker-config.mjs` 从 GitHub Variables 渲染 `worker/wrangler.deploy.jsonc`（生成物，`.gitignore` 忽略），本地手动部署仍用提交的 `worker/wrangler.jsonc`；两者绑定结构一致，未配置 Variables 时渲染结果与仓库默认值相同。
-- 历史死配置 `worker/wrangler.toml`（仅 MEDIA 绑定，缺 DB / EDIT_LOCK / RATE_LIMIT）已于 2026-10-27 删除。任何脚本 / workflow / package.json 均不得引用该文件名。
-- 根 `wrangler.jsonc` 的 `name = blog_website` 为已裁定值（见 issue #49 裁定记录），不得改为 `blog-api`，否则前端 Worker 会顶替 API Worker 并形成 `/api/v1/*` 代理回环。
-
-### 手动部署
+**执行**（在仓库根目录）：
 
 ```bash
 # 前端
@@ -874,32 +175,59 @@ node scripts/render-worker-config.mjs
 cd worker && npx wrangler deploy --config=wrangler.deploy.jsonc
 ```
 
-## 自定义域名
+**配置项说明**：
 
-- **前端（Pages）** — 在 Cloudflare Pages 项目设置中绑定自定义域名，例如本项目的 `blog.zenfishlog.dpdns.org`。
-- **API Worker** — 浏览器通过 Astro API 路由（`/api/v1/*`）同源代理到 `blog-api` Worker，文章详情 SSR 页与 RSS 在服务端直连 Worker origin；因此**无需**为 Worker 单独配置自定义域名或路由。自定义域名仅作用于 Pages 即可覆盖全站访问。
+- Worker 部署**必须在 `worker/` 目录下执行**。根目录 `npx wrangler deploy` 消费的是前端 Workers Build 配置（缺 D1/KV/R2 绑定），部署出的 Worker 启动即报错。
+- CI 用 `scripts/render-worker-config.mjs` 渲染 `worker/wrangler.deploy.jsonc`（生成物，不入 git）；本地手动部署用提交的 `worker/wrangler.jsonc`。两者绑定结构一致。
 
-## 多语言 (i18n)
+**预期结果**：`npx wrangler deployments list`（在 `worker/` 下）显示新部署；Pages 项目出现新部署记录。
 
-支持中文/英文切换，基于自定义轻量 i18n 方案：
+## 四、启动验证
 
-- **翻译文件** — `src/i18n/zh.json` / `src/i18n/en.json`
-- **工具模块** — `src/utils/i18n.ts`（`initLocale`, `setLocale`, `getLocale`, `t` 函数）
-- **语言检测** — 优先读取 `localStorage` 中的 `locale`，其次根据浏览器语言自动选择
-- **切换方式** — 导航栏地球图标按钮，切换后所有页面内容实时更新
-- **前台页面** — 使用 `data-i18n` 属性标记静态文本，JS 动态内容使用 `t()` 函数
-- **后台管理** — Vue 组件中直接调用 `t()` 函数
+### 4.1 自动就绪探针（CI 已执行）
 
-## 主题
+`node scripts/wait-for-deploy.mjs` 轮询两条链路：
 
-支持亮色/暗色主题切换，设计令牌定义在 `src/styles/variables.css` 中：
+- `GET /`（Pages 生产别名 `https://blog-website-page.pages.dev`）→ 验 Pages 产物
+- `GET /api/v1/health`（经同源代理）→ 要求 `status=ok` 且 `db` 非 `error`，验 Worker + D1/KV/R2 绑定
 
-- **亮色** — 白色背景 + 安知鱼蓝 (#49b1f5) 强调色
-- **暗色** — 深色背景 + 亮蓝 (#7cb8f0) 强调色
-- **字体** — Inter (正文) + JetBrains Mono (代码)
-- **风格** — Apple式毛玻璃导航栏 + 卡片化布局；文章卡片「有封面图 → 上图下文、无封面 → 分类专属色渐变横幅」，分类徽标按分类着色（参考 hexo-theme-anzhiyu 视觉风格融合）
-- **可配置** — 上述配色（accent / 背景 / 文字 / 边框等）现已可在后台「外观与个性化 → 配色」中可视化调整，日 / 夜分别配置，保存后实时生效，详见 [可视化配置中心](#可视化配置中心)。
+默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针末次状态并以退出码 1 失败。探针**不打自定义域**：zone 边缘规则会把 CI 出口 IP 判为 bot 导致恒 403，那是边缘拦截而非未就绪（遇 403 会标注「边缘拦截」）。该探针只校验可达性 + 健康，不校验线上版本号。
 
-## License
+### 4.2 手动验证
 
-MIT
+```bash
+# Pages 前端（生产别名）
+curl -fsS https://blog-website-page.pages.dev/ | head
+
+# API 健康（Worker origin）
+curl -fsS https://blog-api.zen-13467.workers.dev/api/v1/health
+# 预期：{"status":"ok", ...}
+
+# 同源代理链路
+curl -fsS https://blog-website-page.pages.dev/api/v1/health
+
+# 自定义域（如已绑定）
+curl -fsS https://blog.zenfishlog.dpdns.org/
+```
+
+**预期结果**：四条请求均返回 200；health 响应 `status=ok`、`db` 非 `error`；用 2.5 的 initial 口令能登录 `/admin`。
+
+### 4.3 部署通道人工核查清单
+
+每次改动部署链路后过一遍（仓库内无法自动验证）：
+
+1. `npx wrangler pages project list` → `blog-website` 存在；Dashboard → Settings → Builds & deployments 确认无 Automatic deployments 条目。
+2. Dashboard → Workers & Pages → `blog_website` → Settings → Build，确认 Git 连接为 **Disconnected**（唯一真判据；`wrangler deployments list` 分不出是 push 还是 Actions 触发）。
+3. 同一次 push 后 `gh run list --workflow=deploy.yml --limit 3` 只有一个运行在跑，且 `blog_website` 的部署条目不增加。
+4. 就绪轮询报「探针一直 200 但内容还是旧的」→ 通常是并行通道覆盖，先查本清单，不要调大超时。
+
+自定义域的 CI 出口 IP 放行属未闭环项；探针绿但自定义域 403 时按本节排查，不要在 README 里改探针超时。
+
+## 相关文档
+
+- [项目概览（技术栈 / 目录结构 / 数据库设计 / License）](docs/PROJECT_OVERVIEW.md)
+- [API 接口参考（公开 / 认证 / 管理员 / 限流）](docs/API_REFERENCE.md)
+- [前台页面与展示（页面清单 / SSR / 内嵌预览 / 配置 / i18n / 主题 / 响应式）](docs/FRONTEND_FEATURES.md)
+- [后台管理与视觉增强（后台 / 编辑器 / 背景 / 配置中心 / 代理 / 抓取 / 动效）](docs/ADMIN_AND_VISUAL.md)
+- [本地开发指南（环境 / 启动 / 测试 / 数据库初始化 / 首次设置 / JWT 密钥）](docs/LOCAL_DEVELOPMENT.md)
+- [测试约定](docs/agents/testing.md) · [Windows Shell](docs/agents/windows-shell.md) · [GLOSSARY](GLOSSARY.md) · [ADR](docs/adr/) · [代码审查报告](docs/reviews/)
