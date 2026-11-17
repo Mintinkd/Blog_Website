@@ -144,7 +144,8 @@ export function createAdminEditor(deps: AdminEditorDeps) {
     core.discardDraft();
   }
 
-  /** 新建标签沿用原有 POST /tags → loadTags → 加进表单的路径，行为等价。 */
+  /** 新建标签沿用原有 POST /tags → loadTags → 加进表单的路径，行为等价。
+   * taxonomy v2（#80）：请求携带当前分类 category_id（UI 已禁止未选分类时新建）。 */
   async function addEditorTag(name: string): Promise<void> {
     const current = core.getState();
     if (!current || current.form.tags.includes(name)) return;
@@ -153,8 +154,15 @@ export function createAdminEditor(deps: AdminEditorDeps) {
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9\-]/g, "");
     if (!slug) slug = "tag-" + Date.now().toString(36);
+    const categoryId = current.form.category_id
+      ? Number(current.form.category_id)
+      : undefined;
     try {
-      const res = await api("POST", "/tags", { name, slug });
+      const res = await api(
+        "POST",
+        "/tags",
+        categoryId ? { name, slug, category_id: categoryId } : { name, slug }
+      );
       if (res.code === 0 || res.code === 10006) {
         await catalog.loadTags();
         const latest = core.getState();

@@ -106,6 +106,34 @@ export function filterTags(tags: string[], query: string): string[] {
   return tags.filter((tag) => tag.toLocaleLowerCase().includes(needle));
 }
 
+/** taxonomy v2（#80 / ADR 0008）：编辑器标签选项带归属分类（迁移期可为 null）。 */
+export interface EditorTagOption {
+  id: number;
+  name: string;
+  category_id: number | null;
+}
+
+/**
+ * 按当前分类切分标签 chip（#80）：
+ * - 未选分类（categoryId null）：不做过滤，全部按「本分类」渲染、无跨分类标记；
+ * - 已选分类：`category_id === categoryId` 的标签是本分类标签，其余（含无归属）
+ *   都是跨分类标签——已选中的跨分类标签必须保持可见并带标记（不静默隐藏）。
+ * 组件层再把筛选 query 应用到两组上，这里只做归属切分。
+ */
+export function splitTagsByCategory(
+  tags: EditorTagOption[],
+  categoryId: number | null
+): { current: EditorTagOption[]; cross: EditorTagOption[] } {
+  if (categoryId === null) return { current: [...tags], cross: [] };
+  const current: EditorTagOption[] = [];
+  const cross: EditorTagOption[] = [];
+  for (const tag of tags) {
+    if (tag.category_id === categoryId) current.push(tag);
+    else cross.push(tag);
+  }
+  return { current, cross };
+}
+
 export interface EditorReadingStats {
   words: number;
   chinese: number;

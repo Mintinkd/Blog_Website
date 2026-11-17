@@ -3,7 +3,10 @@
 // 期望值均为手写字面量，不从被测函数反推。
 import { describe, it, expect } from "vitest";
 import { buildCategoryRequest } from "../src/admin/panels/categories.logic";
-import { buildTagRequest } from "../src/admin/panels/tags.logic";
+import {
+  buildTagRequest,
+  buildMoveTagRequest,
+} from "../src/admin/panels/tags.logic";
 import { commentsPath } from "../src/admin/composables/useAdminCatalog";
 import { resolveMediaUrl } from "../src/admin/panels/media.logic";
 import {
@@ -34,6 +37,22 @@ describe("TagsPanel — buildTagRequest 纯 payload 构造", () => {
       method: "POST",
       path: "/tags",
       body: { name: "猫", slug: "cat" },
+    });
+  });
+
+  it("taxonomy v2（#80）：新建带分类 → body 含 category_id；移动归属 → PUT /tags/:id 只含 category_id", () => {
+    expect(
+      buildTagRequest({ name: "前端", slug: "frontend", category_id: 2 })
+    ).toEqual({
+      method: "POST",
+      path: "/tags",
+      body: { name: "前端", slug: "frontend", category_id: 2 },
+    });
+    expect(buildMoveTagRequest(11, 3)).toEqual({
+      method: "PUT",
+      path: "/tags/11",
+      // name/slug 为占位空值：worker PUT 只消费 category_id，name/slug 刻意不变
+      body: { name: "", slug: "", category_id: 3 },
     });
   });
 });

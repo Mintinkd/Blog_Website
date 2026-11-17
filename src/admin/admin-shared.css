@@ -1054,6 +1054,10 @@
   border-color: var(--color-accent);
   color: #fff;
 }
+/* taxonomy v2（#80）：跨分类已选标签——虚线边框标记，可见性优于常规选中态 */
+.tag-chip.tag-chip-cross {
+  border-style: dashed;
+}
 .tag-input-row {
   display: flex;
   align-items: center;

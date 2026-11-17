@@ -7,6 +7,7 @@ import {
   readingStats,
   reduceSlugLock,
   safeCoverUrl,
+  splitTagsByCategory,
   type SlugLockState,
 } from "../src/utils/editor/metaFields";
 
@@ -232,5 +233,42 @@ describe("readingStats：面板读数与服务端 calculateReadingTime 同组样
   it("中文 301 字与 200 词边界同样向上取整", () => {
     expect(readingStats("中".repeat(301)).minutes).toBe(2);
     expect(readingStats("word ".repeat(201).trim()).minutes).toBe(2);
+  });
+});
+
+// ── taxonomy v2（#80）：splitTagsByCategory ──
+
+describe("splitTagsByCategory — 编辑器标签分类感知（#80）", () => {
+  const tags = [
+    { id: 1, name: "Vue", category_id: 2 },
+    { id: 2, name: "Node", category_id: 3 },
+    { id: 3, name: "无归属", category_id: null },
+  ];
+
+  it("未选分类（null）：不做过滤，全部按本分类渲染、无跨分类标记", () => {
+    expect(splitTagsByCategory(tags, null)).toEqual({
+      current: tags,
+      cross: [],
+    });
+  });
+
+  it("已选分类：匹配的是本分类，其余（含无归属）都是跨分类", () => {
+    const { current, cross } = splitTagsByCategory(tags, 2);
+    expect(current).toEqual([{ id: 1, name: "Vue", category_id: 2 }]);
+    expect(cross).toEqual([
+      { id: 2, name: "Node", category_id: 3 },
+      { id: 3, name: "无归属", category_id: null },
+    ]);
+  });
+
+  it("选中的分类没有任何标签：current 为空数组、cross 为全部", () => {
+    const { current, cross } = splitTagsByCategory(tags, 999);
+    expect(current).toEqual([]);
+    expect(cross).toEqual(tags);
+  });
+
+  it("空输入：两组都为空数组", () => {
+    expect(splitTagsByCategory([], 2)).toEqual({ current: [], cross: [] });
+    expect(splitTagsByCategory([], null)).toEqual({ current: [], cross: [] });
   });
 });

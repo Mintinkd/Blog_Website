@@ -20,13 +20,23 @@ import {
   readingStats,
   reduceSlugLock,
   safeCoverUrl,
+  splitTagsByCategory,
   TITLE_MAX_LENGTH,
+  type EditorTagOption,
 } from "../../utils/editor/metaFields";
 
 const props = defineProps<{
   form: EditorFormSnapshot;
   categories: { id: number; name: string }[];
-  tags: { id: number; name: string }[];
+  /** taxonomy v2（#80）：标签带归属分类（兼容两种携带形态：category_name 扁平字段
+   * 或 worker GET /tags 的 category 概要对象；都可缺省）。 */
+  tags: {
+    id: number;
+    name: string;
+    category_id?: number | null;
+    category_name?: string | null;
+    category?: { id: number; name: string; slug: string } | null;
+  }[];
   /** 切文章时用来重建 slug 锁定态（新建 / 编辑已有文章规则不同）。 */
   articleId: DraftArticleId | null;
   disabled?: boolean;
@@ -72,15 +82,51 @@ const publishCheck = computed(() => checkPublishReady(props.form));
 const titleCount = computed(() => Array.from(props.form.title).length);
 const summaryCount = computed(() => Array.from(props.form.summary).length);
 
+/**
+ * taxonomy v2（#80）：标签 chip 按当前分类感知。
+ * - 未选分类：全部标签按本分类渲染（无跨分类标记）；
+ * - 已选分类：本分类标签正常渲染；已选中的跨分类标签始终可见并带标记；
+ * - 本地新建、尚未入库的标签视作本分类（extras）。
+ */
+const currentCategoryId = computed(() =>
+  props.form.category_id ? Number(props.form.category_id) : null
+);
+const split = computed(() =>
+  splitTagsByCategory(props.tags as EditorTagOption[], currentCategoryId.value)
+);
+
 /** 已选中但被筛掉的标签始终可见（含本地新建、尚未入库的标签）。 */
 const visibleTagNames = computed(() => {
-  const candidates = props.tags.map((tag) => tag.name);
-  const matched = filterTags(candidates, tagQuery.value);
-  const extras = props.form.tags.filter((name) => !candidates.includes(name));
-  return [...extras, ...matched].filter(
-    (name, index, all) => all.indexOf(name) === index
+  const candidates = split.value.current.map((tag) => tag.name);
+  const extras = props.form.tags.filter(
+    (name) => !props.tags.some((tag) => tag.name === name)
   );
+  const matched = filterTags([...extras, ...candidates], tagQuery.value);
+  return matched.filter((name, index, all) => all.indexOf(name) === index);
 });
+
+/** 已选中的跨分类标签（始终可见 + 标记；随筛选 query 一起过滤）。 */
+const crossCategoryTags = computed(() => {
+  const selected = new Set(props.form.tags);
+  return split.value.cross
+    .filter((tag) => selected.has(tag.name))
+    .filter((tag) => filterTags([tag.name], tagQuery.value).length > 0)
+    .map((tag) => {
+      const raw = tag as EditorTagOption & {
+        category_name?: string | null;
+        category?: { name: string } | null;
+      };
+      return {
+        name: tag.name,
+        categoryName: raw.category_name ?? raw.category?.name ?? null,
+      };
+    });
+});
+
+/** 未选分类时不能新建标签（#80）：新建入口禁用并提示。 */
+const canCreateTag = computed(
+  () => !props.disabled && !!props.form.category_id
+);
 
 function patch(partial: Partial<EditorFormSnapshot>): void {
   emit("update:form", { ...props.form, ...partial });
@@ -95,6 +141,7 @@ function toggleTag(name: string): void {
 }
 
 function addNewTag(): void {
+  if (!canCreateTag.value) return;
   const name = newTagInput.value.trim();
   if (!name) return;
   if (!props.form.tags.includes(name)) emit("add-tag", name);
@@ -240,10 +287,34 @@ function onSlugInput(value: string): void {
           >
             {{ name }}
           </button>
-          <span v-if="visibleTagNames.length === 0" class="meta-hint">
+          <button
+            v-for="cross in crossCategoryTags"
+            :key="`cross-${cross.name}`"
+            type="button"
+            class="tag-chip tag-chip-cross active"
+            :aria-pressed="true"
+            :title="
+              t('admin.cross_category_hint', {
+                category: cross.categoryName ?? t('admin.uncategorized'),
+              })
+            "
+            :disabled="props.disabled"
+            @click="toggleTag(cross.name)"
+          >
+            {{ cross.name }}
+          </button>
+          <span
+            v-if="
+              visibleTagNames.length === 0 && crossCategoryTags.length === 0
+            "
+            class="meta-hint"
+          >
             {{ t("admin.meta_tag_empty") }}
           </span>
         </div>
+        <p v-if="!props.form.category_id" class="meta-hint">
+          {{ t("admin.new_tag_needs_category") }}
+        </p>
         <div class="tag-input-row">
           <input
             id="meta-tag-filter"
@@ -255,7 +326,7 @@ function onSlugInput(value: string): void {
           <input
             v-model="newTagInput"
             class="meta-new-tag-input"
-            :disabled="props.disabled"
+            :disabled="!canCreateTag"
             :aria-label="t('admin.add_tag_placeholder')"
             :placeholder="t('admin.add_tag_placeholder')"
             @keydown.enter.prevent="addNewTag"
@@ -263,7 +334,7 @@ function onSlugInput(value: string): void {
           <button
             type="button"
             class="btn-secondary meta-action-btn"
-            :disabled="props.disabled"
+            :disabled="!canCreateTag"
             @click="addNewTag"
           >
             {{ t("admin.meta_tag_add") }}
