@@ -115,7 +115,7 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
 </style>
 
 <script>
-  import { t, getLocale, initLocale } from '../../utils/i18n.ts';
+  import { t, initLocale } from '../../utils/i18n.ts';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
 
   async function loadCategories() {

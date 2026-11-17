@@ -44,6 +44,12 @@ export interface LoadArticleOptions {
   origin?: string;
   /** 访客请求：转发 Cookie 与白名单上下文头；Cookie 供 API 侧阅读量去重。 */
   request?: Request;
+  /**
+   * Cloudflare 运行时 env（`Astro.locals.runtime.env`）。
+   * #84 / H3：`VISITOR_IP_SIGNING_SECRET` 只在运行时可见，构建期 `import.meta.env`
+   * 内联拿不到；不传则退回构建期值（本地 dev 生效，线上为 undefined）。
+   */
+  runtimeEnv?: unknown;
 }
 
 /** 上游取数超时；超时与网络失败一样映射为 error（502 + 重试入口）。 */
@@ -69,7 +75,10 @@ export async function loadArticleForPage(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const requestInit: RequestInit = { signal: controller.signal };
-  const forwardedHeaders = await forwardVisitorHeaders(options.request);
+  const forwardedHeaders = await forwardVisitorHeaders(
+    options.request,
+    options.runtimeEnv
+  );
   if (forwardedHeaders) requestInit.headers = forwardedHeaders;
   let response: Response;
 
@@ -134,7 +143,8 @@ const VISITOR_CONTEXT_HEADERS = [
  * 其余白名单头按实际存在转发，缺失不合成默认值（构建期 / 测试没有访客请求）。
  */
 async function forwardVisitorHeaders(
-  request?: Request
+  request?: Request,
+  runtimeEnv?: unknown
 ): Promise<Headers | null> {
   if (!request) return null;
 
@@ -145,7 +155,10 @@ async function forwardVisitorHeaders(
   const clientIp = request.headers.get("cf-connecting-ip")?.trim();
   if (clientIp) {
     headers.set("X-Real-IP", clientIp);
-    const sig = await signVisitorIp(clientIp, visitorIpSigningSecret());
+    const sig = await signVisitorIp(
+      clientIp,
+      visitorIpSigningSecret(runtimeEnv)
+    );
     if (sig) headers.set(IP_SIGNING_HEADER, sig);
   }
   const country = request.headers.get("cf-ipcountry")?.trim();

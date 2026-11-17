@@ -12,7 +12,9 @@ import type { Env } from "../src/index";
  * 覆盖工单点名的四条防御线（行为零变化）：
  *   1) 表/列白名单拒绝 —— 未知表/未知列 400，且不执行任何 DELETE/INSERT；
  *   2) site_config 密钥行跳过 —— DELETE 只清非密钥行、INSERT 漏过密钥行、响应报数；
- *   3) articles.content/content_html 与 comments.content 入库前 sanitizeHtml；
+ *   3) 只有 `content_html`（真正的 HTML 列）入库前 sanitizeHtml；Markdown `content`
+ *      与纯文本评论正文原样还原（#92 范围修正：白名单会吃掉 Markdown 里的
+ *      `<https://…>` / `<T>` / 围栏 HTML，破坏「备份可还原」）；
  *   4) FK 安全顺序 —— 删除先子后父、插入先父后子（与 schema FK 依赖吻合）。
  *
  * 接缝：handleImport —— 工单 Key interfaces 点名的 handler 接缝（env.DB SQL 出口）。
@@ -357,8 +359,8 @@ describe("handleImport site_config 密钥行跳过（issue #23 / #12 基线）",
   });
 });
 
-describe("handleImport 内容净化（issue #23 / #12 基线）", () => {
-  it("articles content/content_html 与 comments content 入库前过 sanitizeHtml（XSS 载荷剥离）", async () => {
+describe("handleImport 内容净化（issue #23 / #12 基线；#92 范围修正）", () => {
+  it("只净化 content_html；Markdown 源文与纯文本评论原样还原（#92 修正）", async () => {
     const { res, statements } = await runImport({
       articles: [
         {
@@ -389,10 +391,11 @@ describe("handleImport 内容净化（issue #23 / #12 基线）", () => {
       s.sql.startsWith("INSERT INTO articles")
     );
     expect(articleInsert).toBeDefined();
-    // issue #92 / M6：白名单消毒器把危险属性整条剥除（onerror 消失），
-    // 并将属性值规范化为双引号；旧正则黑名单只留半截 `src=x `。
-    expect(articleInsert!.binds).toContain('<img src="x" />ok');
-    expect(articleInsert!.binds.join(" ")).not.toMatch(/onerror/i);
+    // `content` 是 Markdown 源文：过 HTML 白名单会吃掉 `<https://…>` 自动链接、
+    // `<T>` 泛型与围栏里的 HTML，破坏「备份可还原」。XSS 由渲染链兜底
+    // （markdownServer 消毒 + 前台 DOMPurify），故这里必须逐字原样。
+    expect(articleInsert!.binds).toContain("<img src=x onerror=alert(1)>ok");
+    // `content_html` 是真正的 HTML 列，仍按白名单净化
     expect(articleInsert!.binds).toContain("<p>hi</p>");
     expect(articleInsert!.binds).not.toContain("<script>bad()</script>");
 
@@ -400,9 +403,39 @@ describe("handleImport 内容净化（issue #23 / #12 基线）", () => {
       s.sql.startsWith("INSERT INTO comments")
     );
     expect(commentInsert).toBeDefined();
-    // javascript: scheme 被整条剥除（旧黑名单只去掉 scheme 留 `href="x()"`）
-    expect(commentInsert!.binds).toContain("<a>c</a>");
-    expect(commentInsert!.binds.join(" ")).not.toMatch(/javascript/i);
+    // 评论正文是纯文本（渲染时由 Vue 插值转义），导入不再改写实体
+    expect(commentInsert!.binds).toContain('<a href="javascript:x()">c</a>');
+  });
+
+  it("Markdown 里的自动链接 / 泛型 / 围栏 HTML 经导入后逐字保留", async () => {
+    const markdown = [
+      "see <https://example.com/x> for more",
+      "use <T> generic in TS",
+      "```html",
+      '<div class="x">hi</div>',
+      "```",
+      "a < b && c > d",
+    ].join("\n");
+
+    const { res, statements } = await runImport({
+      articles: [
+        {
+          id: 1,
+          title: "A",
+          slug: "a",
+          content: markdown,
+          content_html: "",
+          created_at: "2024-01-01",
+          updated_at: "2024-01-01",
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    const articleInsert = statements.find((s) =>
+      s.sql.startsWith("INSERT INTO articles")
+    );
+    expect(articleInsert!.binds).toContain(markdown);
   });
 });
 
@@ -726,6 +759,66 @@ describe("handleImport KV 孤儿清理（issue #87 / H9）", () => {
     expect(
       batches.flat().some((s) => s.sql === "DELETE FROM media_assets")
     ).toBe(true);
+  });
+
+  it("media_assets 为空数组时不清理 KV（旧行未被删，key 仍被引用）", async () => {
+    // #87 修正：DELETE 对空表跳过，旧 media_assets 行仍在库里，
+    // 此时若按快照清理 KV 会留下「有记录、无文件」的破图。
+    // 真实触发场景：一次只导入文章、没带 media_assets 的导入。
+    const oldRows = [{ id: 1, kv_key: "live-1", storage_type: "kv" }];
+    const { res, deletes, batches } = await runImport(
+      {
+        articles: [
+          {
+            id: 1,
+            title: "A",
+            slug: "a",
+            content: "body",
+            content_html: "",
+            created_at: "2024-01-01",
+            updated_at: "2024-01-01",
+          },
+        ],
+        media_assets: [],
+      },
+      { dbOptions: { selectRows: { media_assets: oldRows } } }
+    );
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).data).toMatchObject({
+      kv_orphans_deleted: 0,
+      kv_cleanup_failed: 0,
+    });
+    expect(deletes).toEqual([]);
+    expect(
+      batches.flat().some((s) => s.sql === "DELETE FROM media_assets")
+    ).toBe(false);
+  });
+
+  it("articles 导入列含 reading_time：备份往返不把阅读时长打回默认 1", async () => {
+    // #73 / M22 补列时的回归点：descriptor 漏列会让 export 丢列、import 落 DEFAULT 1。
+    const { res, statements } = await runImport({
+      articles: [
+        {
+          id: 1,
+          title: "A",
+          slug: "a",
+          content: "body",
+          content_html: "",
+          reading_time: 7,
+          created_at: "2024-01-01",
+          updated_at: "2024-01-01",
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    const articleInsert = statements.find((s) =>
+      s.sql.startsWith("INSERT INTO articles")
+    );
+    expect(articleInsert).toBeDefined();
+    expect(articleInsert!.sql).toContain("reading_time");
+    expect(articleInsert!.binds).toContain(7);
   });
 
   it("KV 删除失败不影响已提交的 DB 导入，响应如实报数且不含异常原文", async () => {

@@ -14,7 +14,15 @@ export const prerender = false;
 /** #85 / H4：代理上游超时（10s，与 articleServer.ts 的 8s 同量级） */
 const PROXY_TIMEOUT_MS = 10_000;
 
-export async function ALL({ request, url }: { request: Request; url: URL }) {
+export async function ALL({
+  request,
+  url,
+  locals,
+}: {
+  request: Request;
+  url: URL;
+  locals?: unknown;
+}) {
   // #85 / H4：预检不再绕过安全头；CORS 按白名单回显（非白名单无 ACAO）
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -36,7 +44,14 @@ export async function ALL({ request, url }: { request: Request; url: URL }) {
   const clientIp = request.headers.get("cf-connecting-ip")?.trim() || "";
   if (clientIp) {
     headers.set("X-Real-IP", clientIp);
-    const sig = await signVisitorIp(clientIp, visitorIpSigningSecret());
+    // #84 / H3：secret 必须来自运行时 env（`Astro.locals.runtime.env`），
+    // 构建期 import.meta.env 在 Cloudflare 上拿不到私有变量，只作兜底。
+    const runtimeEnv = (locals as { runtime?: { env?: unknown } } | undefined)
+      ?.runtime?.env;
+    const sig = await signVisitorIp(
+      clientIp,
+      visitorIpSigningSecret(runtimeEnv)
+    );
     if (sig) headers.set(IP_SIGNING_HEADER, sig);
   }
 

@@ -48,7 +48,29 @@ export async function signVisitorIp(
   return toHex(new Uint8Array(signature));
 }
 
-/** 读取服务端 secret；Astro 在 SSR 运行时从 process.env / import.meta.env 注入 */
-export function visitorIpSigningSecret(): string | undefined {
-  return import.meta.env.VISITOR_IP_SIGNING_SECRET || undefined;
+/**
+ * 读取服务端 secret。
+ *
+ * **必须优先读运行时 env**：Astro 在构建期把 `import.meta.env.*` 内联成字面量，
+ * Cloudflare 上私有变量不会在构建期出现（CI 只注入 CLOUDFLARE_*），若只读
+ * `import.meta.env` 则线上恒为 `undefined` → 不写签名头 → Worker 端 fail-closed
+ * 退回 `CF-Connecting-IP`（那是 Pages 出口 IP，全站同一值），点赞去重 / 限流 /
+ * 评论溯源按 IP 的口径全部失真。这正是 #84 要修的现象，故运行时 env 为第一来源。
+ *
+ * `@astrojs/cloudflare` 把 Pages 的环境变量挂在 `Astro.locals.runtime.env`，
+ * 由调用方传入（本模块保持无 Astro 依赖，便于单测）。
+ */
+export function visitorIpSigningSecret(
+  runtimeEnv?: unknown
+): string | undefined {
+  const fromRuntime = readEnvString(runtimeEnv, "VISITOR_IP_SIGNING_SECRET");
+  if (fromRuntime) return fromRuntime;
+  // 兜底：本地 dev / 构建期显式注入时（.env 或 Pages 构建设置）走内联值
+  return readEnvString(import.meta.env, "VISITOR_IP_SIGNING_SECRET");
+}
+
+function readEnvString(env: unknown, key: string): string | undefined {
+  if (!env || typeof env !== "object") return undefined;
+  const value = (env as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

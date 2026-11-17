@@ -129,3 +129,22 @@ describe("伪造防护（issue #84）", () => {
     expect(await signClientIp("   ", SECRET)).toBeNull();
   });
 });
+
+/**
+ * 跨端契约样例：与 Pages 侧 `tests/visitor-ip-signing.test.ts` 使用**同一份手写
+ * 十六进制**（由契约文字 `HMAC-SHA256("client-ip:v1:" + ip, secret)` → hex 独立算出）。
+ * 两侧各钉字面量、互不 import 对方实现：改算法时两边必须同时改，而不是一边
+ * 跟着另一边自动变绿（2026-11-17 审查修正了原先「跨包 import 互相印证」的自证写法）。
+ */
+describe("signClientIp 契约样例（与 Pages 侧同字面量）", () => {
+  const CONTRACT_SECRET = "issue84-cross-boundary-secret";
+
+  it("IPv4 / IPv6 逐字节匹配手写十六进制", async () => {
+    expect(await signClientIp("203.0.113.9", CONTRACT_SECRET)).toBe(
+      "5a8b892fc6ca67d2018354c1dfab39b694d46423fde48969da20bd93816e30ef"
+    );
+    expect(await signClientIp("2001:db8::1", CONTRACT_SECRET)).toBe(
+      "bb2d63de513af5d5fbe2bd0fd036e4e2960999732ed05cc9face4878eb837c22"
+    );
+  });
+});

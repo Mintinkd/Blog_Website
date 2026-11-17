@@ -82,6 +82,10 @@ describe("handleExport 分片与列裁剪（#73 / M22）", () => {
     // 形状兼容：export_data + exported_at 仍在
     expect(body.export_data).toBeDefined();
     expect(typeof body.exported_at).toBe("string");
+    // 列清单必须与导入 descriptor 一致：漏 reading_time 会让备份往返把
+    // 每篇阅读时长打回 DEFAULT 1（#73 / M22 补列后的回归点，手写字面量钉住）。
+    const articleStmt = stmts.find((s) => /FROM articles/i.test(s.sql));
+    expect(articleStmt?.sql).toContain("reading_time");
   });
 
   it("table 参数只导指定表", async () => {

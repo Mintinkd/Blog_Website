@@ -94,7 +94,7 @@ _Avoid_: 编辑占用、互斥锁
 ## 富文本消毒
 
 **正文白名单**：
-允许进入文章正文与评论的 HTML 标签 / 属性 / URL scheme 清单，单一事实源为仓库根 `rich-text-policy.json`；前端 `markdownPolicy.ts`（DOMPurify / sanitize-html）与 Worker `sanitizer.ts`（生成物）各自消费，交叉测试 + CI 漂移门禁守卫一致性。
+允许进入文章正文与评论的 HTML 标签 / 属性 / URL scheme 清单，单一事实源为仓库根 `rich-text-policy.json`；前端 `markdownPolicy.ts`（DOMPurify / sanitize-html 的调用方）与 Worker `sanitizer.ts`（同为手写消费方，真正的生成物是它导入的 `worker/src/generated/rich-text-policy.ts`）各自消费，交叉测试 + CI 漂移门禁守卫一致性。
 _Avoid_: 消毒黑名单、双份白名单
 
 **搜索高亮白名单**：

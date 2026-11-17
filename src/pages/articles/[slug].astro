@@ -23,9 +23,13 @@ export const prerender = false;
 const { slug } = Astro.params;
 // 文章与站点标题并行取数：配置读取失败时 meta 构造回退默认站名，不阻断文章页。
 // 访客请求交给取数接缝：Cookie 用于阅读量去重，响应头沿用上游 Set-Cookie。
+// #84 / H3：访客 IP 签名的 secret 只在 Cloudflare 运行时可见，必须显式传进去。
+const runtimeEnv = (
+  Astro.locals as { runtime?: { env?: unknown } } | undefined
+)?.runtime?.env;
 const [result, siteTitle] = await Promise.all([
   slug
-    ? loadArticleForPage(slug, { request: Astro.request })
+    ? loadArticleForPage(slug, { request: Astro.request, runtimeEnv })
     : Promise.resolve({ status: 'not-found' } as const),
   loadSiteTitle(),
 ]);

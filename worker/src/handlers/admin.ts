@@ -78,12 +78,19 @@ const IMPORTABLE_TABLES: Record<string, ImportableTable> = {
       "view_count",
       "like_count",
       "comment_count",
+      // issue #90 / M2：阅读时长落库后列表只读该列，导出/导入漏掉它会让
+      // 全量导入把每篇的 reading_time 打回 DEFAULT 1（备份不再是可还原的快照）。
+      "reading_time",
       "published_at",
       "created_at",
       "updated_at",
       "author_id",
     ],
-    sanitizeColumns: ["content", "content_html"],
+    // 只净化真正的 HTML 列：`content` 是 Markdown 源文，过 HTML 白名单会吃掉
+    // `<https://…>` 自动链接、`<T>` 泛型、围栏里出现的 HTML 标签（#92 的
+    // 「合法正文不丢失」在这一列上不成立）。正文的 XSS 由渲染链兜底
+    // （Worker markdownServer 消毒 + 前台 DOMPurify），导入只还原我们自己的备份。
+    sanitizeColumns: ["content_html"],
     deleteRank: 4,
     insertRank: 3,
   },
@@ -102,7 +109,9 @@ const IMPORTABLE_TABLES: Record<string, ImportableTable> = {
       "ip_hash",
       "created_at",
     ],
-    sanitizeColumns: ["content"],
+    // 评论正文是纯文本（前台/admin 都以文本节点渲染，Vue 插值自动转义），不是
+    // HTML；导入再过 HTML 白名单只会把 `a < b`、`&` 变成实体，破坏备份还原。
+    // 写入路径（comment.ts）仍按 #92 做入库净化，XSS 口径不变。
     deleteRank: 2,
     insertRank: 5,
   },
@@ -645,11 +654,15 @@ export async function handleImport(
       );
     }
 
-    // 2c) KV 孤儿清理：只在 DB 全部提交后做，且跳过新导入复用的 key
-    const orphanKeys = orphanedMediaKeys(
-      snapshot,
-      byTable.get("media_assets") ?? []
-    );
+    // 2c) KV 孤儿清理：只在 DB 全部提交后做，且跳过新导入复用的 key。
+    // 与 buildDeleteStatements 的「空表跳过 DELETE」对齐：media_assets 未提供或为
+    // 空数组时旧行根本没被删，这些 key 仍被 DB 引用，此时清理 KV 会留下
+    // 「有记录、无文件」的破图（且接口仍回 success）。故只有真正替换过才清理。
+    const importedMediaRows = byTable.get("media_assets") ?? [];
+    const orphanKeys =
+      importedMediaRows.length > 0
+        ? orphanedMediaKeys(snapshot, importedMediaRows)
+        : [];
     const kvCleanupFailures: string[] = [];
     for (const key of orphanKeys) {
       try {
