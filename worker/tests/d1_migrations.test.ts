@@ -38,6 +38,7 @@ describe("schema.sql 全新库形态（issue #94）", () => {
       ["media_assets", "uploaded_by"],
       ["categories", "created_by"],
       ["tags", "created_by"],
+      ["tags", "category_id"], // #77 / taxonomy v2（ADR 0008）：并入 CREATE TABLE，存量库走增量文件
       ["users", "must_change_password"],
       ["users", "failed_login_attempts"],
       ["users", "locked_until"],

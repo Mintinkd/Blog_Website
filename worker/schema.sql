@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
+  -- taxonomy v2（#75 / ADR 0008）：标签归属分类，1:N；迁移期可空，回填后由应用层保证必填。
+  -- 存量库的 ALTER + 索引 + 未分类种子 + 回填 UPDATE 见 schema-tag-category-incremental.sql（一次性）。
+  category_id INTEGER REFERENCES categories(id),
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -121,6 +124,8 @@ CREATE TABLE IF NOT EXISTS site_config (
 CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug);
 CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status);
 CREATE INDEX IF NOT EXISTS idx_articles_category_id ON articles(category_id);
+-- taxonomy v2（#75 / ADR 0008）：按分类取标签、标签列表 join 的过滤路径
+CREATE INDEX IF NOT EXISTS idx_tags_category_id ON tags(category_id);
 CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);
 CREATE INDEX IF NOT EXISTS idx_comments_article_id ON comments(article_id);
 CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status);
