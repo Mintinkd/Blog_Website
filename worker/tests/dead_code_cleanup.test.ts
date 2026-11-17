@@ -36,9 +36,11 @@ describe("死代码删除（issue #101）", () => {
     }
   });
 
-  it("零引用 interface（CommentListItem / CreateTagRequest）不再出现在源码", () => {
+  it("零引用 interface（CommentListItem）不再出现在源码", () => {
+    // CreateTagRequest 由 #78 / T2 复活为真实契约（handleCreateTag 消费，
+    // category_id 为 T3 预留可选字段），不再是死代码。
     const src = allSource();
-    for (const name of ["CommentListItem", "CreateTagRequest"]) {
+    for (const name of ["CommentListItem"]) {
       expect(src, `${name} 仍存在`).not.toMatch(new RegExp(`\\b${name}\\b`));
     }
   });

@@ -11,21 +11,50 @@ import { getUserIdByUsername } from "../services/user_service";
 import type { AuthResult } from "../middleware/auth";
 import { CATEGORY_COLUMNS, CATEGORY_OWNER_COLUMNS } from "../utils/columns";
 
+/**
+ * 分类列表（taxonomy v2 / #78）：tag_count 为名下标签数，不受文章状态影响
+ * （COUNT(DISTINCT t.id) 对全量 tags 计数；相关子查询避免与文章 join 的行数交叉）。
+ */
+const CATEGORY_LIST_SELECT = `
+    SELECT c.id, c.name, c.slug, c.description, c.created_by, c.created_at, c.updated_at,
+           COUNT(a.id) as article_count,
+           (SELECT COUNT(DISTINCT t.id) FROM tags t WHERE t.category_id = c.id) as tag_count
+    FROM categories c
+    LEFT JOIN articles a ON c.id = a.category_id AND a.status = 'published'
+  `;
+
 export async function handleListCategories(
   request: Request,
   env: Env
 ): Promise<Response> {
   const categories = await env.DB.prepare(
-    `
-    SELECT c.id, c.name, c.slug, c.description, c.created_by, c.created_at, c.updated_at, COUNT(a.id) as article_count
-    FROM categories c
-    LEFT JOIN articles a ON c.id = a.category_id AND a.status = 'published'
-    GROUP BY c.id
-    ORDER BY c.name
+    `${CATEGORY_LIST_SELECT}
+     GROUP BY c.id
+     ORDER BY c.name
   `
   ).all();
 
   return successResponse(categories.results);
+}
+
+/** GET /categories/:slug（taxonomy v2 / #78）：分类详情（article_count 只算已发布，tag_count 同上）。 */
+export async function handleGetCategory(
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+  params: Record<string, string>
+): Promise<Response> {
+  const category = await env.DB.prepare(
+    `${CATEGORY_LIST_SELECT}
+     WHERE c.slug = ?
+     GROUP BY c.id
+  `
+  )
+    .bind(params.slug)
+    .first();
+  if (!category) return notFound("Category not found");
+
+  return successResponse(category);
 }
 
 export async function handleCreateCategory(

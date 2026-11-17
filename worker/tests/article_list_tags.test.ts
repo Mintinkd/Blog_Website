@@ -143,12 +143,59 @@ describe("listArticles 标签批量解析（#89 / M1）", () => {
 
     expect(result.items[0].tags).toEqual([]);
     expect(result.items[1].tags).toEqual([
-      { id: 1, name: "技术", slug: "tech" },
+      { id: 1, name: "技术", slug: "tech", category_id: null, category: null },
     ]);
     expect(result.items[2].tags).toEqual([
-      { id: 3, name: "生活", slug: "life" },
-      { id: 1, name: "技术", slug: "tech" },
-      { id: 2, name: "编程", slug: "code" },
+      { id: 3, name: "生活", slug: "life", category_id: null, category: null },
+      { id: 1, name: "技术", slug: "tech", category_id: null, category: null },
+      { id: 2, name: "编程", slug: "code", category_id: null, category: null },
+    ]);
+  });
+
+  it("taxonomy v2（#78）：blob 携带归属分类段时解析出 category_id / category，无分类段兼容为 null", async () => {
+    // 新格式：id^_name^_slug^=catId^_catName^_catSlug（^= 为 #78 新增的分类段边界）；
+    // 末尾 `^=^_^_` 表示无分类（迁移期语义）。
+    const blob = [
+      "11^_Vue^_vue^=2^_前端^_frontend",
+      "12^_Node^_node^=3^_后端^_backend",
+      "13^_孤儿^_orphan^=^_^_",
+      "14^_旧格式^_legacy", // 旧格式（无 ^= 段）
+    ].join("^^");
+    const fake = makeListDb([row(1, blob)], 1);
+    const result = await listArticles(makeEnv(fake.db), {
+      page: 1,
+      page_size: 10,
+    });
+
+    expect(result.items[0].tags).toEqual([
+      {
+        id: 11,
+        name: "Vue",
+        slug: "vue",
+        category_id: 2,
+        category: { id: 2, name: "前端", slug: "frontend" },
+      },
+      {
+        id: 12,
+        name: "Node",
+        slug: "node",
+        category_id: 3,
+        category: { id: 3, name: "后端", slug: "backend" },
+      },
+      {
+        id: 13,
+        name: "孤儿",
+        slug: "orphan",
+        category_id: null,
+        category: null,
+      },
+      {
+        id: 14,
+        name: "旧格式",
+        slug: "legacy",
+        category_id: null,
+        category: null,
+      },
     ]);
   });
 
@@ -169,11 +216,29 @@ describe("listArticles 标签批量解析（#89 / M1）", () => {
     });
 
     expect(result.items[0].tags).toEqual([
-      { id: 1, name: "a^_b", slug: "cpp" },
-      { id: 2, name: "a b c", slug: "a-b-c" },
-      { id: 3, name: "中文 标签", slug: "zh-tag" },
-      { id: 4, name: "C/C++", slug: "cplusplus" },
-      { id: 5, name: "x^y", slug: "xy" },
+      { id: 1, name: "a^_b", slug: "cpp", category_id: null, category: null },
+      {
+        id: 2,
+        name: "a b c",
+        slug: "a-b-c",
+        category_id: null,
+        category: null,
+      },
+      {
+        id: 3,
+        name: "中文 标签",
+        slug: "zh-tag",
+        category_id: null,
+        category: null,
+      },
+      {
+        id: 4,
+        name: "C/C++",
+        slug: "cplusplus",
+        category_id: null,
+        category: null,
+      },
+      { id: 5, name: "x^y", slug: "xy", category_id: null, category: null },
     ]);
   });
 

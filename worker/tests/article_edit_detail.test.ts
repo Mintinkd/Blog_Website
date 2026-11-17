@@ -44,7 +44,17 @@ const ROW = {
   updated_at: "2026-11-10T08:00:00.000Z",
 };
 
-const TAGS = [{ id: 11, name: "Astro", slug: "astro" }];
+const TAGS = [
+  {
+    id: 11,
+    name: "Astro",
+    slug: "astro",
+    category_id: 3,
+    tc_id: 3,
+    tc_name: "前端",
+    tc_slug: "frontend",
+  },
+];
 
 /** 手写字面量：ArticleEditDetail 的完整字段清单（含排序，不含 content_html） */
 const EXPECTED_EDIT_DETAIL_KEYS = [
@@ -371,7 +381,16 @@ describe("issue #63：读取权限与响应形状", () => {
     const data = await readData(response);
 
     expect(data.status).toBe("published");
-    expect(data.tags).toEqual([{ id: 11, name: "Astro", slug: "astro" }]);
+    // taxonomy v2 / #78：详情内嵌标签带归属分类（旧三字段不变）
+    expect(data.tags).toEqual([
+      {
+        id: 11,
+        name: "Astro",
+        slug: "astro",
+        category_id: 3,
+        category: { id: 3, name: "前端", slug: "frontend" },
+      },
+    ]);
     expect(data.category).toEqual({ id: 3, name: "技术", slug: "tech" });
     expect(data.category_id).toBe(3);
     expect(data.updated_at).toBe("2026-11-10T08:00:00.000Z");

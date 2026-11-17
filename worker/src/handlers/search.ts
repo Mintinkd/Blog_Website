@@ -76,6 +76,20 @@ function sanitizeSnippet(html: string): string {
     .join("</mark>");
 }
 
+/** taxonomy v2 / #78：搜索结果项的归属分类 badge（无分类文章为 null）。 */
+function mapSearchCategory(
+  row: Record<string, unknown>
+): { id: number; name: string; slug: string } | null {
+  const catId = row.category_id as number | null | undefined;
+  return catId != null
+    ? {
+        id: catId,
+        name: row.category_name as string,
+        slug: row.category_slug as string,
+      }
+    : null;
+}
+
 export async function handleSearch(
   request: Request,
   env: Env
@@ -103,10 +117,12 @@ export async function handleSearch(
     const ftsResults = await env.DB.prepare(
       `
       SELECT a.id, a.title, a.slug, a.summary, a.published_at, a.created_at,
+             c.id as category_id, c.name as category_name, c.slug as category_slug,
              snippet(articles_fts, 0, '<mark>', '</mark>', '...', 30) as title_highlight,
              snippet(articles_fts, 1, '<mark>', '</mark>', '...', 80) as content_highlight
       FROM articles_fts f
       JOIN articles a ON a.id = f.rowid
+      LEFT JOIN categories c ON a.category_id = c.id
       WHERE articles_fts MATCH ?
       AND a.status = 'published'
       ORDER BY rank
@@ -131,6 +147,7 @@ export async function handleSearch(
     if ((ftsCount?.total || 0) > 0) {
       const items = ftsResults.results.map((row: Record<string, unknown>) => ({
         ...row,
+        category: mapSearchCategory(row),
         title_highlight: sanitizeSnippet(String(row.title_highlight || "")),
         content_highlight: sanitizeSnippet(String(row.content_highlight || "")),
       }));
@@ -164,11 +181,13 @@ export async function handleSearch(
 
   const results = await env.DB.prepare(
     `
-    SELECT id, title, slug, summary, published_at, created_at
-    FROM articles
-    WHERE status = 'published'
+    SELECT a.id, a.title, a.slug, a.summary, a.published_at, a.created_at,
+           c.id as category_id, c.name as category_name, c.slug as category_slug
+    FROM articles a
+    LEFT JOIN categories c ON a.category_id = c.id
+    WHERE a.status = 'published'
     AND ${whereClause}
-    ORDER BY published_at DESC, created_at DESC
+    ORDER BY a.published_at DESC, a.created_at DESC
     LIMIT ? OFFSET ?
   `
   )
@@ -193,6 +212,7 @@ export async function handleSearch(
     summary: row.summary,
     published_at: row.published_at,
     created_at: row.created_at,
+    category: mapSearchCategory(row),
     title_highlight: highlightText(String(row.title || ""), tokens),
     content_highlight: highlightText(String(row.summary || ""), tokens),
   }));

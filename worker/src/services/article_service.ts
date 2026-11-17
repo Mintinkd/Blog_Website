@@ -4,6 +4,7 @@ import {
   ArticleDetail,
   ArticleEditDetail,
   TagBrief,
+  CategoryBrief,
   CreateArticleRequest,
   UpdateArticleRequest,
 } from "../models/article";
@@ -49,20 +50,51 @@ interface ListArticlesOptions {
  * 这样 name 自身含 `^_` 组合也不丢失（slug 按约定为 URL-safe，不含分隔符）。
  * 空 blob / 缺字段的畸形片段直接丢弃，不抛异常。
  */
+/**
+ * blob 分类段解析（taxonomy v2 / ADR 0008）：`catId^_catName^_catSlug`，
+ * 与标签段同一「首切 id / 末切 slug / 中段归 name」的容错策略；
+ * id 非纯数字（含空串，即无分类）时返回 null。
+ */
+function parseTagCategory(part: string): CategoryBrief | null {
+  const first = part.indexOf("^_");
+  const last = part.lastIndexOf("^_");
+  if (first < 0 || last <= first) return null;
+  const idStr = part.slice(0, first);
+  if (!/^\d+$/.test(idStr)) return null;
+  return {
+    id: Number(idStr),
+    name: part.slice(first + 2, last),
+    slug: part.slice(last + 2),
+  };
+}
+
+/**
+ * 列表标签 blob 解析（issue #89 / M1 引入；taxonomy v2 / #78 扩展）。
+ * 格式：`id^_name^_slug`（#89）+ 归属分类段 `^=catId^_catName^_catSlug`（#78），
+ * 标签间 ^^ 分隔。旧格式（无 `^=` 段）兼容解析为 category: null（迁移期语义）。
+ * 约定：tag.name 不得包含 `^=`（新保留序列）；分类 name 不得包含 `^_` 组合之外
+ * 的 `^=`（同 #89 的分隔符约束，写入路径不校验、解析端容错截断）。
+ */
 function parseTagsBlob(blob: unknown): TagBrief[] {
   if (typeof blob !== "string" || blob.length === 0) return [];
   const tags: TagBrief[] = [];
   for (const chunk of blob.split("^^")) {
     if (!chunk) continue;
-    const first = chunk.indexOf("^_");
-    const last = chunk.lastIndexOf("^_");
+    const eqIdx = chunk.indexOf("^=");
+    const tagPart = eqIdx >= 0 ? chunk.slice(0, eqIdx) : chunk;
+    const first = tagPart.indexOf("^_");
+    const last = tagPart.lastIndexOf("^_");
     if (first < 0 || last <= first) continue;
-    const id = Number(chunk.slice(0, first));
+    const id = Number(tagPart.slice(0, first));
     if (!Number.isFinite(id)) continue;
+    const category =
+      eqIdx >= 0 ? parseTagCategory(chunk.slice(eqIdx + 2)) : null;
     tags.push({
       id,
-      name: chunk.slice(first + 2, last),
-      slug: chunk.slice(last + 2),
+      name: tagPart.slice(first + 2, last),
+      slug: tagPart.slice(last + 2),
+      category_id: category ? category.id : null,
+      category,
     });
   }
   return tags;
@@ -145,9 +177,11 @@ export async function listArticles(
            c.id as category_id, c.name as category_name, c.slug as category_slug,
            u.display_name as author_name,
            (SELECT group_concat(blob.part, '^^') FROM (
-              SELECT t.id || '^_' || t.name || '^_' || t.slug AS part
+              SELECT t.id || '^_' || t.name || '^_' || t.slug
+                     || '^=' || COALESCE(tc.id, '') || '^_' || COALESCE(tc.name, '') || '^_' || COALESCE(tc.slug, '') AS part
               FROM tags t
               JOIN article_tags at ON t.id = at.tag_id
+              LEFT JOIN categories tc ON t.category_id = tc.id
               WHERE at.article_id = a.id
               ORDER BY t.id
             ) blob) AS tags_blob
@@ -211,10 +245,38 @@ const ARTICLE_DETAIL_SELECT = `
     LEFT JOIN users u ON a.author_id = u.id
   `;
 
+/**
+ * 标签行 → TagBrief 的共用映射（taxonomy v2 / #78）：
+ * 列表 blob 解析与详情 SQL 查询（loadArticleTags）产出的标签都带
+ * category_id / category，两处形状一致，避免字段漂移。
+ */
+function mapTagRow(t: Record<string, unknown>): TagBrief {
+  const catId = t.tc_id as number | null | undefined;
+  const category =
+    catId != null
+      ? {
+          id: catId,
+          name: t.tc_name as string,
+          slug: t.tc_slug as string,
+        }
+      : null;
+  return {
+    id: t.id as number,
+    name: t.name as string,
+    slug: t.slug as string,
+    category_id: (t.category_id as number | null) ?? null,
+    category,
+  };
+}
+
 const ARTICLE_TAGS_SQL = `
-    SELECT t.id, t.name, t.slug FROM tags t
+    SELECT t.id, t.name, t.slug, t.category_id,
+           tc.id as tc_id, tc.name as tc_name, tc.slug as tc_slug
+    FROM tags t
     JOIN article_tags at ON t.id = at.tag_id
+    LEFT JOIN categories tc ON t.category_id = tc.id
     WHERE at.article_id = ?
+    ORDER BY t.id
   `;
 
 async function loadArticleTags(
@@ -222,11 +284,7 @@ async function loadArticleTags(
   articleId: unknown
 ): Promise<TagBrief[]> {
   const tags = await env.DB.prepare(ARTICLE_TAGS_SQL).bind(articleId).all();
-  return tags.results.map((t: Record<string, unknown>) => ({
-    id: t.id as number,
-    name: t.name as string,
-    slug: t.slug as string,
-  }));
+  return tags.results.map(mapTagRow);
 }
 
 function mapArticleDetail(

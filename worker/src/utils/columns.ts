@@ -28,8 +28,9 @@ export const FRIEND_LINK_ID_COLUMNS = "id" as const;
 export const MEDIA_COLUMNS =
   "id, filename, original_name, mime_type, file_size, kv_key, storage_type, alt_text, uploaded_by, created_at" as const;
 
-/** tags：创建返回体（含迁移列 created_by）。 */
-export const TAG_COLUMNS = "id, name, slug, created_by, created_at" as const;
+/** tags：创建返回体（含迁移列 created_by 与 taxonomy v2 的 category_id）。 */
+export const TAG_COLUMNS =
+  "id, name, slug, category_id, created_by, created_at" as const;
 
 /** articles：局部更新读取只需 id 与 published_at（判断首次发布补时间戳）。 */
 export const ARTICLE_PUBLISH_COLUMNS = "id, published_at" as const;

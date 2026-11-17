@@ -23,12 +23,14 @@ import {
 } from "./handlers/article";
 import {
   handleListCategories,
+  handleGetCategory,
   handleCreateCategory,
   handleUpdateCategory,
   handleDeleteCategory,
 } from "./handlers/category";
 import {
   handleListTags,
+  handleGetTag,
   handleCreateTag,
   handleDeleteTag,
 } from "./handlers/tag";
@@ -331,6 +333,10 @@ addRoute(
 addRoute("GET", "/categories", async (req, env) =>
   handleListCategories(req, env)
 );
+// taxonomy v2 / #78：分类详情（:slug 分型只匹配 URL-safe 字符，与 :id 写路由不同桶不冲突）
+addRoute("GET", "/categories/:slug", async (req, env, _ctx, params) =>
+  handleGetCategory(req, env, _ctx, params)
+);
 addRoute(
   "POST",
   "/categories",
@@ -354,6 +360,10 @@ addRoute(
 );
 
 addRoute("GET", "/tags", async (req, env) => handleListTags(req, env));
+// taxonomy v2 / #78：标签详情（GET 桶内无 /tags/:id 读路由，与 DELETE /tags/:id 不同 method 不冲突）
+addRoute("GET", "/tags/:slug", async (req, env, _ctx, params) =>
+  handleGetTag(req, env, _ctx, params)
+);
 addRoute(
   "POST",
   "/tags",

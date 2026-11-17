@@ -109,8 +109,14 @@ export interface CategoryBrief {
   slug: string;
 }
 
+/**
+ * 标签概要（taxonomy v2 / ADR 0008）：新增归属分类字段。
+ * 旧字段（id / name / slug）不变；迁移期 category_id 允许为 null（回填前）。
+ */
 export interface TagBrief {
   id: number;
   name: string;
   slug: string;
+  category_id: number | null;
+  category: CategoryBrief | null;
 }
