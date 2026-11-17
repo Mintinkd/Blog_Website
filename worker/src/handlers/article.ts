@@ -217,22 +217,32 @@ export async function handleCreateArticle(
     }
   }
 
-  const { createArticle } = await import("../services/article_service");
-  const article = await createArticle(
-    env,
-    {
-      title: String(body.title),
-      content: String(body.content),
-      slug,
-      category_id: body.category_id ? Number(body.category_id) : null,
-      tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
-      status: (body.status === "published" ? "published" : "draft") as
-        "draft" | "published",
-      summary: body.summary ? String(body.summary) : "",
-      cover_image: body.cover_image ? String(body.cover_image) : "",
-    },
-    authResult
-  );
+  const { createArticle, TagCategoryConflictError } =
+    await import("../services/article_service");
+  let article;
+  try {
+    article = await createArticle(
+      env,
+      {
+        title: String(body.title),
+        content: String(body.content),
+        slug,
+        category_id: body.category_id ? Number(body.category_id) : null,
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
+        status: (body.status === "published" ? "published" : "draft") as
+          "draft" | "published",
+        summary: body.summary ? String(body.summary) : "",
+        cover_image: body.cover_image ? String(body.cover_image) : "",
+      },
+      authResult
+    );
+  } catch (e) {
+    // #82 严格校验：开关开启时跨分类标签 → 400 并提示具体标签
+    if (e instanceof TagCategoryConflictError) {
+      return error(ErrorCodes.VALIDATION_FAILED, e.message);
+    }
+    throw e;
+  }
 
   return successResponse(article, "Article created");
 }
@@ -270,21 +280,31 @@ export async function handleUpdateArticle(
     }
   }
 
-  const { updateArticle } = await import("../services/article_service");
-  const article = await updateArticle(env, Number(id), {
-    title: body.title ? String(body.title) : undefined,
-    content: optionalTextField(body.content),
-    slug,
-    category_id: body.category_id
-      ? Number(body.category_id)
-      : body.category_id === "" || body.category_id === null
-        ? null
-        : undefined,
-    tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
-    status: body.status ? (body.status as "draft" | "published") : undefined,
-    summary: optionalTextField(body.summary),
-    cover_image: optionalTextField(body.cover_image),
-  });
+  const { updateArticle, TagCategoryConflictError } =
+    await import("../services/article_service");
+  let article;
+  try {
+    article = await updateArticle(env, Number(id), {
+      title: body.title ? String(body.title) : undefined,
+      content: optionalTextField(body.content),
+      slug,
+      category_id: body.category_id
+        ? Number(body.category_id)
+        : body.category_id === "" || body.category_id === null
+          ? null
+          : undefined,
+      tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+      status: body.status ? (body.status as "draft" | "published") : undefined,
+      summary: optionalTextField(body.summary),
+      cover_image: optionalTextField(body.cover_image),
+    });
+  } catch (e) {
+    // #82 严格校验：开关开启时（含只改 category_id 的情形）→ 400 并提示具体标签
+    if (e instanceof TagCategoryConflictError) {
+      return error(ErrorCodes.VALIDATION_FAILED, e.message);
+    }
+    throw e;
+  }
 
   if (!article) {
     return notFound("Article not found");

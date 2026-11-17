@@ -436,6 +436,10 @@ export async function createArticle(
   }
 
   const reading_time = calculateReadingTime(data.content);
+
+  // #82 严格校验（默认关）：create 校验传入标签与文章分类的归属一致性
+  await assertTagsBelongToCategory(env, data.category_id, data.tags ?? []);
+
   const result = await env.DB.prepare(
     `
     INSERT INTO articles (title, slug, content, content_html, summary, cover_image, category_id, status, published_at, author_id, reading_time)
@@ -556,6 +560,32 @@ export async function updateArticle(
   values.push(new Date().toISOString());
   values.push(id);
 
+  // #82 严格校验（默认关）：update 覆盖「只改 category_id 不传 tags」的情况——
+  // tags 未传时用库内现有标签集合对生效后的分类做校验，冲突时不落任何写。
+  {
+    const effectiveCategoryId =
+      data.category_id !== undefined
+        ? data.category_id || 1
+        : ((existing as { category_id: number | null }).category_id ?? 1);
+    let tagNames: string[] = [];
+    if (data.tags !== undefined) {
+      tagNames = data.tags;
+    } else {
+      const rows = await env.DB.prepare(
+        `SELECT t.name FROM tags t
+         JOIN article_tags at ON at.tag_id = t.id
+         WHERE at.article_id = ?
+         ORDER BY t.id`
+      )
+        .bind(id)
+        .all();
+      tagNames = rows.results.map(
+        (r: Record<string, unknown>) => r.name as string
+      );
+    }
+    await assertTagsBelongToCategory(env, effectiveCategoryId, tagNames);
+  }
+
   await env.DB.prepare(`UPDATE articles SET ${sets.join(", ")} WHERE id = ?`)
     .bind(...values)
     .run();
@@ -588,6 +618,59 @@ export async function deleteArticle(env: Env, id: number): Promise<boolean> {
     .bind(id)
     .run();
   return result.meta.changes > 0;
+}
+
+// ── taxonomy v2 严格校验（issue #82 / ADR 0008 决策 2，默认关） ──
+
+const STRICT_TAG_CATEGORY_KEY = "strict_tag_category_validation";
+
+/** 开关打开时的冲突：携带具体冲突标签名，handler 映射为 400。 */
+export class TagCategoryConflictError extends Error {
+  constructor(readonly tagNames: string[]) {
+    super(`以下标签不属于文章分类：${tagNames.join("、")}`);
+    this.name = "TagCategoryConflictError";
+  }
+}
+
+/** 开关读取单点：site_config 行 `strict_tag_category_validation`，值 `1` 才开启。 */
+export async function isStrictTagCategoryValidation(
+  env: Env
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT value FROM site_config WHERE key = ?"
+  )
+    .bind(STRICT_TAG_CATEGORY_KEY)
+    .first<{ value: string }>();
+  return row?.value === "1";
+}
+
+/**
+ * 严格校验单点（#82）：文章标签必须属于文章分类（标签归属 ≠ 文章分类即冲突）。
+ * - 默认关闭（site_config 行缺省 / 非 `1` 时直接放行）；
+ * - 覆盖 create（传入标签）与 update（含只改 `category_id` 不传 `tags` 的情况——
+ *   此时用库内现有标签集合校验新分类）；
+ * - 无标签 / 空标签集合不校验；校验通过不写任何数据。
+ */
+async function assertTagsBelongToCategory(
+  env: Env,
+  categoryId: unknown,
+  tagNames: string[]
+): Promise<void> {
+  if (!(await isStrictTagCategoryValidation(env))) return;
+  const effectiveCategoryId = (categoryId as number) || 1;
+  if (!tagNames || tagNames.length === 0) return;
+  const conflicts: string[] = [];
+  for (const name of tagNames) {
+    const tag = await env.DB.prepare(
+      "SELECT category_id FROM tags WHERE name = ?"
+    )
+      .bind(name)
+      .first<{ category_id: number | null }>();
+    if (tag && tag.category_id !== effectiveCategoryId) {
+      conflicts.push(name);
+    }
+  }
+  if (conflicts.length > 0) throw new TagCategoryConflictError(conflicts);
 }
 
 // 阅读量计数已迁至 services/analytics_service.ts 的 recordArticleView（issue #55）。

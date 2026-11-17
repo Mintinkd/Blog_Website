@@ -143,7 +143,9 @@ function makeWriteDb() {
       async first() {
         recorded.push({ sql: stmt.sql, binds: [...stmt.binds] });
         if (
-          /SELECT id, published_at FROM articles WHERE id = \?/.test(stmt.sql)
+          /SELECT\s+id,\s+published_at[^\*]*FROM articles WHERE id = \?/.test(
+            stmt.sql
+          )
         ) {
           return { id: 1, published_at: null };
         }

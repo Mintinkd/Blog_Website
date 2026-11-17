@@ -48,6 +48,8 @@
 
 **迁移层**（#77，一次性）：`worker/schema-tag-category-incremental.sql` 在「迁移前生产导出副本」上演练——行数不变、`SELECT COUNT(*) FROM tags WHERE category_id IS NULL` = 0、跨分类清单产出；fresh install 用 `schema.sql` 后 `PRAGMA table_info(tags)` 含 `category_id`。注意该文件重复执行会 `duplicate column`，不要进 CI 重放网。
 
+**严格校验开关层**（#82）：`worker/tests/tag_strict_validation.test.ts` 用真实 SQLite + handler 直连钉住 `strict_tag_category_validation` 开关（`site_config` 行，值 `1` 开、默认关）：默认 / 显式关时跨分类标签可写入；开启时 create 冲突 400 且 message 含具体标签、合法标签正常；update 覆盖「只改 `category_id` 不传 `tags`」与「显式传 tags」两态，冲突不落任何写。改 `ARTICLE_PUBLISH_COLUMNS` / `ARTICLE_TAGS_SQL` 等共享 SQL 常量前先 grep 按文本匹配的测试桩（#90 / #101 / #70 三处先例）。
+
 ## Lint 门禁（ESLint）
 
 根包 `npm run lint`（`eslint .`）与 worker 的 `npm run lint`（`eslint --config ../eslint.config.mjs src tests`）复用**同一份** `eslint.config.mjs`；CI 在 `Check Frontend Types` 之后、`Test Frontend` 之前运行，pre-commit 由 lint-staged 对暂存文件跑 `eslint --fix --max-warnings=0`。范围**刻意不含 `.astro`**（`astro check` 已覆盖，两套 parser 重叠只会互相打架），只启用与正确性相关的规则（`@typescript-eslint/no-unused-vars` 及 `no-redeclare` / `no-dupe-keys` / `no-dupe-class-members` / `no-unreachable`），不启用风格规则（交给 prettier）。配置本身由 `tests/lint-config.test.ts` 钉住（脚本存在、规则等级、忽略生成物与 `.workbuddy`、pre-commit 与 CI 都接了且顺序正确）；启用时清掉存量 22 处真告警（含死函数 `buildLikeClause`、整段未用 import、`worker/tests/user_service.test.ts` 的多余 `vi`）。

@@ -32,5 +32,5 @@ export const MEDIA_COLUMNS =
 export const TAG_COLUMNS =
   "id, name, slug, category_id, created_by, created_at" as const;
 
-/** articles：局部更新读取只需 id 与 published_at（判断首次发布补时间戳）。 */
-export const ARTICLE_PUBLISH_COLUMNS = "id, published_at" as const;
+/** articles：局部更新读取只需 id / published_at / category_id（#82 严格校验要算生效分类）。 */
+export const ARTICLE_PUBLISH_COLUMNS = "id, published_at, category_id" as const;

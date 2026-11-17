@@ -336,6 +336,8 @@ D1 (SQLite) 共 13 张表：
 
 > `PUT /articles/:id` 为局部更新：`content` / `summary` / `cover_image` 字段存在即写入，`""` 表示清空（删除全部正文、清空摘要、移除封面）；字段缺失才保持原值（issue #70）。请求 / 响应形状不变；`title`、`slug`、`status`、`category_id`、`tags` 的既有校验与语义不变，`POST /articles` 的创建语义不变。
 
+> **taxonomy v2 严格校验（issue #82 / ADR 0008，默认关）**：`POST /articles` 与 `PUT /articles/:id`（含只改 `category_id` 不传 `tags` 的情况，按库内现有标签集合校验生效后的分类）可开启「文章标签必须属于文章分类」的硬校验——开关为 `site_config` 行 `strict_tag_category_validation`（值 `1` 开启，缺省 / 其他值关闭），开启时冲突返回 400 且 message 提示具体标签名。开启 / 关闭 SQL 与回滚步骤见 `docs/reviews/2026-11-17-taxonomy-t6-audit.md`。
+
 > `GET /articles/:id/edit` 是编辑器专用取数接缝（issue #63 / ADR 0006）：按稳定 id 读取 `articles.content`（Markdown 为唯一正文源），需 `Authorization: Bearer`；admin 可读全部，editor 仅可读自己的文章。响应类型为 `ArticleEditDetail`：含 `PUT /articles/:id` 请求体所需的 `title` / `slug` / `content` / `summary` / `cover_image` / `category_id` / `status`，`tags` / `category` 沿用详情结构（`TagBrief[]` / `CategoryBrief`，回写时取 `tags[].name` 与 `category_id`），另带 `id` / `author_id` / `created_at` / `updated_at`；**不含 `content_html`**（历史遗留列，页面与编辑器都不读取），也不带阅读量 / 阅读时长等统计字段。非法 id → 400（纯数字但违反 id 契约）/ 404（非数字，路由分型拦截，issue #100）、未登录 → 401、存在但无权限 → 403、不存在 → 404。该接口与公开 `GET /articles/:slug` 完全分离：不进入阅读统计、不写 `requests`、不下发 `view_<id>` Cookie；`PUT /articles/:id` 的写入语义不受影响。该切换已由 #64（T3）完成：`useArticleEditor` 统一走此接口，`src/admin/App.vue` 不再请求公开 slug 接口取正文。
 
 #### 编辑锁接口

@@ -60,7 +60,9 @@ function makeWriteDb(slugDup: { id: number } | null = null) {
         if (/SELECT id FROM articles WHERE slug = \?/i.test(stmt.sql))
           return slugDup;
         if (
-          /SELECT id, published_at FROM articles WHERE id = \?/i.test(stmt.sql)
+          /SELECT\s+id,\s+published_at[^\*]*FROM articles WHERE id = \?/i.test(
+            stmt.sql
+          )
         )
           return { id: 7, published_at: null };
         if (/FROM articles a[\s\S]*WHERE a\.id = \?/i.test(stmt.sql))
