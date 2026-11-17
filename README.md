@@ -16,7 +16,8 @@
 
 - **Cloudflare Workers** — 无服务器API后端
 - **Cloudflare D1** — SQLite数据库（文章、分类、标签、评论等）
-- **Cloudflare KV** — 键值存储（媒体文件 + 编辑锁）
+- **Cloudflare R2** — 对象存储（媒体文件；新上传写 R2）
+- **Cloudflare KV** — 键值存储（存量媒体读取兜底 + 编辑锁 + 代理/限流缓存）
 - **JWT** — 管理员/编辑者认证
 
 ### 部署
@@ -32,8 +33,7 @@
 ├── public/
 │   ├── .assetsignore             # Workers+Assets 排除 _worker.js
 │   ├── _headers                  # 生成物：安全响应头 + HTML 护栏 + _assets 指纹资产 immutable 长缓存（模块单源渲染，禁止手工编辑，issue #28 / #96）
-│   ├── bg-placeholder.svg       # 默认全站背景图
-│   └── robots.txt
+│   └── bg-placeholder.svg       # 默认全站背景图
 ├── src/
 │   ├── admin/
 │   │   ├── App.vue             # 后台壳层：登录 / 标签页编排 / 跨面板状态（T8 #69，226 行）
@@ -98,6 +98,7 @@
 │   │   ├── api/v1/[...path].ts      # API代理路由（SSR）
 │   │   ├── rss.xml.ts               # RSS订阅源（SSR）
 │   │   ├── speculation-rules.ts     # 空预取规则集端点（SSR，覆盖 Cloudflare Speed Brain）
+│   │   ├── robots.txt.ts            # robots.txt 由构建期站点 origin 生成（sitemap 绝对地址跟随 SITE_URL）
 │   │   ├── archives.astro       # 归档
 │   │   ├── about.astro          # 关于
 │   │   ├── privacy.astro        # 隐私与阅读统计披露（中英、页脚入口，#59）
@@ -177,10 +178,12 @@
 │   ├── mock-article-api.mjs      # 同一进程同时服务文章 SSR 回归（#41）与 admin 回归（#68）；/__stats / /__control / /__reset
 │   ├── article-ssr-fixture.mjs   # 上述 mock 与回归脚本共享的文章 fixture
 │   ├── editor-meta-fixture.mjs   # 编辑器两脚本共用的入口选择器 / 视口矩阵 / /api/v1/** fixture（T6 #67）
+│   ├── site-config.mjs           # 站点 / Worker origin / sitemap 环境配置单源（默认值集中一处；同目录 .d.mts）
+│   ├── render-worker-config.mjs  # CI 部署配置渲染（vars → worker/wrangler.deploy.jsonc，生成物不入库）
 │   ├── gh.ps1                    # Windows gh 包装（UTF-8 输出/参数；见 docs/agents/windows-shell.md）
 │   └── run-astro-check.mjs      # 前端类型门禁入口（npm run check；Node 旗标自动判定，钉版说明见头注）
 ├── worker/                      # Cloudflare Worker 后端
-│   ├── wrangler.jsonc            # Worker配置（D1/KV绑定 + 每日 cron，实际生效）
+│   ├── wrangler.jsonc            # Worker配置（D1/KV/R2 绑定 + 每日 cron，本地默认生效）
 │   ├── schema.sql                    # 数据库 Schema（全新库形态，可重复执行，issue #94）
 │   ├── migrations/                   # wrangler d1 migrations 迁移文件（0001_baseline 等，issue #94）
 │   ├── migrations-baseline.sql       # 存量/全新库标记 0001 已应用（幂等，issue #94）
@@ -207,7 +210,7 @@
 │       │   ├── comment.ts
 │       │   ├── search.ts
 │       │   ├── like.ts
-│       │   ├── media.ts
+│       │   ├── media.ts          # 媒体上传 / 列表 / 删除 / serve（R2 优先、KV 兜底）
 │       │   ├── config.ts
 │       │   ├── settings.ts      # 可视化配置中心后端（site_config JSON blob）
 │       │   ├── friend_link.ts
@@ -225,7 +228,7 @@
 │       │   ├── analytics_service.ts      # dayKey / 清理 / HMAC 密钥 / recordArticleView（#53、#55）
 │       │   └── analytics_dimensions.ts   # Tier 0 维度桶映射 / upsert / 小样本保护（#56）
 │       ├── models/              # 数据模型
-│       └── utils/               # 工具函数
+│       └── utils/               # 工具函数（media_storage：R2/KV 媒体存储抽象）
 ├── astro.config.mjs
 ├── package.json
 ├── settings.rules.json          # 设置白名单规则描述符（手写单源，issue #27 / ADR 0001）
@@ -261,12 +264,12 @@ D1 (SQLite) 共 13 张表：
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users`                   | 用户账户（管理员/编辑者，PBKDF2-SHA256 加盐慢哈希，旧 SHA-256 哈希登录时透明升级，角色权限）                                                                                                 |
 | `categories`              | 文章分类（含 created_by 所有权）                                                                                                                                                             |
-| `tags`                    | 标签（含 created_by 所有权）                                                                                                                                                                 |
+| `tags`                    | 标签（含 created_by 所有权；`category_id` 归属分类，1:N——每个标签只属于一个分类，taxonomy v2 / ADR 0008，迁移期可空、回填后由应用层保证必填）                                                |
 | `articles`                | 文章（Markdown 原文 `content` 是唯一正文源；`content_html` 为历史遗留、页面不读取；`reading_time` 落库的阅读分钟数，创建/更新时写入，列表读它不再搬正文；author_id 作者，category_id 默认1） |
 | `article_tags`            | 文章-标签多对多关联                                                                                                                                                                          |
 | `comments`                | 评论（含审核状态）                                                                                                                                                                           |
 | `article_likes`           | 点赞记录（IP去重）                                                                                                                                                                           |
-| `media_assets`            | 媒体文件元数据（含 uploaded_by 所有权）                                                                                                                                                      |
+| `media_assets`            | 媒体文件元数据（`storage_type` 标识对象在 `r2` 还是存量 `kv`；含 uploaded_by 所有权）                                                                                                        |
 | `friend_links`            | 友情链接                                                                                                                                                                                     |
 | `site_config`             | 站点配置（KV结构，含JWT密钥、统计HMAC密钥与清理任务心跳）                                                                                                                                    |
 | `analytics_article_daily` | 阅读统计日聚合（PV/UV/requests/engaged/bot_filtered，按文章+站点时区日）                                                                                                                     |
@@ -274,6 +277,8 @@ D1 (SQLite) 共 13 张表：
 | `analytics_dim_daily`     | 阅读统计维度桶（只写单篇行，全站查询时 GROUP BY；保留 400 天）                                                                                                                               |
 
 另含 FTS5 全文搜索虚拟表 `articles_fts` 及同步触发器。Tier 1 的 `analytics_consent` 本批不建。
+
+> **taxonomy v2（issue #75 / [ADR 0008](docs/adr/0008-tag-as-category-subsystem.md)）**：标签系统改为分类子系统——`tags.category_id` 让每个标签归属一个分类（1:N），文章分类仍由 `articles.category_id` 权威决定、标签不反向决定文章分类（首批软约束，审计到 0 冲突后另行决策硬校验）。`tags.name` / `slug` 继续全局唯一，URL 结构不变；存量回填规则为「按引用文章的分类投票、平票取小 id、无文章归未分类」。五个决策的后果、边界与回滚原则见 ADR 0008。
 
 阅读统计三表为派生数据，不进入 `/admin/export` 备份与 `/admin/import` 恢复（短期令牌与可重算聚合不跨环境搬运）；`site_config` 的统计密钥与心跳行在导入时保留本机值。
 
@@ -289,14 +294,16 @@ D1 (SQLite) 共 13 张表：
 | POST | `/auth/login`                       | 登录（返回JWT token和用户信息；口令长度上限 200，超限直接 400 且不进入 KDF）                                                                        |
 | GET  | `/articles`                         | 文章列表（支持分页、分类、标签过滤；默认仅 published，draft/all 等非 published 查询需登录）                                                         |
 | GET  | `/articles/:slug`                   | 文章详情（Tier 0 计数：§4.1 过滤、`view_<id>` Cookie + 24h HMAC 令牌去重、日聚合 pv/uv/requests；草稿预览不计数）                                   |
-| GET  | `/categories`                       | 分类列表                                                                                                                                            |
-| GET  | `/tags`                             | 标签列表                                                                                                                                            |
+| GET  | `/categories`                       | 分类列表（含 `tag_count` 名下标签数，taxonomy v2）                                                                                                  |
+| GET  | `/categories/:slug`                 | 分类详情（含 `article_count` 与 `tag_count`；未知 slug 404）                                                                                        |
+| GET  | `/tags`                             | 标签列表（含 `category_id` / `category` / `article_count`——草稿不计入；支持 `?category_slug=` 按分类过滤，taxonomy v2）                             |
+| GET  | `/tags/:slug`                       | 标签详情（含分类归属与计数；未知 slug 404）                                                                                                         |
 | GET  | `/articles/:article_id/comments`    | 文章评论                                                                                                                                            |
 | POST | `/articles/:article_id/comments`    | 提交评论（每 IP 每分钟 3 次，跨文章共享配额，issue #48）                                                                                            |
-| GET  | `/search`                           | 全文搜索（每 IP 每分钟 10 次）                                                                                                                      |
+| GET  | `/search`                           | 全文搜索（每 IP 每分钟 10 次；FTS 与 LIKE 两条路径的结果项均含标签的 `category`，taxonomy v2）                                                      |
 | POST | `/articles/:article_id/like`        | 点赞/取消（每 IP 每分钟 10 次，跨文章共享配额，issue #48）                                                                                          |
 | GET  | `/articles/:article_id/like-status` | 点赞状态                                                                                                                                            |
-| GET  | `/media/serve/*`                    | 媒体文件访问（仅 `media/` 命名空间；`backup:` / `imgproxy/` / `textproxy/` 等 key 一律 404）                                                        |
+| GET  | `/media/serve/*`                    | 媒体文件访问（仅 `media/` 命名空间；R2 优先、KV 存量兜底；`backup:` / `imgproxy/` / `textproxy/` 等 key 一律 404）                                  |
 | GET  | `/friend-links`                     | 友情链接                                                                                                                                            |
 | GET  | `/config`                           | 公开站点配置                                                                                                                                        |
 | GET  | `/settings/public`                  | 公开白名单投影（配色 / 布局 / 背景 / 功能开关 / 文案 / 动效），前台运行时套用                                                                       |
@@ -317,12 +324,13 @@ D1 (SQLite) 共 13 张表：
 | DELETE | `/articles/:id`         | 删除文章（editor仅自己的）                                                                                                                                             |
 | POST   | `/categories`           | 创建分类（自动设置created_by）                                                                                                                                         |
 | PUT    | `/categories/:id`       | 更新分类（editor仅自己的）                                                                                                                                             |
-| POST   | `/tags`                 | 创建标签（自动设置created_by）                                                                                                                                         |
+| POST   | `/tags`                 | 创建标签（自动设置created_by；可选 `category_id` 指定归属分类，缺省归「未分类」；旧 `{name,slug}` 请求体仍兼容，taxonomy v2）                                          |
+| PUT    | `/tags/:id`             | 更新标签归属（仅移动 `category_id`；标签创建者或目标分类所有者可改，其余 403；首批不改 `name` / `slug`，taxonomy v2 / ADR 0008）                                       |
 | GET    | `/comments`             | 评论列表（editor仅自己文章的）                                                                                                                                         |
 | PUT    | `/comments/:id/approve` | 审核通过（editor仅自己文章的）                                                                                                                                         |
 | PUT    | `/comments/:id/reject`  | 审核拒绝（editor仅自己文章的）                                                                                                                                         |
 | DELETE | `/comments/:id`         | 删除评论（editor仅自己文章的）                                                                                                                                         |
-| POST   | `/media/upload`         | 上传媒体（自动设置uploaded_by；每 IP 每分钟 10 次）                                                                                                                    |
+| POST   | `/media/upload`         | 上传媒体（优先写 R2；未绑定 R2 时回退 KV；自动设置uploaded_by；每 IP 每分钟 10 次）                                                                                    |
 | GET    | `/media`                | 媒体列表（editor仅自己的）                                                                                                                                             |
 | DELETE | `/media/:id`            | 删除媒体（editor仅自己上传的）                                                                                                                                         |
 
@@ -343,7 +351,7 @@ D1 (SQLite) 共 13 张表：
 
 | 方法   | 路径                          | 说明                                                                                                                                                                                                                                                                                                                                                   |
 | ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| DELETE | `/categories/:id`             | 删除分类                                                                                                                                                                                                                                                                                                                                               |
+| DELETE | `/categories/:id`             | 删除分类（名下仍有标签时 400，提示先移动或批量移到未分类，taxonomy v2）                                                                                                                                                                                                                                                                                |
 | DELETE | `/tags/:id`                   | 删除标签                                                                                                                                                                                                                                                                                                                                               |
 | GET    | `/users`                      | 用户列表                                                                                                                                                                                                                                                                                                                                               |
 | POST   | `/users`                      | 创建用户（口令强度：≥ 12 位、非弱口令名单、非站点名/用户名变体；长度上限 200；创建后强制改密）                                                                                                                                                                                                                                                         |
@@ -389,10 +397,10 @@ D1 (SQLite) 共 13 张表：
 | `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
 | `/articles`          | 文章列表（分页）                                                        | 静态     |
 | `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
-| `/categories`        | 分类云（全部分类）                                                      | SSR      |
-| `/categories/:slug`  | 分类文章                                                                | SSR      |
-| `/tags`              | 标签云（全部标签）                                                      | SSR      |
-| `/tags/:slug`        | 标签文章                                                                | SSR      |
+| `/categories`        | 分类目录（全部分类，含标签数与标签预览）                                | SSR      |
+| `/categories/:slug`  | 分类文章（支持 `?tag=<tag-slug>` 标签筛选）                             | SSR      |
+| `/tags`              | 标签目录（按分类分组，「未分类」固定最后，taxonomy v2）                 | SSR      |
+| `/tags/:slug`        | 标签文章（含分类面包屑与同分类标签跳转）                                | SSR      |
 | `/api/v1/*`          | API代理到Worker                                                         | SSR      |
 | `/rss.xml`           | RSS订阅源                                                               | SSR      |
 | `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
@@ -667,6 +675,8 @@ cd worker
 npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 ```
 
+**taxonomy v2 标签归属迁移（一次性，issue #75 / #77）**：`tags.category_id` 加列 + 索引 + 「未分类」种子 + 存量回填（回填规则见 [ADR 0008](docs/adr/0008-tag-as-category-subsystem.md) 决策 4）。全新库无需单独执行——`schema.sql` 已含同构 DDL；**存量库执行 `worker/schema-tag-category-incremental.sql` 只允许执行一次**：文件含不带 `IF NOT EXISTS` 的 `ALTER TABLE ADD COLUMN`，重复执行会报 `duplicate column`。执行前先 `wrangler d1 export` 导出备份并在副本上演练（行数不变 → `category_id` 空值归零 → 跨分类审计清单产出，三关都过才上生产）；执行后用 `PRAGMA table_info(tags)` / `PRAGMA index_list(tags)` 核对列与索引。回滚按 ADR 0008：只回代码不回 schema，数据用迁移前备份恢复。
+
 > 每日 cron（`0 16 * * *`，即 Asia/Shanghai 00:00）由 Worker `scheduled` 入口执行：删除过期令牌、删除 400 天保留窗口外的日聚合与维度桶，并写入 `site_config.analytics_last_job_at` 心跳。
 
 ### 首次设置
@@ -697,14 +707,47 @@ npx wrangler d1 execute blog-db --remote --file=./schema-m22-incremental.sql
 >
 > 2026-11-11 曾因推送 Tier 0 代码后漏跑增量 DDL，导致后台统计面板「统计加载失败」且文章详情接口 500（计数写表失败连带拖挂响应）——CI 自动迁移 + 对象核对正是为防止此类漏跑。手动应急命令见上文「初始化数据库 / 增量 DDL」段。
 
-### GitHub Secrets 配置
+### GitHub Actions 配置（Secrets / Variables）
 
-在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：
+在 GitHub 仓库的 Settings → Secrets and variables → Actions 中配置。**所有变量都有默认值**，不配置时行为与迁移前一致；改站点域名 / Worker origin / Cloudflare 资源标识只需改变量，不必改代码。
 
-| Secret                  | 说明                                                                                                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（CI 部署/迁移需 Pages + Workers + **D1 编辑**；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                                   |
+**Secrets（敏感）**
+
+| Secret                  | 说明                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token（CI 部署/迁移需 Pages + Workers + **D1 编辑** + **R2 编辑**；zone 级 CORS 清理脚本另需 `Zone:Read` + `Transform Rules:Edit`，非部署门禁必需） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID                                                                                                                                                 |
+| `R2_ACCESS_KEY_ID`      | 可选。R2 S3 兼容 Access Key；配置后 CI 同步为 Worker secret（供迁移脚本 / 外部 S3 工具用，运行时读写走 R2 绑定）                                                   |
+| `R2_SECRET_ACCESS_KEY`  | 可选。R2 S3 兼容 Secret Key，与上一项成对出现                                                                                                                      |
+
+**Variables（非敏感，均可留空用默认值）**
+
+| Variable              | 默认值                                   | 说明                                                         |
+| --------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| `SITE_URL`            | `https://blog.zenfishlog.dpdns.org`      | 站点 origin；驱动 Astro `site`、robots.txt、sitemap 绝对地址 |
+| `WORKER_ORIGIN`       | `https://blog-api.zen-13467.workers.dev` | API Worker origin（SSR / RSS / 同源代理）                    |
+| `SITEMAP_API_BASE`    | 空（= `SITE_URL + /api/v1/articles`）    | sitemap 构建期拉取文章列表的显式覆盖地址                     |
+| `SITEMAP_PAGE_SIZE`   | `50`                                     | sitemap 拉取分页大小（正整数，非法值构建失败）               |
+| `PAGES_PROJECT_NAME`  | `blog-website`                           | Cloudflare Pages 项目名                                      |
+| `WORKER_NAME`         | `blog-api`                               | API Worker 名称                                              |
+| `D1_DATABASE_ID`      | `5c759ce7-82e0-4205-8d01-fea18db55cd7`   | D1 数据库 UUID（迁移 / 部署配置）                            |
+| `D1_DATABASE_NAME`    | `blog-db`                                | D1 数据库名（迁移命令与 wrangler 绑定）                      |
+| `KV_MEDIA_ID`         | `c4f354b6c61e43e798a679fb6733edd8`       | MEDIA KV 命名空间 id（存量媒体读取 / 编辑锁外的缓存）        |
+| `KV_EDIT_LOCK_ID`     | `8a63eee2d516410d8e6e5ec7d420a0b1`       | EDIT_LOCK KV 命名空间 id                                     |
+| `KV_RATE_LIMIT_ID`    | `e18fbfafedf048a380e6fe4e2a6f96d6`       | RATE_LIMIT KV 命名空间 id                                    |
+| `R2_BUCKET_NAME`      | `blog-media`                             | R2 媒体桶名（小写字母 / 数字 / 连字符，3–63 位）             |
+| `R2_REGION`           | `auto`                                   | R2 区域（同步为 Worker secret，运行时通常无需读取）          |
+| `R2_ENDPOINT`         | 空                                       | R2 S3 兼容端点覆盖（外部工具 / 迁移脚本用）                  |
+| `R2_ACCOUNT_ID`       | 空（回退 `CLOUDFLARE_ACCOUNT_ID`）       | R2 S3 端点使用的账户 ID                                      |
+| `DEPLOY_BASE_URL`     | `https://blog-website-page.pages.dev`    | 部署就绪探针基地址                                           |
+| `DEPLOY_TIMEOUT_SEC`  | `180`                                    | 就绪轮询超时（秒）                                           |
+| `DEPLOY_INTERVAL_SEC` | `5`                                      | 就绪轮询间隔（秒）                                           |
+| `NODE_VERSION`        | `22`                                     | CI Node 版本                                                 |
+| `PLAYWRIGHT_VERSION`  | `1.64.1`                                 | CI 临时安装的 Playwright 版本（不入 package.json）           |
+
+> 资源标识属于部署坐标而非机密，因此放在 Variables；仓库未配置上述任何变量时，渲染出的 `worker/wrangler.deploy.jsonc` 与提交的 `worker/wrangler.jsonc` 一致。非法 D1 / KV / R2 / SITE_URL 值会让 `scripts/render-worker-config.mjs` 直接失败（fail-closed），避免部署到错误资源。
+>
+> **`SITE_URL` 与 CORS 白名单**：`cors.origins.json` 是安全边界（只允许明确的站点 origin），刻意不环境化。迁移到新域名时除改 `SITE_URL` 外，还须把新 origin 加进该描述符并重跑 `npm run gen:cors`（双端生成物 + CI 漂移断言），否则浏览器跨域直连 Worker 的请求会被拒绝。
 
 ### 访客 IP 签名密钥（#84 / H3，必配）
 
@@ -743,11 +786,14 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 需要提前在 Cloudflare Dashboard 中创建：
 
 1. **D1 数据库** — 名为 `blog-db`
-2. **KV 命名空间** — `MEDIA`（媒体存储）+ `EDIT_LOCK`（编辑锁，TTL 30分钟）
-3. **Pages 项目** — 名为 `blog-website`（默认子域 `blog-website-page.pages.dev`，自定义域 `blog.zenfishlog.dpdns.org`；2026-10-23 由 `blog-website-page` 改名而来，旧子域保留）
-4. **Worker** — 名为 `blog-api`
+2. **KV 命名空间** — `MEDIA`（存量媒体读取兜底 + 代理/备份）+ `EDIT_LOCK`（编辑锁，TTL 30分钟）+ `RATE_LIMIT`（限流计数）
+3. **R2 桶** — 名为 `blog-media`（新上传媒体；CI 在 `Ensure R2 bucket` 步骤中幂等创建）
+4. **Pages 项目** — 名为 `blog-website`（默认子域 `blog-website-page.pages.dev`，自定义域 `blog.zenfishlog.dpdns.org`；2026-10-23 由 `blog-website-page` 改名而来，旧子域保留）
+5. **Worker** — 名为 `blog-api`
 
 > **注意**：Worker 名称必须为 `blog-api`，不能与 Pages 项目同名，否则 Git 集成自动部署时会覆盖 API Worker。
+>
+> **媒体存储**：新上传写 R2；`GET /media/serve/*` 先查 R2、未命中再回退 KV，存量 KV 对象无需一次性迁移即可继续访问。删除按 `media_assets.storage_type` 选择存储（`r2` / `kv`），`remote` 等历史类型不触碰对象存储。因此 R2 绑定缺失时上传会回退 KV（本地开发 / 回滚），但删除 `storage_type=r2` 的行会 fail-closed 报错，避免静默留下孤儿对象。
 
 ### 自动部署
 
@@ -758,10 +804,13 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 推送到 `main` 分支后，GitHub Actions 自动执行：
 
 1. 生成物漂移断言（设置白名单 / 安全头 / CORS / 富文本策略）→ 安装依赖 → Worker 类型检查与测试 → 前端类型检查（`npm run check`）→ **ESLint 门禁**（`npm run lint`，死代码 / 未使用变量 / 重复定义 error 级，根配置同时覆盖根包与 `worker/`）→ 根级 vitest 与 Playwright 浏览器回归（文章 SSR / 文章编辑器端到端 / 编辑器响应式 / 后台移动端 / 页面观感友好度，失败即阻断部署）→ 构建 Astro 站点（prebuild 先重新渲染 `public/_headers`（安全头 + HTML 护栏 + `_assets` immutable 长缓存），构建后钩子收紧 CSP 产物）
-2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
-3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
-4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
-5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**探针打 Pages 生产别名 `https://blog-website-page.pages.dev`，不打自定义域**：zone 的边缘安全规则会把 GitHub Actions 的出网 IP 判成 bot，自定义域恒 403（实测 run 43987529351，36 次全 403），那是**边缘拦截、不是部署未就绪**——探针遇 403 会在 detail 里标「边缘拦截」避免误导。别名同样覆盖两条链路（`/` 验 Pages 产物、`/api/v1/health` 经同源代理验 Worker + D1/KV 绑定）；自定义域的可达性需在 Dashboard 侧放行 CI 出口 IP，属 #106 未闭环项。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
+2. **渲染部署配置**：`node scripts/render-worker-config.mjs` 把 Variables 中的 D1 / KV / R2 / `SITE_URL` / Worker 名写进 `worker/wrangler.deploy.jsonc`（生成物，`.gitignore` 已忽略；未配置的变量保留仓库默认值）
+3. **D1 增量迁移**：用生成的 `wrangler.deploy.jsonc` 重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
+4. 部署 `dist` 到 Cloudflare Pages（`PAGES_PROJECT_NAME`，默认 `blog-website`）
+5. **确保 R2 桶存在**：`wrangler r2 bucket create "$R2_BUCKET_NAME"`；已存在视为成功（需要 token 具备 R2 编辑权限）
+6. 部署 API Worker 到 Cloudflare Workers（`WORKER_NAME`，默认 `blog-api`）
+7. **可选 R2 凭据同步**：配置了 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` 时，把 S3 兼容凭据与 `R2_ACCOUNT_ID` / `R2_REGION` 同步为 Worker secret（运行时仍走 R2 绑定，不需要 S3 凭据）
+8. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**探针打 Pages 生产别名 `https://blog-website-page.pages.dev`，不打自定义域**：zone 的边缘安全规则会把 GitHub Actions 的出网 IP 判成 bot，自定义域恒 403（实测 run 43987529351，36 次全 403），那是**边缘拦截、不是部署未就绪**——探针遇 403 会在 detail 里标「边缘拦截」避免误导。别名同样覆盖两条链路（`/` 验 Pages 产物、`/api/v1/health` 经同源代理验 Worker + D1/KV/R2 绑定）；自定义域的可达性需在 Dashboard 侧放行 CI 出口 IP，属 #106 未闭环项。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
 
 > L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署与 `blog_website` 的 Workers Build 两条通道须在 Dashboard 断开（见上文「自动部署」），由 Actions 单点管理。
 
@@ -786,7 +835,7 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 | 项目           | 类型   | URL                              | 说明                                                                                |
 | -------------- | ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
 | `blog-website` | Pages  | `blog-website-page.pages.dev`    | 前端站点（Astro SSR + 静态）                                                        |
-| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV）                                                                 |
+| `blog-api`     | Worker | `blog-api.zen-13467.workers.dev` | API 后端（D1 + KV + R2）                                                            |
 | `blog_website` | Worker | —                                | Workers Build 目标（根 `wrangler.jsonc`，PR #1 已对齐）；**须断开**，见「自动部署」 |
 
 浏览器通过 Astro API 路由（`/api/v1/*`）代理请求到 `blog-api` Worker；文章详情 SSR 页与 RSS 由服务端直连 Worker origin。
@@ -795,14 +844,15 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 
 仓库内存在两份 wrangler 配置，对应两条互不相同的部署通道，**禁止混用**：
 
-| 配置文件                | 作用对象                             | 执行目录                                                 | 说明                                                                           |
-| ----------------------- | ------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                                | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT 绑定齐全；唯一生效的 Worker 配置           |
-| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（**只在 Dashboard 侧 Git 连接未断开时**才被消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy，Git 连接须断开（见「自动部署」） |
+| 配置文件                | 作用对象                             | 执行目录                                                 | 说明                                                                                                             |
+| ----------------------- | ------------------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `worker/wrangler.jsonc` | API Worker（`blog-api`）             | `worker/`                                                | D1 + MEDIA / EDIT_LOCK / RATE_LIMIT + MEDIA_BUCKET 绑定齐全；本地默认配置（CI 用生成的 `wrangler.deploy.jsonc`） |
+| 根 `wrangler.jsonc`     | Workers Build 目标（`blog_website`） | 根目录（**只在 Dashboard 侧 Git 连接未断开时**才被消费） | 前端资产 + `_worker.js`；仓库侧不执行 deploy，Git 连接须断开（见「自动部署」）                                   |
 
 **禁令：**
 
 - **Worker 部署必须在 `worker/` 目录下执行**（`cd worker && npx wrangler deploy`）。根目录禁止执行 `npx wrangler deploy`——根配置是前端 Build 目标，缺少 `DB` / `EDIT_LOCK` / `RATE_LIMIT` 绑定，部署出的 Worker 启动即报错。
+- **CI 与本地配置分离**：CI 用 `scripts/render-worker-config.mjs` 从 GitHub Variables 渲染 `worker/wrangler.deploy.jsonc`（生成物，`.gitignore` 忽略），本地手动部署仍用提交的 `worker/wrangler.jsonc`；两者绑定结构一致，未配置 Variables 时渲染结果与仓库默认值相同。
 - 历史死配置 `worker/wrangler.toml`（仅 MEDIA 绑定，缺 DB / EDIT_LOCK / RATE_LIMIT）已于 2026-10-27 删除。任何脚本 / workflow / package.json 均不得引用该文件名。
 - 根 `wrangler.jsonc` 的 `name = blog_website` 为已裁定值（见 issue #49 裁定记录），不得改为 `blog-api`，否则前端 Worker 会顶替 API Worker 并形成 `/api/v1/*` 代理回环。
 
@@ -813,9 +863,13 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 npm run build
 npx wrangler pages deploy dist --project-name=blog-website
 
-# 后端
+# 后端（本地默认资源标识）
 cd worker
 npx wrangler deploy
+
+# 后端（按 Variables / 环境变量渲染 CI 同款配置）
+node scripts/render-worker-config.mjs
+cd worker && npx wrangler deploy --config=wrangler.deploy.jsonc
 ```
 
 ## 自定义域名

@@ -22,6 +22,32 @@
 2. **代理 `Vary` 合并**：`buildProxyResponseHeaders` 不再整条删 `vary`，只摘掉 `Origin` 后与上游剩余 token 合并（保留 `Accept-Encoding`，`Vary: *` 原样保留）。`tests/api-proxy-headers.test.ts` 的「上游 Vary 合并」用例逐字面量钉住四种输入。
 3. **502 错误响应头**：`src/pages/api/v1/[...path].ts` 的 catch 分支改用 `buildProxyErrorHeaders`（白名单 CORS + 安全头 + `application/json; charset=utf-8`），不再复用预检头。`tests/api-proxy-guard.test.ts` 把原来的「源码文本断言」换成真实行为：`fetch` 拒绝 → 502 JSON、上游挂起 → 10s abort → 502。
 
+## taxonomy v2 测试矩阵（#75 / ADR 0008）
+
+「标签归属分类」（#76~#82 批次）按改动面分三层验证；各票落地时对应文件才出现，矩阵先行锁定口径，同一行为不跨层重复测。
+
+**Worker 层**（`cd worker && npm test` / `npm run typecheck`）：
+
+- `worker/tests/tag_category_read.test.ts`（#78）：`GET /tags` 的 `category_id` / `category` / `article_count`（草稿不计入）、`?category_slug=` 过滤、`GET /tags/:slug` 200/404；D1 桩覆盖「有分类标签 / 无分类标签 / 草稿标签计数 / 未知 slug」四类。
+- `worker/tests/category_tags_read.test.ts`（#78）：`GET /categories` 的 `tag_count`（不受文章状态影响）、`GET /categories/:slug` 200/404。
+- 文章列表 / 详情标签映射断言扩展（#78）：内嵌 `tags[]` 含 `category_id` / `category`，旧字段不变，搜索 FTS 与 LIKE 两路径均带 `category`。
+- 写路径与权限（#79）：`POST /tags` 可选 `category_id`（缺省未分类、非法 400、旧请求体兼容）、`PUT /tags/:id` 仅移动归属 + `canManageTag` 权限矩阵（创建者 / 分类所有者 / admin / 无关 editor 403）、`DELETE /categories/:id` 有标签 400、admin 导入导出 `category_id` 归一化。
+
+**前端单元层**（根目录 `npm test`，均 `@vitest-environment node`，期望值手写字面量）：
+
+- `tests/article-card.test.ts`（#81）：共享卡片渲染器的转义、标签 / 分类链接、`data-cross-category` 标记、`tagLimit`、日期 locale。
+- `tests/taxonomy-groups.test.ts`（#81）：分组函数的排序（分类按标签数降序）、未分类固定最后、空输入。
+- `tests/taxonomy-filter.test.ts`（#81）：`?tag=` 的解析 / 构造 / 非法值处理（纯函数）。
+- `tests/admin-content-panels.test.ts` / `tests/editor-meta-fields.test.ts` 扩展（#80）：`canManageTag` 前端同源实现、编辑器按当前分类过滤标签、新建标签携带 `category_id`。
+
+**浏览器回归层**（手动 + CI 门禁，命令见上文对应小节）：
+
+- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 分组与分类 badge、375px 无横向滚动、控制台无报错。
+- BaseLayout / 文章详情改动后跑 `node scripts/verify-article-ssr.mjs`（CI 门禁）；后台面板改动后跑 `node scripts/verify-admin-responsive.mjs`（280 / 375px 无溢出）；观感走 `npm run verify:visual`。
+- i18n：zh / en 词条 parity 由既有词条扫描测试钉住，新增词条（未分类 / 标签数 / 全部 / 清除筛选 / 同分类标签等）必须双语同步。
+
+**迁移层**（#77，一次性）：`worker/schema-tag-category-incremental.sql` 在「迁移前生产导出副本」上演练——行数不变、`SELECT COUNT(*) FROM tags WHERE category_id IS NULL` = 0、跨分类清单产出；fresh install 用 `schema.sql` 后 `PRAGMA table_info(tags)` 含 `category_id`。注意该文件重复执行会 `duplicate column`，不要进 CI 重放网。
+
 ## Lint 门禁（ESLint）
 
 根包 `npm run lint`（`eslint .`）与 worker 的 `npm run lint`（`eslint --config ../eslint.config.mjs src tests`）复用**同一份** `eslint.config.mjs`；CI 在 `Check Frontend Types` 之后、`Test Frontend` 之前运行，pre-commit 由 lint-staged 对暂存文件跑 `eslint --fix --max-warnings=0`。范围**刻意不含 `.astro`**（`astro check` 已覆盖，两套 parser 重叠只会互相打架），只启用与正确性相关的规则（`@typescript-eslint/no-unused-vars` 及 `no-redeclare` / `no-dupe-keys` / `no-dupe-class-members` / `no-unreachable`），不启用风格规则（交给 prettier）。配置本身由 `tests/lint-config.test.ts` 钉住（脚本存在、规则等级、忽略生成物与 `.workbuddy`、pre-commit 与 CI 都接了且顺序正确）；启用时清掉存量 22 处真告警（含死函数 `buildLikeClause`、整段未用 import、`worker/tests/user_service.test.ts` 的多余 `vi`）。
