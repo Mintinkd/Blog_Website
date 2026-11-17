@@ -280,5 +280,10 @@ function parseTag(value: unknown): ArticleTag | null {
     id: numberOr(value.id, 0),
     name: value.name,
     slug: value.slug,
+    category_id:
+      value.category_id === null || value.category_id === undefined
+        ? null
+        : numberOr(value.category_id, 0),
+    category: parseCategory(value.category),
   };
 }

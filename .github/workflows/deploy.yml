@@ -1,4 +1,4 @@
-name: Deploy Blog
+name: 部署博客
 
 on:
   push:
@@ -54,61 +54,61 @@ jobs:
       HAS_R2_CREDENTIALS: ${{ secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
 
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
+      - name: 配置 Node.js
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       # issue #27 / ADR 0001：设置白名单生成物不得漂移——
       # 重新生成后 diff 非空即红（零依赖脚本，最早门禁，先于依赖安装）
-      - name: Check Settings Rules drift
+      - name: 检查设置规则漂移
         run: npm run gen:settings && git diff --exit-code -- src/generated/settings-rules.ts worker/src/generated/settings-rules.ts
 
       # issue #28 / ADR 0002：安全头生成物不得漂移——
       # 重新生成后 diff 非空即红（零依赖脚本，紧随设置白名单漂移断言）
-      - name: Check Security Headers drift
+      - name: 检查安全响应头漂移
         run: npm run gen:headers && git diff --exit-code -- public/_headers
 
       # issue #85 / H4：CORS 白名单双端生成物不得漂移——
       # 重新生成后 diff 非空即红（零依赖脚本，Worker/Pages 共用单一描述符）
-      - name: Check CORS Origins drift
+      - name: 检查 CORS 来源漂移
         run: npm run gen:cors && git diff --exit-code -- src/generated/cors-origins.ts worker/src/generated/cors-origins.ts
 
       # issue #92 / M6 + #99 / M19：富文本白名单单一源生成物不得漂移
-      - name: Check Rich Text Policy drift
+      - name: 检查富文本策略漂移
         run: npm run gen:rich-text && git diff --exit-code -- worker/src/generated/rich-text-policy.ts
 
-      - name: Install dependencies
+      - name: 安装根包依赖
         run: npm ci
 
-      - name: Install Worker dependencies
+      - name: 安装 Worker 依赖
         run: npm ci
         working-directory: worker
 
-      - name: Typecheck Worker
+      - name: Worker 类型检查
         run: npm run typecheck
         working-directory: worker
 
-      - name: Test Worker
+      - name: 测试 Worker
         run: npm run test
         working-directory: worker
 
-      - name: Check Frontend Types
+      - name: 前端类型检查
         run: npm run check
 
       # issue #102 / L2：ESLint 门禁（死代码 / 未使用变量 / 重复定义为 error 级）。
       # 根配置同时覆盖根包与 worker/src、worker/tests，故一条命令即可。
-      - name: Lint
+      - name: 代码静态检查
         run: npm run lint
 
-      - name: Test Frontend
+      - name: 测试前端
         run: npm test
 
       # P3：Playwright 不入 package.json；CI 固定回归验证过的版本。
-      - name: Install Playwright Chromium
+      - name: 安装 Playwright Chromium
         timeout-minutes: 10
         run: |
           npm install --no-save "playwright@${PLAYWRIGHT_VERSION}"
@@ -117,7 +117,7 @@ jobs:
       # 文章 SSR / 编辑器端到端 / 后台响应式 / 观感，失败即阻断部署。
       # 两条导航回归仍手动。编辑器脚本自己拉起有状态 mock（端口 4322），
       # 与 ARTICLE_API_ORIGIN 指向同一进程，PUT 与 SSR GET 共用内存数据。
-      - name: Test Article SSR + Editor + Admin (Playwright)
+      - name: 文章 SSR + 编辑器 + 后台回归（Playwright）
         timeout-minutes: 15
         env:
           ARTICLE_API_ORIGIN: http://127.0.0.1:4322
@@ -176,19 +176,19 @@ jobs:
           # 亮暗主题 × 375/1280 视口；失败输出带规则 ID 与源码定位的问题清单。
           node scripts/verify-visual-friendliness.mjs
 
-      - name: Build Astro site
+      - name: 构建 Astro 站点
         run: npm run build
 
       # 供 D1 迁移 / Worker 部署共用：把 vars 里的资源标识与 R2 桶名渲染进
       # worker/wrangler.deploy.jsonc（生成物，不入 git）。未配置的变量保留仓库默认值。
-      - name: Render Worker deploy config
+      - name: 渲染 Worker 部署配置
         run: node scripts/render-worker-config.mjs
 
       # D1 增量迁移（issue：CI/CD 自动迁移）：两个文件都是 IF NOT EXISTS 幂等，
       # 每次 push 安全重放；结构性历史迁移走 migrations/ 手动 apply（issue #94），
       # 不在此重放。全量 schema.sql 虽已幂等（#94），仍不作为 CI 迁移源。
       # 放在所有门禁之后、部署之前：测试失败就不碰生产库。
-      - name: Apply D1 migrations
+      - name: 执行 D1 迁移
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -200,13 +200,13 @@ jobs:
 
       # 迁移命令返回 0 不等于对象真的建出来（表名错/前置列缺失会跳过），
       # 用 sqlite_master 核对 3 表 + 5 索引，缺一项即红。
-      - name: Verify D1 migrations
+      - name: 校验 D1 迁移
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node scripts/verify-d1-migrations.mjs
 
-      - name: Deploy to Cloudflare Pages
+      - name: 部署到 Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -214,7 +214,7 @@ jobs:
           command: pages deploy dist --project-name=${{ env.PAGES_PROJECT_NAME }}
 
       # R2 桶不存在时创建；已存在则忽略。需要 token 具备 R2 编辑权限。
-      - name: Ensure R2 bucket
+      - name: 确保 R2 存储桶存在
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -225,7 +225,7 @@ jobs:
             grep -qi "already exists\|already owned" "$RUNNER_TEMP/r2-create.log"
           }
 
-      - name: Deploy Worker
+      - name: 部署 Worker
         run: npx wrangler deploy --config=wrangler.deploy.jsonc
         working-directory: worker
         env:
@@ -236,7 +236,7 @@ jobs:
       # 未配置 secrets 时整步跳过，不影响以 R2 绑定为主的运行时读写。
       # 放在 Deploy Worker 之后：secret put 要求 Worker 已存在（首次部署时亦可用）。
       # secrets 不能直接写进 if，故先映射到 step env 再判断。
-      - name: Sync R2 credentials to Worker
+      - name: 同步 R2 凭据到 Worker
         if: ${{ env.HAS_R2_CREDENTIALS == 'true' }}
         working-directory: worker
         env:
@@ -256,7 +256,7 @@ jobs:
       # issue #106 / L8：部署后轮询线上就绪，替代旧的「固定 sleep + 二次覆盖部署」。
       # 两条探针覆盖两条链路：`/`（Pages 产物）与 `/api/v1/health`（API Worker，
       # 要求 200 且 status=ok、db 非 error）。就绪即返回；超时打印每条的末次状态并非零退出。
-      - name: Wait for deployment readiness
+      - name: 等待部署就绪
         env:
           # 探针打 Pages 生产别名，而不是自定义域：zone 的边缘安全规则会把
           # GitHub Actions 的出网 IP 判成 bot（自定义域恒 403，实测 2026-11-17

@@ -27,7 +27,9 @@ const publishedArticle: ArticleDetail = {
   summary: "摘要",
   cover_image: "/cover.png",
   category: { id: 1, name: "技术", slug: "tech" },
-  tags: [{ id: 2, name: "Astro", slug: "astro" }],
+  tags: [
+    { id: 2, name: "Astro", slug: "astro", category_id: null, category: null },
+  ],
   status: "published",
   view_count: 3,
   like_count: 4,

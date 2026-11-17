@@ -138,22 +138,32 @@ git push origin main
 
 CI（`.github/workflows/deploy.yml`）按顺序执行以下步骤，任一步失败即阻断后续：
 
-| #   | 步骤                       | 执行命令 / 配置项                                                                                                      | 预期结果                            |
-| --- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| 1   | 生成物漂移门禁             | `npm run gen:settings` / `gen:headers` / `gen:cors` / `gen:rich-text` + `git diff --exit-code`                         | 重新生成后 diff 为空                |
-| 2   | 安装依赖                   | `npm ci`（根目录 + `worker/`）                                                                                         | 依赖就绪                            |
-| 3   | Worker 类型检查与测试      | `npm run typecheck`、`npm test`（`worker/`）                                                                           | 全绿                                |
-| 4   | 前端类型检查 / Lint / 单测 | `npm run check`、`npm run lint`、`npm test`（根目录）                                                                  | 全绿                                |
-| 5   | 浏览器回归                 | Playwright：文章 SSR / 编辑器端到端 / 编辑器响应式 / 后台移动端 / 观感友好度                                           | 全绿                                |
-| 6   | 构建                       | `npm run build`（prebuild 生成 `public/_headers`，构建后收紧 CSP）                                                     | `dist/` 产物生成                    |
-| 7   | 渲染部署配置               | `node scripts/render-worker-config.mjs`                                                                                | 生成 `worker/wrangler.deploy.jsonc` |
-| 8   | D1 增量迁移                | `wrangler d1 execute ... --config=wrangler.deploy.jsonc --file=./schema-tier0-incremental.sql`（及 M22、reading-time） | 迁移命令成功，不报 duplicate column |
-| 9   | 核对 D1 迁移               | `node scripts/verify-d1-migrations.mjs`                                                                                | 3 表 + 5 索引齐全                   |
-| 10  | 部署 Pages                 | `wrangler pages deploy dist --project-name=blog-website`                                                               | Pages 部署成功                      |
-| 11  | 确保 R2 桶                 | `wrangler r2 bucket create "$R2_BUCKET_NAME"`（已存在视为成功）                                                        | 桶存在                              |
-| 12  | 部署 Worker                | `wrangler deploy --config=wrangler.deploy.jsonc`（`worker/`）                                                          | Worker 部署成功                     |
-| 13  | 同步 R2 凭据（可选）       | 配置了 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` 时同步为 Worker secret                                              | secret 写入成功                     |
-| 14  | 就绪轮询                   | `node scripts/wait-for-deploy.mjs`                                                                                     | 探针就绪，退出码 0（详见第四节）    |
+| #   | 步骤                                       | 执行命令 / 配置项                                                                                                                  | 预期结果                            |
+| --- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| 1   | 检出代码                                   | `actions/checkout@v7`                                                                                                              | 源码就绪                            |
+| 2   | 配置 Node.js                               | `actions/setup-node@v7`，版本取 `NODE_VERSION`（默认 22）                                                                          | Node 环境就绪                       |
+| 3   | 检查设置规则漂移                           | `npm run gen:settings` + `git diff --exit-code`（生成物两处）                                                                      | diff 为空                           |
+| 4   | 检查安全响应头漂移                         | `npm run gen:headers` + `git diff --exit-code -- public/_headers`                                                                  | diff 为空                           |
+| 5   | 检查 CORS 来源漂移                         | `npm run gen:cors` + `git diff --exit-code`（Worker/Pages 两处）                                                                   | diff 为空                           |
+| 6   | 检查富文本策略漂移                         | `npm run gen:rich-text` + `git diff --exit-code`                                                                                   | diff 为空                           |
+| 7   | 安装根包依赖                               | `npm ci`（根目录）                                                                                                                 | 依赖就绪                            |
+| 8   | 安装 Worker 依赖                           | `npm ci`（`worker/`）                                                                                                              | 依赖就绪                            |
+| 9   | Worker 类型检查                            | `npm run typecheck`（`worker/`）                                                                                                   | 全绿                                |
+| 10  | 测试 Worker                                | `npm run test`（`worker/`）                                                                                                        | 全绿                                |
+| 11  | 前端类型检查                               | `npm run check`（根目录）                                                                                                          | 全绿                                |
+| 12  | 代码静态检查                               | `npm run lint`（根目录）                                                                                                           | 全绿                                |
+| 13  | 测试前端                                   | `npm test`（根目录）                                                                                                               | 全绿                                |
+| 14  | 安装 Playwright Chromium                   | `npm install --no-save playwright@${PLAYWRIGHT_VERSION}` + `npx playwright install --with-deps chromium`                           | 浏览器就绪                          |
+| 15  | 文章 SSR + 编辑器 + 后台回归（Playwright） | 拉起 `astro dev :4321` 与 mock `:4322`，跑 5 个 `verify-*.mjs`（文章 SSR / 编辑器端到端 / 编辑器响应式 / 后台移动端 / 观感友好度） | 全绿                                |
+| 16  | 构建 Astro 站点                            | `npm run build`（prebuild 生成 `public/_headers`，构建后收紧 CSP）                                                                 | `dist/` 产物生成                    |
+| 17  | 渲染 Worker 部署配置                       | `node scripts/render-worker-config.mjs`                                                                                            | 生成 `worker/wrangler.deploy.jsonc` |
+| 18  | 执行 D1 迁移                               | `wrangler d1 execute ... --config=wrangler.deploy.jsonc --file=./schema-tier0-incremental.sql`（及 M22、reading-time）             | 迁移成功，不报 duplicate column     |
+| 19  | 校验 D1 迁移                               | `node scripts/verify-d1-migrations.mjs`                                                                                            | 3 表 + 5 索引齐全                   |
+| 20  | 部署到 Cloudflare Pages                    | `wrangler pages deploy dist --project-name=blog-website`                                                                           | 部署成功                            |
+| 21  | 确保 R2 存储桶存在                         | `wrangler r2 bucket create "$R2_BUCKET_NAME"`（已存在视为成功）                                                                    | 桶存在                              |
+| 22  | 部署 Worker                                | `wrangler deploy --config=wrangler.deploy.jsonc`（`worker/`）                                                                      | 部署成功                            |
+| 23  | 同步 R2 凭据到 Worker                      | 配置 `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` 时同步为 Worker secret                                                            | secret 写入成功                     |
+| 24  | 等待部署就绪                               | `node scripts/wait-for-deploy.mjs`                                                                                                 | 探针就绪，退出码 0（详见第四节）    |
 
 > **L8 已清理**：旧的「sleep 120 + 二次覆盖部署」已删除，改为上表的轮询就绪检查。双通道须在 Dashboard 断开（见 2.4），由 Actions 单点管理。
 
