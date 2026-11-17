@@ -46,6 +46,22 @@ const seo = buildArticlePageMeta(result, {
 const article = result.status === 'ok' ? result.article : null;
 const category = article?.category ?? null;
 const tags = article?.tags ?? [];
+// taxonomy v2（#81 §7）：详情页标签按 tag.category 分组——每组一个小分类徽标（链接
+// 分类页）+ 标签 chip；跨分类标签各自成组；无标签时整个区域隐藏。无归属标签成组
+// 不渲染徽标（迁移期形态）。
+const tagGroups: Array<{
+  category: { name: string; slug: string } | null;
+  tags: Array<{ name: string; slug: string; category?: { name: string; slug: string } | null }>;
+}> = [];
+for (const tag of tags) {
+  const key = tag.category?.slug ?? "__uncategorized__";
+  let group = tagGroups.find((g) => (g.category?.slug ?? "__uncategorized__") === key);
+  if (!group) {
+    group = { category: tag.category ?? null, tags: [] };
+    tagGroups.push(group);
+  }
+  group.tags.push(tag);
+}
 const bodyHtml = article ? renderMarkdownServer(article.content) : '';
 const publishedAt = article?.published_at ?? '';
 const publishedLabel = publishedAt ? formatArticleDate(publishedAt) : '';
@@ -109,10 +125,23 @@ const categoryNameStyle = categoryNameVars(categoryColor);
           </span>
         </div>
         <div class="article-tags" data-reveal="fade-up">
-          {tags.map((tag) => (
-            <a href={`/tags/${encodeURIComponent(tag.slug)}`} class="article-tag">
-              {tag.name}
-            </a>
+          {tagGroups.map((group) => (
+            <span class="article-tag-group">
+              {group.category && (
+                <a
+                  href={`/categories/${encodeURIComponent(group.category.slug)}`}
+                  class="article-tag-category"
+                  title={`分类：${group.category.name}`}
+                >
+                  {group.category.name}
+                </a>
+              )}
+              {group.tags.map((tag) => (
+                <a href={`/tags/${encodeURIComponent(tag.slug)}`} class="article-tag">
+                  {tag.name}
+                </a>
+              ))}
+            </span>
           ))}
         </div>
       </header>
@@ -381,6 +410,31 @@ const categoryNameStyle = categoryNameVars(categoryColor);
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+    align-items: center;
+  }
+
+  /* taxonomy v2（#81 §7）：标签按归属分类分组展示 */
+  .article-tag-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .article-tag-category {
+    padding: 0.15rem 0.55rem;
+    background: var(--color-accent-subtle);
+    color: var(--color-accent);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .article-tag-category:hover {
+    filter: brightness(0.92);
   }
 
   .article-tag {

@@ -12,16 +12,29 @@ const loaded = await loadTaxonomyForPage('category-articles', { slug });
 const items = loaded.status === 'ok' ? loaded.items as import('../../utils/taxonomyServer.ts').TaxonomyArticle[] : [];
 const totalPages = loaded.status === 'ok' ? loaded.totalPages : 1;
 // error 时不写首屏内容（留空由客户端接管并显示加载失败），避免误导性「暂无文章」
-const firstHtml = loaded.status === 'error' ? '' : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章' });
+const firstHtml = loaded.status === 'error' ? '' : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章', belongsLabel: '分类：' });
 const firstPagination = renderPagination(1, totalPages, { prev: '上一页', next: '下一页' });
 ---
 
 <BaseLayout title={`分类: ${slug}`} description="">
   <section class="category-page">
+    <nav class="breadcrumb" id="category-breadcrumb" aria-label="breadcrumb">
+      <a href="/">{'首页'}</a>
+      <span class="breadcrumb-sep" aria-hidden="true">›</span>
+      <span id="category-breadcrumb-current">{slug}</span>
+    </nav>
     <div class="page-header">
-      <h1 class="page-title" data-i18n="page.category" data-i18n-params={JSON.stringify({ name: slug })}>分类: {slug}</h1>
+      <h1 class="page-title" id="category-title" data-i18n="page.category" data-i18n-params={JSON.stringify({ name: slug })}>分类: {slug}</h1>
       <a href="/articles" class="page-back" data-i18n="page.all_articles">← 所有文章</a>
     </div>
+    <p id="category-desc" class="category-desc-full" hidden></p>
+
+    <!-- taxonomy v2（#81 §5）：标签筛选条（「全部」+ 各标签 chip，aria-pressed 标记选中） -->
+    <div id="category-tag-filter" class="category-tag-filter" hidden>
+      <span class="filter-label" data-i18n="taxonomy.filter_by_tag">按标签筛选</span>
+      <div class="filter-chips" id="category-filter-chips"></div>
+    </div>
+
     <div id="article-list" data-category-slug={slug} data-page="1" data-page-size="10" data-ssr={loaded.status === 'ok' || loaded.status === 'empty' ? '1' : '0'}>
       <div class="article-list-inner"><Fragment set:html={firstHtml} /></div>
       <div id="pagination-mount"><Fragment set:html={firstPagination} /></div>
@@ -30,6 +43,126 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 </BaseLayout>
 
 <style>
+  .breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    margin-bottom: 0.75rem;
+    min-width: 0;
+  }
+  .breadcrumb a {
+    color: var(--color-text-tertiary);
+    text-decoration: none;
+  }
+  .breadcrumb a:hover {
+    color: var(--color-accent);
+  }
+  .breadcrumb-sep {
+    opacity: 0.6;
+  }
+  .category-desc-full {
+    font-size: 0.85rem;
+    color: var(--color-text-tertiary);
+    line-height: 1.6;
+    margin-bottom: clamp(0.75rem, 2vw, 1rem);
+    overflow-wrap: anywhere;
+  }
+  .category-tag-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: clamp(1rem, 3vw, 1.5rem);
+    min-width: 0;
+  }
+  .filter-label {
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 36px;
+    padding: 0.2rem 0.7rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    transition: all var(--transition-fast);
+  }
+  .filter-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .filter-chip[aria-pressed="true"] {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .filter-chip .tag-count {
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+  .category-not-found {
+    text-align: center;
+    padding: clamp(2rem, 6vw, 3.5rem) 0;
+  }
+  .category-not-found h2 {
+    font-size: 1.2rem;
+    color: var(--color-text-primary);
+    margin-bottom: 0.75rem;
+  }
+  .category-not-found a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.5rem 1.25rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  .category-not-found a:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .filtered-empty {
+    text-align: center;
+    color: var(--color-text-tertiary);
+    padding: 2.5rem 0;
+  }
+  .filtered-empty button {
+    min-height: 44px;
+    margin-top: 0.75rem;
+    padding: 0.4rem 1rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .filtered-empty button:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
   .page-header {
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
     display: flex;
@@ -75,27 +208,46 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 <script>
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
+  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+  import { parseTagParam, buildTagFilterUrl } from '../../utils/taxonomyFilter.ts';
 
-  async function loadArticles(page = 1) {
+  const wrapper = document.getElementById('article-list');
+  const basePath = '/categories/' + (wrapper?.dataset.categorySlug ?? '');
+
+  /** 当前标签筛选（null = 「全部」）。 */
+  let activeTagSlug: string | null = null;
+  /** 本分类名下的标签（slug → name/article_count），用于校验 ?tag= 合法性。 */
+  let knownTags: Array<{ slug: string; name: string; article_count?: number }> = [];
+
+  async function loadArticles(page = 1, tagSlug: string | null = activeTagSlug) {
     const container = document.querySelector('.article-list-inner');
-    if (!container) return;
-    const wrapper = document.getElementById('article-list');
-    if (!wrapper) return;
+    if (!container || !wrapper) return;
 
     const categorySlug = wrapper.dataset.categorySlug;
     const locale = getLocale();
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
-      const response = await fetch(`/api/v1/articles?page=${page}&status=published&category_slug=${categorySlug}`);
+      const tagPart = tagSlug ? `&tag_slug=${encodeURIComponent(tagSlug)}` : '';
+      const response = await fetch(`/api/v1/articles?page=${page}&status=published&category_slug=${categorySlug}${tagPart}`);
       const data = await response.json();
 
       if (data.code === 0 && data.data) {
         const { items, total_pages } = data.data;
 
+        if (items.length === 0 && tagSlug) {
+          // #81 §5：筛选后空结果 → 提示 + 清除筛选按钮
+          container.innerHTML = `<div class="filtered-empty"><p>${escapeHtml(t('page.no_articles_tag'))}</p><button type="button" id="clear-tag-filter">${escapeHtml(t('taxonomy.clear_filter'))}</button></div>`;
+          document.getElementById('clear-tag-filter')?.addEventListener('click', () => selectTag(null));
+          const paginationMount = document.getElementById('pagination-mount');
+          if (paginationMount) paginationMount.innerHTML = '';
+          return;
+        }
+
         container.innerHTML = renderArticleCards(items, {
           read: t('article.read'),
           noArticles: t('page.no_articles_category'),
+          belongsLabel: t('taxonomy.belongs_to_category'),
         }, dateLocale, false);
         if (items.length === 0) return;
 
@@ -109,6 +261,129 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       }
     } catch (e) {
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
+    }
+  }
+
+  // ── taxonomy v2（#81 §5）：标签筛选条与 URL 契约 ──
+
+  function renderFilterChips() {
+    const chips = document.getElementById('category-filter-chips');
+    if (!chips) return;
+    const allChip = `<button type="button" class="filter-chip" data-tag="" aria-pressed="${activeTagSlug === null}">${escapeHtml(t('taxonomy.all'))}</button>`;
+    const tagChips = knownTags.map((tg) =>
+      `<button type="button" class="filter-chip" data-tag="${escapeHtml(tg.slug)}" aria-pressed="${tg.slug === activeTagSlug}">${escapeHtml(tg.name)}<span class="tag-count">${tg.article_count || 0}</span></button>`
+    ).join('');
+    chips.innerHTML = allChip + tagChips;
+  }
+
+  function syncFilterUi() {
+    renderFilterChips();
+  }
+
+  /** 点击 chip / popstate 统一入口：更新 URL（pushState / replaceState）并重新取数。 */
+  function selectTag(tagSlug: string | null, mode: 'push' | 'replace' = 'push') {
+    activeTagSlug = tagSlug;
+    const url = buildTagFilterUrl(basePath, tagSlug);
+    if (mode === 'push') {
+      history.pushState({ tag: tagSlug }, '', url);
+    } else {
+      history.replaceState({ tag: tagSlug }, '', url);
+    }
+    syncFilterUi();
+    loadArticles(1, tagSlug);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function bindFilterChips() {
+    const chips = document.getElementById('category-filter-chips');
+    if (!chips) return;
+    chips.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.filter-chip') as HTMLElement | null;
+      if (!btn) return;
+      const slug = btn.dataset.tag || null;
+      if (slug === activeTagSlug) return;
+      selectTag(slug);
+    });
+  }
+
+  async function loadCategoryMeta() {
+    if (!wrapper) return;
+    const categorySlug = wrapper.dataset.categorySlug;
+    const titleEl = document.getElementById('category-title');
+    const currentEl = document.getElementById('category-breadcrumb-current');
+    const descEl = document.getElementById('category-desc');
+    const filterBox = document.getElementById('category-tag-filter');
+    if (!categorySlug || !titleEl || !currentEl) return;
+
+    try {
+      const res = await fetch(`/api/v1/categories/${safePathSegment(categorySlug)}`);
+      if (res.status === 404) {
+        renderNotFound();
+        return;
+      }
+      const data = await res.json();
+      if (data.code !== 0 || !data.data) return;
+      const cat = data.data;
+      const catName = cat.name || categorySlug;
+      titleEl.textContent = catName;
+      document.title = catName;
+      currentEl.textContent = catName;
+      if (cat.description && descEl) {
+        descEl.textContent = cat.description;
+        descEl.hidden = false;
+      }
+      // 标签筛选条：GET /tags?category_slug=<slug>
+      const tagRes = await fetch(`/api/v1/tags?category_slug=${safePathSegment(categorySlug)}`);
+      const tagData = tagRes.ok ? await tagRes.json() : { code: -1 };
+      if (tagData.code === 0 && Array.isArray(tagData.data)) {
+        knownTags = tagData.data.map((tg: any) => ({
+          slug: tg.slug,
+          name: tg.name,
+          article_count: tg.article_count || 0,
+        }));
+        if (knownTags.length > 0 && filterBox) {
+          filterBox.hidden = false;
+          // URL 契约：非法 / 不属于该分类的 ?tag= → 忽略并 replaceState 清参
+          const requested = parseTagParam(window.location.search);
+          if (requested) {
+            const legal = knownTags.some((tg) => tg.slug === requested);
+            if (legal) {
+              activeTagSlug = requested;
+              loadArticles(1, requested);
+            } else {
+              history.replaceState({ tag: null }, '', buildTagFilterUrl(basePath, null));
+            }
+          }
+          renderFilterChips();
+          bindFilterChips();
+          window.addEventListener('popstate', (e) => {
+            const restored = parseTagParam(window.location.search);
+            // 仅接受本分类名下的 tag；否则回「全部」
+            const legal = restored && knownTags.some((tg) => tg.slug === restored) ? restored : null;
+            activeTagSlug = legal;
+            syncFilterUi();
+            loadArticles(1, legal);
+          });
+        }
+      }
+    } catch (e) {
+      // 元信息回填失败不影响文章列表
+    }
+  }
+
+  function renderNotFound() {
+    if (!wrapper) return;
+    const section = wrapper.closest('.category-page') as HTMLElement | null;
+    if (section) {
+      wrapper.hidden = true;
+      const filterBox = document.getElementById('category-tag-filter');
+      if (filterBox) filterBox.hidden = true;
+      const notFound = document.createElement('div');
+      notFound.className = 'category-not-found';
+      notFound.innerHTML = `
+        <h2>${escapeHtml(t('page.category_not_found'))}</h2>
+        <a href="/categories">${escapeHtml(t('nav.categories'))}</a>`;
+      wrapper.after(notFound);
     }
   }
 
@@ -128,19 +403,16 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   }
 
   // issue #97：SSR 首屏默认中文；非中文用户必须主动刷新一次套用正确文案。
-  // 同步读存储/浏览器语言判断（initLocale 是异步 dynamic import，page-load 时可能尚未执行，
-  // 且它不派发 locale-changed），避免依赖 getLocale() 的时序。
   function ssrLocaleIsZh(): boolean {
     const stored = localStorage.getItem('locale');
     return stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
   }
   document.addEventListener('astro:page-load', () => {
-    const wrapper = document.getElementById('article-list');
+    loadCategoryMeta();
     if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
       bindPagination();
       return;
     }
-    // 非中文：确保 currentLocale 已同步后再刷新（initLocale 幂等，读取存储/浏览器语言）
     initLocale();
     loadArticles();
   });
@@ -153,7 +425,6 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
-    /* 封面是方形元素，必须裁到卡片圆角内，否则封面直角会盖住圆角边框，左上角露出深色直角 */
     overflow: hidden;
     transition: all var(--transition-normal);
   }
@@ -178,6 +449,14 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     margin-bottom: 0.5rem;
     font-size: 0.8rem;
     min-width: 0;
+  }
+  .list-card-category {
+    color: var(--color-accent);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .list-card-category:hover {
+    text-decoration: underline;
   }
   .list-card-date {
     color: var(--color-text-tertiary);
@@ -220,6 +499,10 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     color: var(--color-tag-text);
     border-radius: var(--radius-sm);
     font-size: 0.72rem;
+    text-decoration: none;
+  }
+  .list-card-tag[data-cross-category="1"] {
+    border: 1px dashed var(--color-accent);
   }
   .list-card-stats {
     font-size: 0.75rem;

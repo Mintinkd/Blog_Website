@@ -116,9 +116,49 @@ import SearchBox from '../islands/SearchBox.vue';
   }
 </style>
 
+<!-- taxonomy v2（#81 §6）：标签按分类分组——动态注入 DOM，样式须全局并带页面级前缀 -->
+<style is:global>
+  .search-page .tag-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    min-width: 0;
+  }
+  .search-page .tag-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    min-width: 0;
+  }
+  .search-page .tag-group-name {
+    color: var(--color-text-primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .search-page .tag-group-name:hover {
+    color: var(--color-accent);
+  }
+  .search-page .tag-group-count {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .search-page .tag-group-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+</style>
+
 <script>
   import { t } from '../utils/i18n.ts';
   import { escapeHtml, safePathSegment } from '../utils/escape.ts';
+  import { groupTagsByCategory, renderTagGroups } from '../utils/taxonomyGroups.ts';
 
   async function loadSearchTags() {
     const container = document.getElementById('search-tags');
@@ -132,14 +172,12 @@ import SearchBox from '../islands/SearchBox.vue';
           container.innerHTML = `<p class="taxonomy-empty">${t('page.no_articles_tag')}</p>`;
           return;
         }
-        tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
-        container.innerHTML = tags.map((tag: any) => `
-          <a href="/tags/${safePathSegment(tag.slug)}" class="taxonomy-item"
-             data-type="tag" data-slug="${escapeHtml(tag.slug)}" data-name="${escapeHtml(tag.name)}">
-            <span>${escapeHtml(tag.name)}</span>
-            <span class="taxonomy-count">${tag.article_count || 0}</span>
-          </a>
-        `).join('');
+        // taxonomy v2（#81 §6）：标签按分类分组；chip 保留 taxonomy-filter 点击行为（button 模式）
+        container.innerHTML = renderTagGroups(
+          groupTagsByCategory(tags),
+          { uncategorized: t('taxonomy.uncategorized'), tagCount: t('taxonomy.tag_count') },
+          'button'
+        );
       } else {
         container.innerHTML = `<p class="taxonomy-empty">${t('common.load_failed')}</p>`;
       }
@@ -161,11 +199,13 @@ import SearchBox from '../islands/SearchBox.vue';
           return;
         }
         categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
+        // taxonomy v2（#81 §6）：分类 chip 显示 tag_count
         container.innerHTML = categories.map((cat: any) => `
           <a href="/categories/${safePathSegment(cat.slug)}" class="taxonomy-item"
              data-type="category" data-slug="${escapeHtml(cat.slug)}" data-name="${escapeHtml(cat.name)}">
             <span>${escapeHtml(cat.name)}</span>
             <span class="taxonomy-count">${cat.article_count || 0}</span>
+            <span class="taxonomy-count">${cat.tag_count || 0} ${escapeHtml(t('taxonomy.tag_count'))}</span>
           </a>
         `).join('');
       } else {
@@ -187,6 +227,8 @@ import SearchBox from '../islands/SearchBox.vue';
         type: link.dataset.type,
         slug: link.dataset.slug,
         name: link.dataset.name,
+        // taxonomy v2（#81 §6）：标签 chip 携带所属分类名，筛选条显示「标签：X（分类：Y）」
+        categoryName: link.dataset.categoryName || null,
       },
     }));
     document.querySelector('.search-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

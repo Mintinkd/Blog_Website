@@ -12,16 +12,29 @@ const loaded = await loadTaxonomyForPage('tag-articles', { slug });
 const items = loaded.status === 'ok' ? loaded.items as import('../../utils/taxonomyServer.ts').TaxonomyArticle[] : [];
 const totalPages = loaded.status === 'ok' ? loaded.totalPages : 1;
 // error 时不写首屏内容（留空由客户端接管并显示加载失败），避免误导性「暂无文章」
-const firstHtml = loaded.status === 'error' ? '' : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章' }, 'zh-CN', true);
+// taxonomy v2（#81 §3）：卡片统一共享渲染器——标签恒为链接，title 带所属分类。
+const firstHtml = loaded.status === 'error' ? '' : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章', belongsLabel: '分类：' }, 'zh-CN', true);
 const firstPagination = renderPagination(1, totalPages, { prev: '上一页', next: '下一页' });
 ---
 
 <BaseLayout title={`标签: ${slug}`} description="">
   <section class="tag-page">
+    <nav class="breadcrumb" id="tag-breadcrumb" aria-label="breadcrumb">
+      <a href="/">{'首页'}</a>
+      <span class="breadcrumb-sep" aria-hidden="true">›</span>
+      <span id="tag-breadcrumb-current">{slug}</span>
+    </nav>
     <div class="page-header">
-      <h1 class="page-title" data-i18n="page.tag" data-i18n-params={JSON.stringify({ name: slug })}>标签: {slug}</h1>
+      <h1 class="page-title" id="tag-title" data-i18n="page.tag" data-i18n-params={JSON.stringify({ name: slug })}>标签: {slug}</h1>
       <a href="/articles" class="page-back" data-i18n="page.all_articles">← 所有文章</a>
     </div>
+
+    <!-- taxonomy v2（#81 §3）：同分类标签跳转条（客户端回填；无分类 / 404 时隐藏） -->
+    <div id="same-category-tags" class="same-category-tags" hidden>
+      <span class="same-category-label" data-i18n="taxonomy.same_category_tags">同分类标签</span>
+      <div class="same-category-items" id="same-category-items"></div>
+    </div>
+
     <div id="article-list" data-tag-slug={slug} data-page="1" data-page-size="10" data-ssr={loaded.status === 'ok' || loaded.status === 'empty' ? '1' : '0'}>
       <div class="article-list-inner"><Fragment set:html={firstHtml} /></div>
       <div id="pagination-mount"><Fragment set:html={firstPagination} /></div>
@@ -30,6 +43,33 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 </BaseLayout>
 
 <style>
+  .breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    margin-bottom: 0.75rem;
+    min-width: 0;
+  }
+  .breadcrumb a {
+    color: var(--color-text-tertiary);
+    text-decoration: none;
+  }
+  .breadcrumb a:hover {
+    color: var(--color-accent);
+  }
+  .breadcrumb-sep {
+    opacity: 0.6;
+  }
+  .breadcrumb-current-cat {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .breadcrumb-current-cat:hover {
+    text-decoration: underline;
+  }
   .page-header {
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
     display: flex;
@@ -65,6 +105,74 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     color: var(--color-accent);
   }
 
+  .same-category-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: clamp(1rem, 3vw, 1.5rem);
+    min-width: 0;
+  }
+  .same-category-label {
+    font-size: 0.8rem;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .same-category-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .same-category-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0.2rem 0.65rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    transition: all var(--transition-fast);
+  }
+  .same-category-tag:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .same-category-tag.current {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .tag-not-found {
+    text-align: center;
+    padding: clamp(2rem, 6vw, 3.5rem) 0;
+  }
+  .tag-not-found h2 {
+    font-size: 1.2rem;
+    color: var(--color-text-primary);
+    margin-bottom: 0.75rem;
+  }
+  .tag-not-found a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.5rem 1.25rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  .tag-not-found a:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
   .article-list-inner {
     display: flex;
     flex-direction: column;
@@ -75,12 +183,13 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 <script>
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
+  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+
+  const wrapper = document.getElementById('article-list');
 
   async function loadArticles(page = 1) {
     const container = document.querySelector('.article-list-inner');
-    if (!container) return;
-    const wrapper = document.getElementById('article-list');
-    if (!wrapper) return;
+    if (!container || !wrapper) return;
 
     const tagSlug = wrapper.dataset.tagSlug;
     const locale = getLocale();
@@ -96,6 +205,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         container.innerHTML = renderArticleCards(items, {
           read: t('article.read'),
           noArticles: t('page.no_articles_tag'),
+          belongsLabel: t('taxonomy.belongs_to_category'),
         }, dateLocale, true);
         if (items.length === 0) return;
 
@@ -109,6 +219,78 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       }
     } catch (e) {
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
+    }
+  }
+
+  // taxonomy v2（#81 §3）：客户端回填真实标签名、分类面包屑与 document.title；
+  // 404 显示「标签不存在」空态并停止取文章列表。
+  async function loadTagMeta() {
+    if (!wrapper) return;
+    const tagSlug = wrapper.dataset.tagSlug;
+    const titleEl = document.getElementById('tag-title');
+    const breadcrumb = document.getElementById('tag-breadcrumb');
+    const currentEl = document.getElementById('tag-breadcrumb-current');
+    if (!tagSlug || !titleEl || !currentEl || !breadcrumb) return;
+
+    try {
+      const res = await fetch(`/api/v1/tags/${safePathSegment(tagSlug)}`);
+      if (res.status === 404) {
+        renderNotFound();
+        return;
+      }
+      const data = await res.json();
+      if (data.code !== 0 || !data.data) return;
+      const tag = data.data;
+      const tagName = tag.name || tagSlug;
+      titleEl.textContent = tagName;
+      document.title = tagName;
+      currentEl.textContent = tagName;
+      // 面包屑：首页 › 分类名 › 标签名；迁移期无分类 → 首页 › 标签名
+      const cat = tag.category as { name: string; slug: string } | null;
+      if (cat) {
+        currentEl.innerHTML = `<a class="breadcrumb-current-cat" href="/categories/${safePathSegment(cat.slug)}">${escapeHtml(cat.name)}</a><span class="breadcrumb-sep" aria-hidden="true">›</span><span>${escapeHtml(tagName)}</span>`;
+        loadSameCategoryTags(tagSlug, cat.slug);
+      } else {
+        currentEl.textContent = tagName;
+      }
+    } catch (e) {
+      // 元信息回填失败不影响文章列表
+    }
+  }
+
+  async function loadSameCategoryTags(tagSlug: string, categorySlug: string) {
+    const box = document.getElementById('same-category-tags');
+    const items = document.getElementById('same-category-items');
+    if (!box || !items) return;
+    try {
+      const res = await fetch(`/api/v1/tags?category_slug=${safePathSegment(categorySlug)}`);
+      const data = await res.json();
+      if (data.code !== 0 || !Array.isArray(data.data)) return;
+      const siblings = (data.data as any[])
+        .filter((tg) => tg.slug !== tagSlug)
+        .slice(0, 12);
+      if (siblings.length === 0) return;
+      items.innerHTML = siblings.map((tg) =>
+        `<a class="same-category-tag" href="/tags/${safePathSegment(tg.slug)}">${escapeHtml(tg.name)}<span class="tag-count">${tg.article_count || 0}</span></a>`
+      ).join('');
+      box.hidden = false;
+    } catch (e) {
+      /* 同分类标签失败不阻断 */
+    }
+  }
+
+  function renderNotFound() {
+    if (!wrapper) return;
+    const section = wrapper.closest('.tag-page') as HTMLElement | null;
+    if (section) {
+      const list = document.getElementById('article-list');
+      if (list) list.hidden = true;
+      const notFound = document.createElement('div');
+      notFound.className = 'tag-not-found';
+      notFound.innerHTML = `
+        <h2>${escapeHtml(t('page.tag_not_found'))}</h2>
+        <a href="/tags">${escapeHtml(t('nav.tags'))}</a>`;
+      list!.after(notFound);
     }
   }
 
@@ -128,13 +310,12 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   }
 
   // issue #97：SSR 首屏默认中文；非中文用户必须主动刷新一次套用正确文案。
-  // 同步读存储/浏览器语言判断（initLocale 是异步 dynamic import，page-load 时可能尚未执行）。
   function ssrLocaleIsZh(): boolean {
     const stored = localStorage.getItem('locale');
     return stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
   }
   document.addEventListener('astro:page-load', () => {
-    const wrapper = document.getElementById('article-list');
+    loadTagMeta();
     if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
       bindPagination();
       return;
@@ -180,6 +361,10 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   .list-card-category {
     color: var(--color-accent);
     font-weight: 500;
+    text-decoration: none;
+  }
+  .list-card-category:hover {
+    text-decoration: underline;
   }
   .list-card-date {
     color: var(--color-text-tertiary);
@@ -222,6 +407,11 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     color: var(--color-tag-text);
     border-radius: var(--radius-sm);
     font-size: 0.72rem;
+    text-decoration: none;
+  }
+  /* taxonomy v2（#81 §7）：跨分类标签虚线标记 */
+  .list-card-tag[data-cross-category="1"] {
+    border: 1px dashed var(--color-accent);
   }
   .list-card-stats {
     font-size: 0.75rem;

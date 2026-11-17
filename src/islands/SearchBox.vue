@@ -4,7 +4,7 @@
       <input
         v-model="query"
         type="text"
-        placeholder="搜索文章..."
+        :placeholder="t('search.placeholder')"
         class="search-input"
         @keyup.enter="doSearch"
       />
@@ -28,14 +28,12 @@
 
     <div v-if="activeFilter" class="active-filter">
       <span class="active-filter-label">
-        {{ activeFilter.type === "tag" ? "标签" : "分类" }}：<strong>{{
-          activeFilter.name
-        }}</strong>
+        {{ filterLabelText }}
       </span>
       <button
         class="active-filter-clear"
         @click="clearFilter"
-        aria-label="清除筛选"
+        :aria-label="t('taxonomy.clear_filter')"
       >
         &times;
       </button>
@@ -43,8 +41,12 @@
 
     <div v-if="results.length > 0" class="search-results">
       <p class="results-info">
-        <template v-if="activeFilter">共 {{ total }} 篇文章</template>
-        <template v-else>找到 {{ total }} 篇相关文章</template>
+        <template v-if="activeFilter">{{
+          t("search.results_filtered", { count: total })
+        }}</template>
+        <template v-else>{{
+          t("search.results_found", { count: total })
+        }}</template>
       </p>
       <TransitionGroup name="result" tag="div" class="search-results-list">
         <div v-for="item in results" :key="item.id" class="search-result-item">
@@ -58,28 +60,36 @@
             class="result-excerpt"
             v-html="sanitizeHighlight(item.content_highlight || item.summary)"
           ></p>
-          <span class="result-date">{{
-            formatDate(item.published_at || item.created_at)
-          }}</span>
+          <!-- taxonomy v2（#81 §6）：关键词结果带分类 badge（链接分类页）与日期 -->
+          <div class="result-meta">
+            <a
+              v-if="item.category"
+              class="result-category"
+              :href="`/categories/${safePathSegment(item.category.slug)}`"
+              >{{ item.category.name }}</a
+            >
+            <span class="result-date">{{
+              formatDate(item.published_at || item.created_at)
+            }}</span>
+          </div>
         </div>
       </TransitionGroup>
     </div>
 
     <div v-else-if="searched && !loading" class="no-results">
-      <p v-if="activeFilter">
-        该{{ activeFilter.type === "tag" ? "标签" : "分类" }}下暂无文章
-      </p>
-      <p v-else>未找到相关文章，试试其他关键词？</p>
+      <p v-if="activeFilter">{{ t("search.no_results_filtered") }}</p>
+      <p v-else>{{ t("search.no_results") }}</p>
     </div>
 
     <div v-if="loading" class="search-loading">
-      <p>搜索中...</p>
+      <p>{{ t("search.searching") }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
+import { t } from "../utils/i18n";
 import { sanitizeHighlight, safePathSegment } from "../utils/escape";
 
 const query = ref("");
@@ -91,7 +101,27 @@ const activeFilter = ref<{
   type: "tag" | "category";
   slug: string;
   name: string;
+  /** taxonomy v2（#81 §6）：标签的所属分类名（可选，仅 tag 类型且有分组信息时）。 */
+  categoryName?: string | null;
 } | null>(null);
+
+// locale-changed 触发重算，保证筛选条 / 空态文案随语言切换刷新
+const localeTick = ref(0);
+function onLocaleChanged() {
+  localeTick.value += 1;
+}
+
+const filterLabelText = computed(() => {
+  void localeTick.value;
+  const f = activeFilter.value;
+  if (!f) return "";
+  const prefix = f.type === "tag" ? t("page.tags") : t("page.categories");
+  let label = `${prefix}：<strong>${f.name}</strong>`;
+  if (f.type === "tag" && f.categoryName) {
+    label += `（${t("page.categories")}：${f.categoryName}）`;
+  }
+  return label;
+});
 
 async function doSearch() {
   const q = query.value.trim();
@@ -122,11 +152,12 @@ async function doSearch() {
 async function filterByTaxonomy(
   type: "tag" | "category",
   slug: string,
-  name: string
+  name: string,
+  categoryName?: string | null
 ) {
   if (!slug) return;
 
-  activeFilter.value = { type, slug, name };
+  activeFilter.value = { type, slug, name, categoryName: categoryName ?? null };
   query.value = "";
   loading.value = true;
   searched.value = true;
@@ -163,15 +194,17 @@ function clearFilter() {
 function handleTaxonomyFilter(e: Event) {
   const detail = (e as CustomEvent).detail;
   if (!detail) return;
-  filterByTaxonomy(detail.type, detail.slug, detail.name);
+  filterByTaxonomy(detail.type, detail.slug, detail.name, detail.categoryName);
 }
 
 onMounted(() => {
   window.addEventListener("taxonomy-filter", handleTaxonomyFilter);
+  window.addEventListener("locale-changed", onLocaleChanged);
 });
 
 onUnmounted(() => {
   window.removeEventListener("taxonomy-filter", handleTaxonomyFilter);
+  window.removeEventListener("locale-changed", onLocaleChanged);
 });
 
 function formatDate(dateStr: string): string {
@@ -335,6 +368,28 @@ function formatDate(dateStr: string): string {
   font-size: 0.9rem;
   margin-bottom: 0.3rem;
   line-height: 1.5;
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.result-category {
+  padding: 0.1rem 0.5rem;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.result-category:hover {
+  filter: brightness(0.92);
 }
 
 .result-date {

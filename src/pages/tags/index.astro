@@ -1,15 +1,19 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
-import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+import { groupTagsByCategory, renderTagGroups } from '../../utils/taxonomyGroups.ts';
 
 export const prerender = false;
 
 // issue #97 / M17：服务端取数渲染首屏（方案 A），非 JS 抓取器可见；客户端脚本负责后续刷新。
+// taxonomy v2（#81 §2）：标签目录按分类分组，未分类固定最后。
 const loaded = await loadTaxonomyForPage('tags');
-const tags = loaded.status === 'ok' ? [...loaded.items].sort(
-  (a: any, b: any) => (b.article_count || 0) - (a.article_count || 0)
-) : [];
+const groups = loaded.status === 'ok'
+  ? groupTagsByCategory(loaded.items as any[])
+  : [];
+const ssrHtml = loaded.status === 'ok'
+  ? renderTagGroups(groups, { uncategorized: '未分类', tagCount: '个标签' }, 'link')
+  : '';
 ---
 
 <BaseLayout title="标签" description="">
@@ -20,41 +24,74 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
     <p class="page-desc" data-i18n="page.tags_desc">按标签浏览所有文章</p>
     <div id="tags-cloud" class="tags-cloud" data-ssr={loaded.status !== 'error' ? '1' : '0'}>
       {loaded.status === 'ok' ? (
-        <Fragment set:html={tags.map((tag: any) => `
-          <a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">
-            <span>${escapeHtml(tag.name)}</span>
-            <span class="tag-count">${tag.article_count || 0}</span>
-          </a>
-        `).join('')} />
+        groups.length === 0 ? (
+          <div class="tags-empty" data-i18n="page.no_articles_tag">暂无标签</div>
+        ) : (
+          <Fragment set:html={ssrHtml} />
+        )
       ) : (
-        <div class="tags-empty" data-i18n={loaded.status === 'error' ? 'common.load_failed' : 'page.no_articles_tag'}>{loaded.status === 'error' ? '加载失败' : '暂无标签'}</div>
+        <div class="tags-empty" data-i18n="common.load_failed">加载失败</div>
       )}
     </div>
   </section>
 </BaseLayout>
 
-<style>
-  .page-header {
+<style is:global>
+  .tags-page .page-header {
     margin-bottom: 0.5rem;
   }
-  .page-title {
+  .tags-page .page-title {
     font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
     overflow-wrap: anywhere;
   }
-  .page-desc {
+  .tags-page .page-desc {
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
   }
-  .tags-cloud {
+  .tags-page .tags-cloud {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 3vw, 1.5rem);
+  }
+  .tags-page .tag-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+  .tags-page .tag-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    min-width: 0;
+  }
+  .tags-page .tag-group-name {
+    color: var(--color-text-primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .tags-page .tag-group-name:hover {
+    color: var(--color-accent);
+  }
+  .tags-page .tag-group-count {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+  }
+  .tags-page .tag-group-items {
     display: flex;
     flex-wrap: wrap;
     gap: clamp(0.45rem, 1.5vw, 0.6rem);
   }
-  .tag-item {
+  .tags-page .tag-item {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -64,26 +101,60 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
     overflow-wrap: anywhere;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
+    border-left: 3px solid var(--color-accent);
     border-radius: var(--radius-lg);
     color: var(--color-text-secondary);
     text-decoration: none;
     font-size: 0.9rem;
+    cursor: pointer;
     transition: all var(--transition-fast);
   }
-  .tag-item:hover {
+  .tags-page .tag-item:hover {
     border-color: var(--color-accent);
     color: var(--color-accent);
     transform: translateY(-1px);
   }
-  .tag-count {
+  .tags-page .tag-count {
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
   }
-  .tags-loading {
-    color: var(--color-text-tertiary);
-    font-size: 0.9rem;
+  .tags-page .tag-skeleton {
+    width: 84px;
+    height: 34px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(
+      90deg,
+      var(--color-bg-secondary) 25%,
+      var(--color-bg-tertiary) 50%,
+      var(--color-bg-secondary) 75%
+    );
+    background-size: 200% 100%;
+    animation: tag-shimmer 1.4s ease infinite;
   }
-  .tags-empty {
+  @media (prefers-reduced-motion: reduce) {
+    .tags-page .tag-skeleton {
+      animation: none;
+    }
+  }
+  @keyframes tag-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+  .tags-page .tags-retry {
+    min-height: 44px;
+    padding: 0.45rem 1rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .tags-page .tags-retry:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .tags-page .tags-empty {
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
   }
@@ -91,7 +162,19 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
 
 <script>
   import { t, initLocale } from '../../utils/i18n.ts';
-  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+  import { groupTagsByCategory, renderTagGroups } from '../../utils/taxonomyGroups.ts';
+
+  function renderSkeleton(container: HTMLElement) {
+    container.innerHTML = `<div class="tag-group-items">${'<span class="tag-skeleton" aria-hidden="true"></span>'.repeat(6)}</div>`;
+  }
+
+  function renderFailed(container: HTMLElement) {
+    container.innerHTML = `<div class="tags-empty">${t('common.load_failed')}</div><button type="button" class="tags-retry">${t('common.retry')}</button>`;
+    container.querySelector('.tags-retry')?.addEventListener('click', () => {
+      renderSkeleton(container);
+      loadTags();
+    });
+  }
 
   async function loadTags() {
     const container = document.getElementById('tags-cloud');
@@ -108,21 +191,17 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
           return;
         }
 
-        // 按文章数降序
-        tags.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
-
-        // 审查报告 H1 修复：标签文本与路径一律转义后再拼 innerHTML（不再依赖服务端 slug 格式约束）
-        container.innerHTML = tags.map((tag: any) => `
-          <a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">
-            <span>${escapeHtml(tag.name)}</span>
-            <span class="tag-count">${tag.article_count || 0}</span>
-          </a>
-        `).join('');
+        // taxonomy v2（#81 §2）：按分类分组、未分类最后；转义由渲染函数单源处理
+        const groups = groupTagsByCategory(tags);
+        container.innerHTML = renderTagGroups(groups, {
+          uncategorized: t('taxonomy.uncategorized'),
+          tagCount: t('taxonomy.tag_count'),
+        }, 'link');
       } else {
-        container.innerHTML = `<p class="tags-empty">${t('common.load_failed')}</p>`;
+        renderFailed(container);
       }
     } catch (e) {
-      container.innerHTML = `<p class="tags-empty">${t('common.load_failed')}</p>`;
+      renderFailed(container);
     }
   }
 
@@ -133,6 +212,7 @@ const tags = loaded.status === 'ok' ? [...loaded.items].sort(
     const ssrZh = stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
     if (container?.dataset.ssr === '1' && ssrZh) return;
     initLocale();
+    if (container && container.dataset.ssr !== '1') renderSkeleton(container);
     loadTags();
   });
   document.addEventListener('locale-changed', () => loadTags());

@@ -58,28 +58,31 @@ describe("页面不再重复定义 esc（issue #95 AC）", () => {
       expect(src, `${rel} 仍定义本地 esc`).not.toMatch(
         /(?:function|const|let|var)\s+esc\s*[=(]|esc\s*=\s*(?:\(|function)/
       );
-      // #97 后详情页卡片渲染收敛到 taxonomyRender，页面不再直接 import escapeHtml——
-      // 只要经该单源（它消费 escapeHtml）即可，禁止的是页面内重复定义。
+      // #97 后详情页卡片渲染收敛到 taxonomyRender；taxonomy v2（#81）再收敛到
+      // articleCard / taxonomyGroups 两个单源（页面按用途二选一 import）——
+      // 禁止的是页面内重复定义，间接消费 escape 单源即可。
       const direct =
         /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*utils\/escape/.test(
           src
         );
       const viaRender =
-        /import\s*\{[^}]*\brenderArticleCards\b[^}]*\}\s*from\s*['"][^'"]*utils\/taxonomyRender/.test(
+        /import\s*\{[^}]*\b(?:renderArticleCards|renderCategoryCards|renderTagGroups|renderArticleCardList)\b[^}]*\}\s*from\s*['"][^'"]*utils\/(?:taxonomyRender|taxonomyGroups|articleCard)/.test(
           src
         );
       expect(direct || viaRender, `${rel} 未使用 escape 单源`).toBe(true);
     }
   );
 
-  it("taxonomyRender 单源消费 escapeHtml（#97 间接路径守卫）", () => {
-    const src = readFileSync(
-      path.join(ROOT, "src/utils/taxonomyRender.ts"),
-      "utf8"
-    );
-    expect(src).toMatch(
-      /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*escape['"]/
-    );
+  it("articleCard / taxonomyGroups 单源消费 escapeHtml（#81 间接路径守卫）", () => {
+    for (const rel of [
+      "src/utils/articleCard.ts",
+      "src/utils/taxonomyGroups.ts",
+    ]) {
+      const src = readFileSync(path.join(ROOT, rel), "utf8");
+      expect(src, `${rel} 应消费 escape 单源`).toMatch(
+        /import\s*\{[^}]*\bescapeHtml\b[^}]*\}\s*from\s*['"][^'"]*escape['"]/
+      );
+    }
   });
 
   it("全仓 .astro / .vue 无本地 escape 函数副本（通用规则，不只三页面）", () => {

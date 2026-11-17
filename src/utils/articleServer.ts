@@ -11,10 +11,13 @@ export interface ArticleCategory {
   slug: string;
 }
 
+/** taxonomy v2（#78）：文章内嵌标签带归属分类（迁移期可为 null）。 */
 export interface ArticleTag {
   id: number;
   name: string;
   slug: string;
+  category_id: number | null;
+  category: ArticleCategory | null;
 }
 
 /** 文章详情页需要的字段（API `GET /articles/:slug` 的读模型子集）。 */

@@ -1,15 +1,25 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
-import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+import { renderCategoryCards } from '../../utils/taxonomyGroups.ts';
 
 export const prerender = false;
 
 // issue #97 / M17：服务端取数渲染首屏（方案 A），非 JS 抓取器可见；客户端脚本负责后续刷新。
-const loaded = await loadTaxonomyForPage('categories');
-const categories = loaded.status === 'ok' ? [...loaded.items].sort(
-  (a: any, b: any) => (b.article_count || 0) - (a.article_count || 0)
-) : [];
+// taxonomy v2（#81 §4）：卡片含 tag_count 与前 3 个标签 chip（并行取 /tags，失败降级为无 chip）。
+const [loaded, tagsLoaded] = await Promise.all([
+  loadTaxonomyForPage('categories'),
+  loadTaxonomyForPage('tags'),
+]);
+const categories = loaded.status === 'ok' ? loaded.items as any[] : [];
+const tags = tagsLoaded.status === 'ok' ? tagsLoaded.items as any[] : [];
+const ssrHtml = loaded.status === 'ok'
+  ? renderCategoryCards(categories, tags, {
+      articlesSuffix: '篇文章',
+      tagCountLabel: '标签',
+      uncategorized: '未分类',
+    })
+  : '';
 ---
 
 <BaseLayout title="分类" description="">
@@ -20,44 +30,41 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
     <p class="page-desc" data-i18n="page.categories_desc">按分类浏览所有文章</p>
     <div id="categories-cloud" class="categories-cloud" data-ssr={loaded.status !== 'error' ? '1' : '0'}>
       {loaded.status === 'ok' ? (
-        <Fragment set:html={categories.map((cat: any) => `
-          <a href="/categories/${safePathSegment(cat.slug)}" class="category-item">
-            <div class="category-head">
-              <span class="category-name">${escapeHtml(cat.name)}</span>
-              <span class="category-count">${cat.article_count || 0} <span data-i18n="admin.article_count">篇文章</span></span>
-            </div>
-            ${cat.description ? `<span class="category-desc">${escapeHtml(cat.description)}</span>` : ''}
-          </a>
-        `).join('')} />
+        categories.length === 0 ? (
+          <div class="categories-empty" data-i18n="page.no_categories">暂无分类</div>
+        ) : (
+          <Fragment set:html={ssrHtml} />
+        )
       ) : (
-        <div class="categories-empty" data-i18n={loaded.status === 'error' ? 'common.load_failed' : 'page.no_categories'}>{loaded.status === 'error' ? '加载失败' : '暂无分类'}</div>
+        <div class="categories-empty" data-i18n="common.load_failed">加载失败</div>
       )}
     </div>
   </section>
 </BaseLayout>
 
-<style>
-  .page-header {
+<style is:global>
+  .categories-page .page-header {
     margin-bottom: 0.5rem;
   }
-  .page-title {
+  .categories-page .page-title {
     font-size: var(--page-title-size);
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
     overflow-wrap: anywhere;
   }
-  .page-desc {
+  .categories-page .page-desc {
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
   }
-  .categories-cloud {
+  .categories-page .categories-cloud {
     display: flex;
     flex-wrap: wrap;
     gap: clamp(0.6rem, 2vw, 0.9rem);
   }
-  .category-item {
+  /* #81 §4：卡片改 <article>，分类名与标签 chip 各自独立可点（无嵌套 <a>） */
+  .categories-page .category-item {
     display: flex;
     flex: 1 1 220px;
     flex-direction: column;
@@ -68,36 +75,55 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
     color: var(--color-text-secondary);
-    text-decoration: none;
     transition: all var(--transition-fast);
   }
-  .category-item:hover {
+  .categories-page .category-item:hover {
     border-color: var(--color-accent);
-    color: var(--color-accent);
     transform: translateY(-1px);
   }
-  .category-head {
+  .categories-page .category-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+    min-width: 0;
   }
-  .category-name {
+  .categories-page .category-name {
     min-width: 0;
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--color-text-primary);
+    text-decoration: none;
     overflow-wrap: anywhere;
   }
-  .category-item:hover .category-name {
+  .categories-page .category-name:hover {
     color: var(--color-accent);
   }
-  .category-count {
+  .categories-page .category-count {
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
     white-space: nowrap;
   }
-  .category-desc {
+  .categories-page .category-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    min-width: 0;
+  }
+  .categories-page .category-tag-chip {
+    padding: 0.1rem 0.5rem;
+    background-color: var(--color-tag-bg);
+    color: var(--color-tag-text);
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .categories-page .category-tag-chip:hover {
+    background-color: var(--color-tag-hover-bg);
+    color: var(--color-tag-text);
+  }
+  .categories-page .category-desc {
     font-size: 0.8rem;
     color: var(--color-text-tertiary);
     line-height: 1.5;
@@ -107,8 +133,22 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .categories-loading,
-  .categories-empty {
+  .categories-page .categories-retry {
+    min-height: 44px;
+    padding: 0.45rem 1rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .categories-page .categories-retry:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .categories-page .categories-loading,
+  .categories-page .categories-empty {
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
   }
@@ -116,40 +156,42 @@ const categories = loaded.status === 'ok' ? [...loaded.items].sort(
 
 <script>
   import { t, initLocale } from '../../utils/i18n.ts';
-  import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+  import { renderCategoryCards } from '../../utils/taxonomyGroups.ts';
+
+  function renderFailed(container: HTMLElement) {
+    container.innerHTML = `<div class="categories-empty">${t('common.load_failed')}</div><button type="button" class="categories-retry">${t('common.retry')}</button>`;
+    container.querySelector('.categories-retry')?.addEventListener('click', () => {
+      loadCategories();
+    });
+  }
 
   async function loadCategories() {
     const container = document.getElementById('categories-cloud');
     if (!container) return;
 
     try {
-      const response = await fetch('/api/v1/categories');
-      const data = await response.json();
-
-      if (data.code === 0 && data.data) {
-        const categories = Array.isArray(data.data) ? data.data : (data.data.items || []);
+      // taxonomy v2（#81 §4）：并行取分类与标签（标签用于卡片预览 chip 与 tag_count 兜底）
+      const [catRes, tagRes] = await Promise.all([fetch('/api/v1/categories'), fetch('/api/v1/tags')]);
+      const catData = await catRes.json();
+      const tagData = tagRes.ok ? await tagRes.json() : { code: -1 };
+      if (catData.code === 0 && catData.data) {
+        const categories = Array.isArray(catData.data) ? catData.data : (catData.data.items || []);
         if (categories.length === 0) {
           container.innerHTML = `<p class="categories-empty">${t('page.no_categories')}</p>`;
           return;
         }
+        const tags = tagData.code === 0 ? (Array.isArray(tagData.data) ? tagData.data : tagData.data?.items || []) : [];
 
-        // 按文章数降序
-        categories.sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0));
-
-        container.innerHTML = categories.map((cat: any) => `
-          <a href="/categories/${safePathSegment(cat.slug)}" class="category-item">
-            <div class="category-head">
-              <span class="category-name">${escapeHtml(cat.name)}</span>
-              <span class="category-count">${cat.article_count || 0} ${t('admin.article_count')}</span>
-            </div>
-            ${cat.description ? `<span class="category-desc">${escapeHtml(cat.description)}</span>` : ''}
-          </a>
-        `).join('');
+        container.innerHTML = renderCategoryCards(categories, tags, {
+          articlesSuffix: t('page.articles_suffix'),
+          tagCountLabel: t('taxonomy.tag_count'),
+          uncategorized: t('taxonomy.uncategorized'),
+        });
       } else {
-        container.innerHTML = `<p class="categories-empty">${t('common.load_failed')}</p>`;
+        renderFailed(container);
       }
     } catch (e) {
-      container.innerHTML = `<p class="categories-empty">${t('common.load_failed')}</p>`;
+      renderFailed(container);
     }
   }
 

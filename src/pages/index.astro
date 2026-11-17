@@ -28,6 +28,26 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       <div class="article-grid" id="article-grid"></div>
     </div>
   </section>
+
+  <!-- taxonomy v2（#81 §1）：分类 / 热门标签可发现区块。取数失败整块隐藏，不影响文章列表。 -->
+  <section class="taxonomy-discovery" id="taxonomy-discovery" hidden>
+    <div class="discovery-grid">
+      <div class="discovery-block">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="page.categories">分类</h2>
+          <a href="/categories" class="section-link" data-i18n="section.view_all">查看全部 →</a>
+        </div>
+        <div id="discovery-categories" class="discovery-items"></div>
+      </div>
+      <div class="discovery-block">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="taxonomy.hot_tags">热门标签</h2>
+          <a href="/tags" class="section-link" data-i18n="section.view_all">查看全部 →</a>
+        </div>
+        <div id="discovery-tags" class="discovery-items"></div>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
 
 <style>
@@ -196,8 +216,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
 <script>
   import { t, getLocale } from '../utils/i18n.ts';
-  import { getCategoryColor, categoryBadgeVars, categoryGradVars, categoryNameVars } from '../utils/categoryColors';
-  import { escapeHtml, escapeAttr, safePathSegment } from '../utils/escape.ts';
+  import { renderArticleCardList } from '../utils/articleCard.ts';
+  import { escapeHtml, safePathSegment } from '../utils/escape.ts';
 
   async function loadArticles() {
     const container = document.getElementById('article-grid');
@@ -221,36 +241,14 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           return;
         }
 
-        const escAttr = escapeAttr;
-
-        container.innerHTML = items.map((article: any) => {
-          const cat = article.category;
-          const catColor = getCategoryColor(cat?.slug, cat?.name);
-          const badgeVars = cat ? categoryBadgeVars(catColor) : '';
-          const cover = article.cover_image
-            ? `<div class="card-cover"><img src="${escAttr(article.cover_image)}" alt="" loading="lazy" /></div>`
-            : `<div class="card-cover card-cover-grad" style="${categoryGradVars(catColor)}"><span class="cover-cat-name" style="${categoryNameVars(catColor)}">${escapeHtml(cat?.name || '✦')}</span></div>`;
-          return `
-          <article class="article-card" data-reveal="fade-up">
-            <a href="/articles/${safePathSegment(article.slug)}" class="card-link">
-              ${cover}
-              <div class="card-body">
-                <div class="card-meta">
-                  ${cat ? `<span class="card-category" style="${badgeVars}">${escapeHtml(cat.name)}</span>` : ''}
-                  <span class="card-date">${article.published_at ? new Date(article.published_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</span>
-                </div>
-                <h3 class="card-title">${escapeHtml(article.title)}</h3>
-                <p class="card-summary">${escapeHtml(article.summary || '')}</p>
-                <div class="card-footer">
-                  <div class="card-tags">
-                    ${(article.tags || []).slice(0, 2).map((tag: any) => `<span class="card-tag">${escapeHtml(tag.name)}</span>`).join('')}
-                  </div>
-                  <span class="card-read">${article.view_count || 0} ${t('article.read')}</span>
-                </div>
-              </div>
-            </a>
-          </article>`;
-        }).join('');
+        // taxonomy v2（#81 §7）：四个列表页统一走共享渲染器；首页 tagLimit=2
+        container.innerHTML = renderArticleCardList(items, {
+          variant: 'cover',
+          tagLimit: 2,
+          dateLocale,
+          readLabel: t('article.read'),
+          belongsLabel: t('taxonomy.belongs_to_category'),
+        });
         // 仅一篇文章时切换为单列居中，避免中宽视口下挤在左列
         container.classList.toggle('grid-single', items.length === 1);
         window.dispatchEvent(new CustomEvent('motion:refresh'));
@@ -260,11 +258,73 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     }
   }
 
+  // taxonomy v2（#81 §1）：分类 / 热门标签并行取数；失败整块隐藏，不影响文章列表。
+  async function loadTaxonomyDiscovery() {
+    const section = document.getElementById('taxonomy-discovery');
+    if (!section) return;
+    try {
+      const [catRes, tagRes] = await Promise.all([
+        fetch('/api/v1/categories'),
+        fetch('/api/v1/tags'),
+      ]);
+      const catData = await catRes.json();
+      const tagData = await tagRes.json();
+      if (catData.code !== 0 || tagData.code !== 0) {
+        section.hidden = true;
+        return;
+      }
+      const categories = (Array.isArray(catData.data) ? catData.data : catData.data?.items || []) as any[];
+      const tags = (Array.isArray(tagData.data) ? tagData.data : tagData.data?.items || []) as any[];
+
+      const catBox = document.getElementById('discovery-categories');
+      const tagBox = document.getElementById('discovery-tags');
+      if (!catBox || !tagBox) return;
+
+      if (categories.length === 0 || tags.length === 0) {
+        section.hidden = true;
+        return;
+      }
+
+      // 前 6 个分类（文章数降序）；分类色 badge 复用 categoryColors 单源
+      const { getCategoryColor, categoryBadgeVars } = await import('../utils/categoryColors');
+      const topCats = [...categories]
+        .sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0))
+        .slice(0, 6);
+      catBox.innerHTML = topCats.map((cat: any) => {
+        const color = getCategoryColor(cat.slug, cat.name);
+        const vars = categoryBadgeVars(color);
+        return `<a href="/categories/${safePathSegment(cat.slug)}" class="discovery-cat" style="${vars}">
+          <span class="discovery-cat-name">${escapeHtml(cat.name)}</span>
+          <span class="discovery-cat-count">${cat.article_count || 0} · ${cat.tag_count || 0}${t('taxonomy.tag_count')}</span>
+        </a>`;
+      }).join('');
+
+      // 前 12 个热门标签；带分类色点 + title=分类：X
+      const catNameById = new Map(categories.map((c: any) => [c.id, c.name]));
+      const topTags = [...tags]
+        .sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0))
+        .slice(0, 12);
+      tagBox.innerHTML = topTags.map((tag: any) => {
+        const catName = tag.category?.name ?? catNameById.get(tag.category_id) ?? '';
+        const color = getCategoryColor(tag.category?.slug, catName);
+        return `<a href="/tags/${safePathSegment(tag.slug)}" class="discovery-tag" title="${escapeHtml(t('taxonomy.belongs_to_category'))}${escapeHtml(catName ? `：${catName}` : '')}">
+          <span class="discovery-dot" style="background:${color};" aria-hidden="true"></span>
+          <span>${escapeHtml(tag.name)}</span>
+          <span class="tag-count">${tag.article_count || 0}</span>
+        </a>`;
+      }).join('');
+
+      section.hidden = false;
+    } catch (e) {
+      if (section) section.hidden = true;
+    }
+  }
+
   // ClientRouter 客户端导航不会重跑已执行过的模块脚本，而导航会把容器替换为 SSR 空状态，
   // 因此初始化必须挂 astro:page-load（首次硬加载同样触发一次），否则返回首页时列表空白
-  document.addEventListener('astro:page-load', () => loadArticles());
+  document.addEventListener('astro:page-load', () => { loadArticles(); loadTaxonomyDiscovery(); });
 
-  document.addEventListener('locale-changed', () => loadArticles());
+  document.addEventListener('locale-changed', () => { loadArticles(); loadTaxonomyDiscovery(); });
 </script>
 
 <style is:global>
@@ -423,7 +483,97 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     color: var(--color-tag-text);
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
+    text-decoration: none;
     transition: all var(--transition-fast);
+  }
+
+  /* taxonomy v2（#81 §7）：跨分类标签虚线标记 */
+  .card-tag[data-cross-category="1"] {
+    border: 1px dashed var(--color-accent);
+  }
+
+  /* taxonomy v2（#81 §1）：分类 / 热门标签可发现区块（取数失败整块隐藏） */
+  .taxonomy-discovery {
+    margin-top: clamp(1.5rem, 4vw, 2.5rem);
+  }
+  .discovery-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: clamp(1.25rem, 3vw, 2rem);
+  }
+  @media (min-width: 768px) {
+    .discovery-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .discovery-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .discovery-cat {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-height: 44px;
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    text-decoration: none;
+    background: var(--cat-bg);
+    color: var(--cat-fg);
+    border: 1px solid var(--cat-bd);
+    transition: filter var(--transition-fast);
+    max-width: 100%;
+  }
+  [data-theme="dark"] .discovery-cat {
+    background: var(--cat-bg-d);
+    color: var(--cat-fg-d);
+    border-color: var(--cat-bd-d);
+  }
+  .discovery-cat:hover {
+    filter: brightness(0.92);
+  }
+  .discovery-cat-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .discovery-cat-count {
+    font-size: 0.72rem;
+    opacity: 0.85;
+    white-space: nowrap;
+  }
+  .discovery-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 0.4rem 0.8rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+    transition: all var(--transition-fast);
+  }
+  .discovery-tag:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    transform: translateY(-1px);
+  }
+  .discovery-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+  }
+  .discovery-tag .tag-count {
+    font-size: 0.72rem;
+    color: var(--color-text-tertiary);
   }
 
   .card-tag:hover {
