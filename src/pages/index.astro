@@ -258,18 +258,27 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     }
   }
 
-  // taxonomy v2（#81 §1）：分类 / 热门标签并行取数；失败整块隐藏，不影响文章列表。
+  // taxonomy v2（#81 §1）：分类 / 热门标签并行取数；失败重试一次再隐藏整块
+  // （单次 502 / 弱网首连失败不丢区块），仍失败则按票面约定整块隐藏。
   async function loadTaxonomyDiscovery() {
     const section = document.getElementById('taxonomy-discovery');
     if (!section) return;
+    const fetchJson = async (url: string) => {
+      for (let i = 0; i < 2; i++) {
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.code === 0) return data;
+        } catch (e) { /* 重试一次 */ }
+      }
+      return null;
+    };
     try {
-      const [catRes, tagRes] = await Promise.all([
-        fetch('/api/v1/categories'),
-        fetch('/api/v1/tags'),
+      const [catData, tagData] = await Promise.all([
+        fetchJson('/api/v1/categories'),
+        fetchJson('/api/v1/tags'),
       ]);
-      const catData = await catRes.json();
-      const tagData = await tagRes.json();
-      if (catData.code !== 0 || tagData.code !== 0) {
+      if (!catData || !tagData) {
         section.hidden = true;
         return;
       }

@@ -318,7 +318,13 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     try {
       const res = await fetch(`/api/v1/categories/${safePathSegment(categorySlug)}`);
       if (res.status === 404) {
-        renderNotFound();
+        // 区分两种 404（同 /tags/:slug 的口径）：code 10005 = 资源真不存在 →
+        // 渲染未找到；code 404 = worker 未部署新端点（部署窗口期）→ 跳过回填，
+        // SSR 文章列表照常展示。
+        const payload = await res.json().catch(() => null);
+        if (payload?.code === 10005) {
+          renderNotFound();
+        }
         return;
       }
       const data = await res.json();
@@ -407,7 +413,10 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     const stored = localStorage.getItem('locale');
     return stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
   }
+  // taxonomy v2（#81）：模块脚本跨导航常驻——pathname 不在 /categories/:slug 时让位
+  // （/tags/:slug 与本页共用 #article-list 结构）。
   document.addEventListener('astro:page-load', () => {
+    if (!location.pathname.startsWith('/categories/')) return;
     loadCategoryMeta();
     if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
       bindPagination();
@@ -417,7 +426,10 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     loadArticles();
   });
 
-  document.addEventListener('locale-changed', () => loadArticles());
+  document.addEventListener('locale-changed', () => {
+    if (!location.pathname.startsWith('/categories/')) return;
+    loadArticles();
+  });
 </script>
 
 <style is:global>

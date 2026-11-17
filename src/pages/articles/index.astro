@@ -99,9 +99,17 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
   }
 
   // ClientRouter 客户端导航不重跑已执行过的模块脚本，初始化挂 astro:page-load（首次硬加载也触发）
-  document.addEventListener('astro:page-load', () => loadArticles());
+  // taxonomy v2（#81）守卫：模块脚本跨导航常驻，本监听在其它带 .article-list-inner 的
+  // 页面（/tags/:slug、/categories/:slug）上也会触发，pathname 不符时必须让位。
+  document.addEventListener('astro:page-load', () => {
+    if (location.pathname !== '/articles') return;
+    loadArticles();
+  });
 
-  document.addEventListener('locale-changed', () => loadArticles());
+  document.addEventListener('locale-changed', () => {
+    if (location.pathname !== '/articles') return;
+    loadArticles();
+  });
 </script>
 
 <style is:global>

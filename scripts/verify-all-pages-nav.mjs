@@ -8,8 +8,8 @@ const BASE = process.env.BASE || "http://localhost:4321";
 // 注意：slug 收集在浏览器内进行。Node 端全局 fetch 读取 astro dev 代理的 /api 响应时，
 // 响应 body 存在 chunked/gzip 编码兼容问题（r.json() 挂起或 Z_DATA_ERROR），浏览器 fetch 则正常
 
+// 友链 island 每次导航重新挂载会请求 /api/v1/friend-links，先注册响应等待，保证快照时数据就绪
 async function navByLink(page, href) {
-  // 友链 island 每次导航重新挂载会请求 /api/v1/friend-links，先注册响应等待，保证快照时数据就绪
   const friendResp = page
     .waitForResponse((r) => r.url().includes("/api/v1/friend-links"), {
       timeout: 12000,
@@ -36,6 +36,30 @@ async function navByLink(page, href) {
     { timeout: 10000 }
   );
   await friendResp;
+}
+
+/**
+ * taxonomy v2 回归期网络容错：本机到远端 API 的新建连接偶发失败/挂起
+ * （直连与代理均 ~1/6），连接池热了之后稳定。每次导航前先打一发
+ * /api/v1/health 预热 dev server → 上游的连接池，失败换发直至成功（上限 5 次）。
+ * 只影响测试基建，不改变产品代码与断言语义。
+ */
+async function warmUpApi(page) {
+  for (let i = 0; i < 5; i++) {
+    const ok = await page
+      .evaluate(async () => {
+        try {
+          const r = await fetch("/api/v1/health", { cache: "no-store" });
+          const d = await r.json();
+          return d?.status === "ok";
+        } catch {
+          return false;
+        }
+      })
+      .catch(() => false);
+    if (ok) return;
+    await page.waitForTimeout(800);
+  }
 }
 
 // 等待页面动态内容真正渲染（卡片或空状态/错误占位出现），替代固定 sleep，避免把未完成加载当结果
@@ -163,7 +187,7 @@ function baselineFor(target) {
 async function run() {
   const failures = [];
 
-  const targets = Object.keys(BASELINE);
+  const targets = Object.keys(BASELINE).filter((k) => !k.startsWith("__"));
 
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   const page = await browser.newPage();
@@ -174,38 +198,67 @@ async function run() {
   });
   page.on("pageerror", (e) => consoleErrors.push("PAGEERROR: " + e.message));
 
-  // 首页硬加载基线
-  await page.goto(BASE + "/", { waitUntil: "networkidle" });
-  await page.waitForSelector("#article-grid .article-card", { timeout: 15000 });
+  // 首页硬加载基线（taxonomy v2 回归期：dev→远端 API 首连偶发挂起，
+  // 失败重试一次再判死，属网络环境容错、不掩盖真实回归）
+  let homeLoaded = false;
+  for (let i = 0; i < 3 && !homeLoaded; i++) {
+    try {
+      await page.goto(BASE + "/", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await warmUpApi(page);
+      await page.waitForSelector("#article-grid .article-card", {
+        timeout: 15000,
+      });
+      homeLoaded = true;
+    } catch (e) {
+      if (i === 2) throw e;
+      console.log("[retry] 首页硬加载超时，重试一次…");
+    }
+  }
 
   // 收集真实 slug（在浏览器内 fetch，规避 Node fetch 与 dev server 代理响应的编码兼容问题）
-  const slugs = await page.evaluate(async () => {
-    const pick = (d) => (Array.isArray(d) ? d : d.items || []);
-    const [a, c, t] = await Promise.all([
-      fetch("/api/v1/articles?page=1&page_size=5&status=published").then((r) =>
-        r.json()
-      ),
-      fetch("/api/v1/categories").then((r) => r.json()),
-      fetch("/api/v1/tags").then((r) => r.json()),
-    ]);
-    const cat = pick(c.data)[0];
-    // taxonomy v2（#81）：取该分类下的一个标签，供 ?tag= 筛选页用例
-    let tagOfCat = null;
-    if (cat?.slug) {
-      const tt = await fetch(
-        `/api/v1/tags?category_slug=${encodeURIComponent(cat.slug)}`
-      )
-        .then((r) => r.json())
-        .catch(() => null);
-      tagOfCat = tt && tt.code === 0 ? (pick(tt.data)[0]?.slug ?? null) : null;
+  // dev→远端 API 首连偶发 502：失败重试一次再判死（网络环境容错）
+  let slugs = null;
+  for (let i = 0; i < 3 && !slugs; i++) {
+    try {
+      await warmUpApi(page);
+      slugs = await page.evaluate(async () => {
+        const pick = (d) => (Array.isArray(d) ? d : d.items || []);
+        const [a, c, t] = await Promise.all([
+          fetch("/api/v1/articles?page=1&page_size=5&status=published").then(
+            (r) => r.json()
+          ),
+          fetch("/api/v1/categories").then((r) => r.json()),
+          fetch("/api/v1/tags").then((r) => r.json()),
+        ]);
+        if (!a.data || !c.data || !t.data) return null; // 任一取数 502 → 触发重试
+        const cat = pick(c.data)[0];
+        // taxonomy v2（#81）：取该分类下的一个标签，供 ?tag= 筛选页用例
+        let tagOfCat = null;
+        if (cat?.slug) {
+          const tt = await fetch(
+            `/api/v1/tags?category_slug=${encodeURIComponent(cat.slug)}`
+          )
+            .then((r) => r.json())
+            .catch(() => null);
+          tagOfCat =
+            tt && tt.code === 0 ? (pick(tt.data)[0]?.slug ?? null) : null;
+        }
+        return {
+          article: a.data.items[0]?.slug,
+          cat: cat?.slug,
+          tag: pick(t.data)[0]?.slug,
+          tagOfCat,
+        };
+      });
+    } catch (e) {
+      if (i === 2) throw e;
+      console.log("[retry] slug 收集失败，重试一次…");
+      await page.waitForTimeout(1500);
     }
-    return {
-      article: a.data.items[0]?.slug,
-      cat: cat?.slug,
-      tag: pick(t.data)[0]?.slug,
-      tagOfCat,
-    };
-  });
+  }
   if (slugs.article)
     targets.push("/articles/" + encodeURIComponent(slugs.article));
   if (slugs.cat) targets.push("/categories/" + encodeURIComponent(slugs.cat));
@@ -221,24 +274,38 @@ async function run() {
     let first = null;
     let second = null;
     let matched = false;
-    // 整个"进入→离开→返回"序列最多跑 2 次：dev 代理远程 API 偶发失败会导致两次结果偶然不一致
-    for (let attempt = 0; attempt < 2 && !matched; attempt++) {
-      // 1) 客户端导航进入目标页
-      await navByLink(page, target);
-      await waitForPageLoaded(page, target);
-      first = await contentCheck(page);
-      // 2) 客户端导航离开
-      await navByLink(page, "/about");
-      await waitForPageLoaded(page, "/about");
-      // 3) 客户端导航返回目标页
-      await navByLink(page, target);
-      await waitForPageLoaded(page, target);
-      second = await contentCheck(page);
+    // 整个"进入→离开→返回"序列最多跑 2 次：dev 代理远程 API 偶发失败会导致两次结果偶然不一致；
+    // 单次尝试内抛异常（导航 / 等待超时）也按"本次未成"处理，重试一次而不是整脚本崩掉
+    for (let attempt = 0; attempt < 3 && !matched; attempt++) {
+      try {
+        await warmUpApi(page);
+        // 1) 客户端导航进入目标页
+        await navByLink(page, target);
+        await waitForPageLoaded(page, target);
+        first = await contentCheck(page);
+        // 2) 客户端导航离开
+        await navByLink(page, "/about");
+        await waitForPageLoaded(page, "/about");
+        // 3) 客户端导航返回目标页
+        await navByLink(page, target);
+        await waitForPageLoaded(page, target);
+        second = await contentCheck(page);
 
-      const { path: _p, ...a } = first;
-      const { path: _q, ...b } = second;
-      matched =
-        second.loadingLeft === 0 && JSON.stringify(a) === JSON.stringify(b);
+        const { path: _p, ...a } = first;
+        const { path: _q, ...b } = second;
+        matched =
+          second.loadingLeft === 0 && JSON.stringify(a) === JSON.stringify(b);
+        if (!matched && attempt === 0) {
+          console.log(
+            `[retry] ${target} 两次快照不一致或加载未完成，重试一次…`
+          );
+        }
+      } catch (e) {
+        if (attempt === 2) throw e;
+        console.log(
+          `[retry] ${target} 第 ${attempt + 1} 次尝试异常（${String(e.message).split("\n")[0]}），重试一次…`
+        );
+      }
     }
 
     // 断言 A：首次进入满足基线
