@@ -93,8 +93,17 @@ async function probe(fetchImpl, url, path) {
       headers: { "cache-control": "no-cache" },
       redirect: "follow",
     });
-    if (!response.ok)
-      return { path, ok: false, detail: String(response.status) };
+    if (!response.ok) {
+      // 403 / 503 常见于边缘 WAF / Bot 规则拦探针出口 IP，不是「部署没就绪」。
+      // 把可能原因写进 detail，避免运维照着「等更久」的方向排查
+      // （2026-11-17 run 43987529351：GitHub runner 打自定义域恒 403）。
+      const mitigated = response.headers?.get?.("cf-mitigated");
+      const blocked = response.status === 403 || Boolean(mitigated);
+      const hint = blocked
+        ? `（边缘拦截${mitigated ? `:${mitigated}` : ""}；检查探针出口 IP 是否被 WAF/Bot 规则拦）`
+        : "";
+      return { path, ok: false, detail: `${response.status}${hint}` };
+    }
     if (!isHealthPath(path))
       return { path, ok: true, detail: String(response.status) };
     const body = await response.json().catch(() => null);

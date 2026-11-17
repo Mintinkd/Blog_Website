@@ -761,7 +761,7 @@ echo 'IP_HASH_SECRET="local-dev-only-random-string"' >> worker/.dev.vars
 2. **D1 增量迁移**：重放两个幂等 DDL（`schema-tier0-incremental.sql` / `schema-m22-incremental.sql`）到生产 D1，再用 `scripts/verify-d1-migrations.mjs` 核对 3 表 + 5 索引齐全（详见上文「部署」段；任一失败即阻断后续部署）
 3. 部署 `dist` 到 Cloudflare Pages（`blog-website`）
 4. 部署 API Worker 到 Cloudflare Workers（`blog-api`）
-5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
+5. **就绪轮询**：`node scripts/wait-for-deploy.mjs` 轮询 `/`（Pages）与 `/api/v1/health`（Worker，要求 `status=ok` 且 `db` 非 `error`），默认 180s 超时 / 5s 间隔；就绪即结束，超时打印每条探针的末次状态并以退出码 1 失败（议题 #106）。**探针打 Pages 生产别名 `https://blog-website-page.pages.dev`，不打自定义域**：zone 的边缘安全规则会把 GitHub Actions 的出网 IP 判成 bot，自定义域恒 403（实测 run 43987529351，36 次全 403），那是**边缘拦截、不是部署未就绪**——探针遇 403 会在 detail 里标「边缘拦截」避免误导。别名同样覆盖两条链路（`/` 验 Pages 产物、`/api/v1/health` 经同源代理验 Worker + D1/KV 绑定）；自定义域的可达性需在 Dashboard 侧放行 CI 出口 IP，属 #106 未闭环项。**口径说明**：这是**可达性 + 健康**探针，不校验「线上跑的是哪个版本」（仓库没注入 build id，加版本比对需要新增端点或构建期常量，不在 #106 范围）；出现「探针绿但内容仍旧」时按下面的通道清单排查，而不是调大超时。
 
 > L8 已清理：旧的「sleep 120 + 二次覆盖部署」已删除，改为上一步的轮询就绪检查（不再靠固定等待猜时序）。Pages Git 自动部署与 `blog_website` 的 Workers Build 两条通道须在 Dashboard 断开（见上文「自动部署」），由 Actions 单点管理。
 

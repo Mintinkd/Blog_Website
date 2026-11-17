@@ -192,6 +192,27 @@ describe("waitForReady（#106）", () => {
     ).rejects.toThrow(/\/api\/v1\/health/);
   });
 
+  it("403 标成边缘拦截：detail 含提示，避免被当成「还没部署好」", async () => {
+    const clock = fakeClock();
+    const logs: string[] = [];
+    const fetch403 = async () => new Response("blocked", { status: 403 });
+
+    await expect(
+      waitForReady({
+        baseUrl: "https://example.test",
+        paths: ["/"],
+        timeoutMs: 3_000,
+        intervalMs: 1_000,
+        fetchImpl: fetch403,
+        now: clock.now,
+        sleep: clock.sleep,
+        log: (line: string) => logs.push(line),
+      })
+    ).rejects.toThrow(/403（边缘拦截/);
+
+    expect(logs.some((line) => line.includes("403（边缘拦截"))).toBe(true);
+  });
+
   it("超时后抛出，错误信息含每条路径的最后状态（失败不静默）", async () => {
     const fetch = makeFetch([[{ status: 502 }, { status: 503 }]]);
     const clock = fakeClock();

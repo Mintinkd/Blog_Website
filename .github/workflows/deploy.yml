@@ -181,7 +181,13 @@ jobs:
       # 要求 200 且 status=ok、db 非 error）。就绪即返回；超时打印每条的末次状态并非零退出。
       - name: Wait for deployment readiness
         env:
-          DEPLOY_BASE_URL: https://blog.zenfishlog.dpdns.org
+          # 探针打 Pages 生产别名，而不是自定义域：zone 的边缘安全规则会把
+          # GitHub Actions 的出网 IP 判成 bot（自定义域恒 403，实测 2026-11-17
+          # run 43987529351），那是边缘拦截、不是部署没就绪，gate 会永久假红。
+          # 别名同样覆盖两条链路：`/` 验 Pages 产物，`/api/v1/health` 走同源
+          # 代理验 Worker（含 D1 / KV 绑定）。自定义域的可达性仍需人工/Dashboard
+          # 侧放行 CI 出口 IP，属 #106 的未闭环项（见 README 部署段）。
+          DEPLOY_BASE_URL: https://blog-website-page.pages.dev
           DEPLOY_TIMEOUT_SEC: "180"
           DEPLOY_INTERVAL_SEC: "5"
         run: node scripts/wait-for-deploy.mjs

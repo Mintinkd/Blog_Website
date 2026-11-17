@@ -50,8 +50,21 @@
 14. `seed-credential.mjs` 的 `SEED_PBKDF2_ITERATIONS` 与 `password.ts` 重复且无守卫；`randomUUID().slice(0,16)` 约 60 bit 熵，需在文档写明取舍。
 15. `img_proxy.ts` 的 `sameAddressSet` 要求两解析器答案集**完全相等**，大 RRset 截断或分地域解析会被判 rebinding（面比 ADR 0007 承认的 GeoDNS 更宽）。
 
-## 四、本轮的处置边界
+## 五、push 后 CI 暴露的第五条（已修）
 
-- 已修的 4 条都有**行为断言**守护，不是只改注释。
+run `43987529351`：除最后一步外全绿（含干净环境下的 Playwright 5 脚本、Pages 与 Worker 两次部署），**`Wait for deployment readiness` 36 次全 403**。
+
+- **不是部署失败**：`/` 与 `/api/v1/health` 从本机都是 200（`{"status":"ok","db":"connected","kv":"connected"}`）；403 是 zone 边缘安全规则把 GitHub Actions 的出网 IP 判成 bot。
+- **#106 的设计盲点**：探针打自定义域，等于把「边缘 WAF 策略」耦合进部署门禁；策略一变，门禁永久假红。
+- **修法**：探针改为打 Pages 生产别名 `https://blog-website-page.pages.dev`（同样覆盖两条链路：`/` 验 Pages 产物，`/api/v1/health` 经同源代理验 Worker + D1/KV）；`wait-for-deploy.mjs` 遇 403 / `cf-mitigated` 时在 detail 标「边缘拦截」，不再让人往「等更久」方向排查。
+- **顺带记录**：`blog-website.pages.dev` **不是本站**（返回别人的 NewsFlash 页面，pages.dev 子域全局唯一），本站别名是 `blog-website-page.pages.dev`——与「Pages 项目名 ≠ pages.dev 子域」这条历史教训同一类坑。
+
+## 六、残余
+
+- 自定义域是否放行 CI 出口 IP 需人工在 Dashboard 处理（wrangler OAuth 无 zone 写权限），属 #106 / H4 同一类未闭环项。
+
+## 七、本轮的处置边界
+
+- 已修的 4 条（+CI 暴露的第 5 条）都有**行为断言**守护，不是只改注释。
 - 待办 15 条全部是「判断项 / 测试强度 / 文档口径」，不涉及线上数据安全；其中 4、12、13 已在本仓历史报告里被标注过，属同一问题的延续。
-- 浏览器回归本轮**未在本机重跑**（改动集中在服务端 secret 读取与 admin 导入），由 push 后的 CI 5 脚本门禁覆盖。
+- 浏览器回归本轮**未在本机重跑**（改动集中在服务端 secret 读取与 admin 导入），由 push 后的 CI 5 脚本门禁覆盖——该门禁在 run `43987529351` 已实跑通过。
