@@ -27,7 +27,11 @@ export interface TaxonomyArticle {
   summary: string;
   published_at: string | null;
   view_count: number;
-  tags: Array<{ name: string; slug: string }>;
+  tags: Array<{
+    name: string;
+    slug: string;
+    category: { name: string; slug: string } | null;
+  }>;
   category: { name: string; slug: string } | null;
 }
 
@@ -45,20 +49,36 @@ export interface LoadTaxonomyOptions {
   origin?: string;
   /** category-articles / tag-articles 的资源 slug。 */
   slug?: string;
+  /** category-articles 的标签筛选（issue #117）；缺省 = 全部。 */
+  tagSlug?: string;
+  /** tags 的分类过滤（issue #117）；缺省 = 全部分类。 */
+  categorySlug?: string;
 }
 
 const FETCH_TIMEOUT_MS = 8_000;
 
-function requestUrl(kind: TaxonomyKind, origin: string, slug?: string): string {
+function requestUrl(
+  kind: TaxonomyKind,
+  origin: string,
+  options: LoadTaxonomyOptions
+): string {
   switch (kind) {
     case "categories":
       return `${origin}/api/v1/categories`;
-    case "tags":
-      return `${origin}/api/v1/tags`;
-    case "category-articles":
-      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&category_slug=${encodeURIComponent(slug ?? "")}`;
+    case "tags": {
+      const categoryPart = options.categorySlug
+        ? `?category_slug=${encodeURIComponent(options.categorySlug)}`
+        : "";
+      return `${origin}/api/v1/tags${categoryPart}`;
+    }
+    case "category-articles": {
+      const tagPart = options.tagSlug
+        ? `&tag_slug=${encodeURIComponent(options.tagSlug)}`
+        : "";
+      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&category_slug=${encodeURIComponent(options.slug ?? "")}${tagPart}`;
+    }
     case "tag-articles":
-      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&tag_slug=${encodeURIComponent(slug ?? "")}`;
+      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&tag_slug=${encodeURIComponent(options.slug ?? "")}`;
   }
 }
 
@@ -135,7 +155,21 @@ function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
                 typeof t.name === "string" &&
                 typeof t.slug === "string"
             )
-            .map((t) => ({ name: t.name, slug: t.slug }))
+            .map((t) => {
+              const tag = t as Record<string, unknown>;
+              return {
+                name: t.name,
+                slug: t.slug,
+                category:
+                  isRecord(tag.category) &&
+                  typeof tag.category.name === "string"
+                    ? {
+                        name: tag.category.name,
+                        slug: String(tag.category.slug ?? ""),
+                      }
+                    : null,
+              };
+            })
         : [],
       category:
         isRecord(row.category) && typeof row.category.name === "string"
@@ -163,7 +197,7 @@ export async function loadTaxonomyForPage(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(requestUrl(kind, origin, options.slug), {
+    const response = await fetch(requestUrl(kind, origin, options), {
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });

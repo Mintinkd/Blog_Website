@@ -4,6 +4,7 @@ import {
   parseTagParam,
   buildTagFilterUrl,
   isValidTagSlug,
+  renderFilterChips,
 } from "../src/utils/taxonomyFilter";
 
 /**
@@ -71,6 +72,66 @@ describe("buildTagFilterUrl — 构造（「全部」= 无参 basePath）", () =
     );
     expect(buildTagFilterUrl("/categories/tech", "前端")).toBe(
       "/categories/tech?tag=%E5%89%8D%E7%AB%AF"
+    );
+  });
+});
+
+describe("renderFilterChips — 服务端与客户端共用的筛选 chip（#117）", () => {
+  const tags = [
+    { slug: "vue", name: "Vue", article_count: 3 },
+    { slug: "react", name: "React", article_count: 0 },
+  ];
+
+  it("「全部」回无参 basePath，选中态用 aria-current=page（不用 aria-pressed）", () => {
+    expect(renderFilterChips("/categories/tech", tags, null, "全部")).toBe(
+      '<a class="filter-chip" href="/categories/tech" data-tag="" aria-current="page">全部</a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue">Vue<span class="tag-count">3</span></a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React<span class="tag-count">0</span></a>'
+    );
+  });
+
+  it("选中标签 → 该 chip 带 aria-current=page，恰一个", () => {
+    const html = renderFilterChips("/categories/tech", tags, "vue", "全部");
+    expect(html).toBe(
+      '<a class="filter-chip" href="/categories/tech" data-tag="">全部</a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue" aria-current="page">Vue<span class="tag-count">3</span></a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React<span class="tag-count">0</span></a>'
+    );
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+  });
+
+  it("中文 slug 编码进 href，名称与属性均转义", () => {
+    expect(
+      renderFilterChips(
+        "/categories/tech",
+        [{ slug: "前端", name: '<b>"前端"</b>', article_count: 1 }],
+        "前端",
+        "全部"
+      )
+    ).toBe(
+      '<a class="filter-chip" href="/categories/tech" data-tag="">全部</a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=%E5%89%8D%E7%AB%AF" data-tag="前端" aria-current="page">&lt;b&gt;&quot;前端&quot;&lt;/b&gt;<span class="tag-count">1</span></a>'
+    );
+  });
+
+  it("非法 / 不属于本分类的选中值 → 回退到「全部」，不标任何标签", () => {
+    const html = renderFilterChips("/categories/tech", tags, "missing", "全部");
+    expect(html).toContain(
+      '<a class="filter-chip" href="/categories/tech" data-tag="" aria-current="page">全部</a>'
+    );
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+  });
+
+  it("非法标签 slug 不进入筛选 URL（href 回 basePath），data-tag 仍转义", () => {
+    expect(
+      renderFilterChips(
+        "/categories/tech",
+        [{ slug: 'a"b', name: "坏标签" }],
+        null,
+        "全部"
+      )
+    ).toContain(
+      '<a class="filter-chip" href="/categories/tech" data-tag="a&quot;b">坏标签<span class="tag-count">0</span></a>'
     );
   });
 });

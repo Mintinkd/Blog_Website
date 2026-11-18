@@ -146,7 +146,7 @@ function contentCheck(page) {
       sameCatChips: qa("#same-category-tags:not([hidden]) .same-category-tag"),
       filterChips: qa("#category-filter-chips .filter-chip"),
       activeFilterChips: qa(
-        '#category-filter-chips .filter-chip[aria-pressed="true"]'
+        '#category-filter-chips .filter-chip[aria-current="page"]'
       ),
       categoryTagChips: qa(".category-tag-chip"),
       breadcrumbs: qa(".breadcrumb"),
@@ -174,8 +174,10 @@ const BASELINE = {
   "/search": (s) => s.searchInput === 1 && s.loadingLeft === 0,
   "/categories": (s) => s.categoryItems > 0,
   "/tags": (s) => s.tagItems > 0 && s.tagGroups > 0,
-  // taxonomy v2（#81）：筛选页（/categories/:slug?tag=<slug>）——筛选条已渲染且恰一个选中项
-  __filter__: (s) => s.filterChips > 0 && s.activeFilterChips === 1,
+  // taxonomy v2（#81）：筛选页（/categories/:slug?tag=<slug>）——筛选条已渲染、
+  // 恰一个 aria-current=page 的 chip（#117：链接语义），且 SSR/客户端已渲染卡片
+  __filter__: (s) =>
+    s.filterChips > 0 && s.activeFilterChips === 1 && s.listCards > 0,
 };
 function baselineFor(target) {
   return (
@@ -244,7 +246,10 @@ async function run() {
             .then((r) => r.json())
             .catch(() => null);
           tagOfCat =
-            tt && tt.code === 0 ? (pick(tt.data)[0]?.slug ?? null) : null;
+            tt && tt.code === 0
+              ? (pick(tt.data).find((t) => (t.article_count ?? 0) > 0)?.slug ??
+                null)
+              : null;
         }
         return {
           article: a.data.items[0]?.slug,
@@ -328,6 +333,46 @@ async function run() {
       );
     }
     console.log(`OK ${target}  ${JSON.stringify(b)}`);
+  }
+
+  // taxonomy v2（#117）：禁用 JS 时筛选页仍由 SSR 输出筛选后的文章与 aria-current chip
+  if (slugs.cat && slugs.tagOfCat) {
+    const filterTarget = `/categories/${encodeURIComponent(slugs.cat)}?tag=${encodeURIComponent(slugs.tagOfCat)}`;
+    try {
+      const noJsContext = await browser.newContext({
+        javaScriptEnabled: false,
+        locale: "zh-CN",
+      });
+      const noJsPage = await noJsContext.newPage();
+      await noJsPage.goto(BASE + filterTarget, {
+        waitUntil: "domcontentloaded",
+      });
+      const ssr = await noJsPage.evaluate(() => ({
+        chips: document.querySelectorAll("#category-filter-chips .filter-chip")
+          .length,
+        active: document.querySelectorAll(
+          '#category-filter-chips .filter-chip[aria-current="page"]'
+        ).length,
+        cards: document.querySelectorAll(".article-list-inner .list-card")
+          .length,
+        filterHidden:
+          document.getElementById("category-tag-filter")?.hidden ?? true,
+        path: location.pathname + location.search,
+      }));
+      if (
+        ssr.chips === 0 ||
+        ssr.active !== 1 ||
+        ssr.cards === 0 ||
+        ssr.filterHidden
+      ) {
+        failures.push(
+          `禁用 JS 的筛选页 SSR 输出不完整（#117）${filterTarget}：${JSON.stringify(ssr)}`
+        );
+      }
+      await noJsContext.close();
+    } catch (e) {
+      failures.push("禁用 JS 的筛选页检查异常：" + e.message);
+    }
   }
 
   await browser.close();

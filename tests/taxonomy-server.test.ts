@@ -113,6 +113,73 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
     }
   });
 
+  it("category-articles + tagSlug：URL 追加 tag_slug（经 encodeURIComponent）", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({ code: 0, data: { items: [], total_pages: 0 } })
+    );
+    await loadTaxonomyForPage("category-articles", {
+      origin: "https://worker.test",
+      slug: "tech",
+      tagSlug: "前端",
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://worker.test/api/v1/articles?status=published&page=1&page_size=10&category_slug=tech&tag_slug=%E5%89%8D%E7%AB%AF"
+    );
+  });
+
+  it("tags + categorySlug：URL 带 category_slug（经 encodeURIComponent）", async () => {
+    const fetchMock = stubFetch(jsonResponse({ code: 0, data: [] }));
+    await loadTaxonomyForPage("tags", {
+      origin: "https://worker.test",
+      categorySlug: "前端",
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://worker.test/api/v1/tags?category_slug=%E5%89%8D%E7%AB%AF"
+    );
+  });
+
+  it("category-articles：内嵌标签解析 category 映射（缺省 null）", async () => {
+    stubFetch(
+      jsonResponse({
+        code: 0,
+        data: {
+          items: [
+            {
+              slug: "hello",
+              title: "你好",
+              tags: [
+                {
+                  name: "Vue",
+                  slug: "vue",
+                  category: { id: 2, name: "前端", slug: "frontend" },
+                },
+                { name: "旧标签", slug: "legacy" },
+              ],
+            },
+          ],
+          total_pages: 1,
+        },
+      })
+    );
+    const result = await loadTaxonomyForPage("category-articles", {
+      origin: "https://worker.test",
+      slug: "tech",
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.items[0]).toMatchObject({
+        tags: [
+          {
+            name: "Vue",
+            slug: "vue",
+            category: { name: "前端", slug: "frontend" },
+          },
+          { name: "旧标签", slug: "legacy", category: null },
+        ],
+      });
+    }
+  });
+
   it("tag-articles：URL 带 tag_slug 参数（slug 经 encodeURIComponent）", async () => {
     const fetchMock = stubFetch(
       jsonResponse({ code: 0, data: { items: [], total_pages: 0 } })
