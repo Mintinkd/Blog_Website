@@ -48,6 +48,15 @@
 - **未做**（明确记录，防止实现时顺手加）：DB 级 `NOT NULL`、分类内标签命名空间、三级 URL、标签改名、文章分类硬校验（默认关，#82 决策）、`article_tags` 结构变更。
 - **测试**：worker 侧 `worker/tests/tag_category_read.test.ts` / `worker/tests/category_tags_read.test.ts` 钉读 API 契约（#78）；回填规则由迁移脚本的审计 SQL 与 D1 副本演练钉住（#77）；前台分组 / 筛选 / 卡片由根包 `tests/taxonomy-groups.test.ts` / `tests/taxonomy-filter.test.ts` / `tests/article-card.test.ts` 钉住（#81）；矩阵见 `docs/agents/testing.md` 的 taxonomy v2 小节。
 
-**Status:** accepted（2026-11-17；#76 以「契约先行、代码不动」收口，#77 起按序实施）
+## 实施修订：前台信息架构收口（#115 / #118 / #117 / #116）
+
+决策 3「URL 结构不变」在 #115 批次被复核：保留 `/tags`、`/tags/:slug` 作为兼容入口，不做删除或 301，但**前台主路径收口到分类筛选页**——标签 chip 不再是独立的第二浏览路径，而是分类的子入口。具体修订（不改领域模型、不改 URL 结构）：
+
+- 导航移除「标签」项（#118），搜索页不再列 taxonomy 区块，仅保留关键词搜索；`/tags` 因此新增两处回流入口：`/categories` 页的「全部标签」链接、`/tags/:slug` 面包屑与「标签不存在」空态。
+- `/categories/:slug?tag=:tag` 升级为 SSR 筛选（#117）：服务端解析并校验标签归属，直出筛选结果与 chip（`aria-current="page"`），禁用 JS 时走整页导航。
+- 全站标签 chip（文章卡片、文章详情、首页热门标签、分类目录预览、标签页同分类标签、`/tags` 目录 chip）统一走单源 `src/utils/tagLinks.ts::tagChipHref`（#116）：有分类 → `/categories/:cat?tag=:tag`，无归属（迁移期）→ `/tags/:slug`。分类 slug 走路径编码、标签 slug 走查询编码，避免 `&` / `=` / 路径穿越字符逃逸。
+- 这些修订与决策 3 一致：没有新增三级 URL、没有改标签命名空间、没有触碰 API / D1 契约；只是把已有 URL 的**前台入口权重**从「标签页」移到「分类筛选页」，`/tags` 系列仍返回 200。
+
+**Status:** accepted（2026-11-17；#76 以「契约先行、代码不动」收口，#77 起按序实施；#115 批次 #118 → #117 → #116 完成前台信息架构收口）
 
 > 起草说明：本文由实施代理（AI）在 #76 起草。五个决策均来自 #75 母票「已锁定决策」原文，本文只补充后果、边界与回滚细则，未新增或改写任何决策口径。

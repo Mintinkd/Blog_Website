@@ -9,22 +9,24 @@
 | `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
 | `/articles`          | 文章列表（分页）                                                        | 静态     |
 | `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
-| `/categories`        | 分类目录（全部分类，含标签数与标签预览）                                | SSR      |
-| `/categories/:slug`  | 分类文章（支持 `?tag=<tag-slug>` 标签筛选）                             | SSR      |
-| `/tags`              | 标签目录（按分类分组，「未分类」固定最后，taxonomy v2）                 | SSR      |
-| `/tags/:slug`        | 标签文章（含分类面包屑与同分类标签跳转）                                | SSR      |
+| `/categories`        | 分类目录（全部分类，含标签数与标签预览；「全部标签」入口指向 `/tags`）  | SSR      |
+| `/categories/:slug`  | 分类文章 + `?tag=<tag-slug>` 标签筛选（服务端直出筛选结果与 chip）      | SSR      |
+| `/tags`              | 标签目录（按分类分组，「未分类」固定最后，taxonomy v2；兼容入口）       | SSR      |
+| `/tags/:slug`        | 标签文章（含分类面包屑与同分类标签跳转；兼容入口）                      | SSR      |
 | `/api/v1/*`          | API代理到Worker                                                         | SSR      |
 | `/rss.xml`           | RSS订阅源                                                               | SSR      |
 | `/speculation-rules` | 空预取规则集（Cloudflare 护栏）                                         | SSR      |
 | `/archives`          | 时间线归档                                                              | 静态     |
 | `/about`             | 关于页面                                                                | 静态     |
 | `/privacy`           | 隐私与阅读统计披露（中英、页脚入口）                                    | 静态     |
-| `/search`            | 搜索页                                                                  | 静态     |
+| `/search`            | 搜索页（仅关键词搜索，不含 taxonomy 分组区块）                          | 静态     |
 | `/admin`             | 后台管理                                                                | 静态     |
 
 > **分类 / 标签页 SSR 首屏（issue #97 / M17）**：四个分类 / 标签页在服务端直连 Worker 取数并渲染首屏 HTML（`src/utils/taxonomyServer.ts` + 共用 `taxonomyRender.ts`），非 JS 抓取器可见真实分类 / 标签 / 文章标题；客户端脚本在中文首屏已渲染时跳过重复 fetch（非中文用户主动刷新套用英文文案），分页与语言切换仍刷新。**只有取数失败（`error`）才降级为客户端接管**（`data-ssr="0"`）；`ok` 与 `empty` 都算 SSR 成功（`data-ssr="1"`），空数据由服务端渲染空态文案，客户端不再补一次请求。代价：每次访问多一次服务端同步 fetch Worker（8s 超时），首屏 TTFB 取决于 Worker 响应。
 
 > **分类页 `?tag=` SSR 筛选（issue #117）**：`/categories/:slug?tag=:tag` 由服务端用 `parseTagParam` 解析、先取本分类标签校验归属；合法时 SSR 直接输出筛选后的文章与分页，非法 / 越界值按「全部」渲染并由客户端 `replaceState` 清参（不发无效筛选请求）。筛选 chip 是服务端渲染的 `<a href="/categories/:slug?tag=:tag">`，选中态用 `aria-current="page"`，禁用 JS 时点击 chip 走整页导航完成标签切换（分页按钮仍为客户端交互）；有 JS 时客户端拦截点击做 `pushState` + 局部刷新，SSR 已按同一筛选渲染（`data-active-tag`）时不重复取数。不带 `?tag=` 时标签与文章并行取数；带筛选时才先标签后文章串行。
+
+> **标签 chip 主路径（issue #116）**：全站标签 chip（文章卡片、文章详情、首页热门标签、分类目录预览、标签页同分类标签、`/tags` 目录 chip）统一走单源 `src/utils/tagLinks.ts` 的 `tagChipHref`：有归属分类 → `/categories/:catSlug?tag=:tagSlug`（「标签是分类子类」的交互闭环），无归属分类（迁移期）→ 回退兼容入口 `/tags/:tagSlug`。`/tags`、`/tags/:slug` 均保留，不做删除 / 301；因导航已移除「标签」（#118），`/categories` 页保留「全部标签」入口指向 `/tags`，`/tags/:slug` 的面包屑与「标签不存在」空态也指向 `/tags`，避免兼容入口成为孤儿页。搜索页只做关键词搜索，不再列 taxonomy 区块（#118）。
 
 `/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
 

@@ -184,6 +184,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
+  import { tagChipHref } from '../../utils/tagLinks.ts';
 
   const wrapper = document.getElementById('article-list');
 
@@ -277,7 +278,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         .slice(0, 12);
       if (siblings.length === 0) return;
       items.innerHTML = siblings.map((tg) =>
-        `<a class="same-category-tag" href="/tags/${safePathSegment(tg.slug)}">${escapeHtml(tg.name)}<span class="tag-count">${tg.article_count || 0}</span></a>`
+        `<a class="same-category-tag" href="${tagChipHref({ slug: tg.slug, category: { slug: categorySlug } })}">${escapeHtml(tg.name)}<span class="tag-count">${tg.article_count || 0}</span></a>`
       ).join('');
       box.hidden = false;
     } catch (e) {

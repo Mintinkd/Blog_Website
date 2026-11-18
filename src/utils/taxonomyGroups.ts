@@ -1,4 +1,5 @@
 import { escapeHtml, safePathSegment } from "./escape";
+import { tagChipHref } from "./tagLinks";
 
 /**
  * 标签按归属分类分组（taxonomy v2 / issue #81 / ADR 0008）。
@@ -69,7 +70,8 @@ export interface TagGroupRenderLabels {
 }
 
 /**
- * 渲染分组标签云 HTML（/tags 目录页）：chip 是 `<a href="/tags/:slug">`。
+ * 渲染分组标签云 HTML（/tags 目录页）：chip 走 `tagChipHref`——
+ * 有分类 → `/categories/:cat?tag=:tag`，未分类组回退 `/tags/:slug`。
  * 组头：分类名（链接 /categories/:slug）+ 标签数；未分类组头无链接。
  * 选择器契约：保留 `#tags-cloud` 容器、`.tag-item` 与 `.tag-group`（回归脚本断言）。
  */
@@ -87,7 +89,7 @@ export function renderTagGroups(
       const chips = group.tags
         .map(
           (tag) =>
-            `<a href="/tags/${safePathSegment(tag.slug)}" class="tag-item"><span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.article_count || 0}</span></a>`
+            `<a href="${tagChipHref({ slug: tag.slug, category: group.category })}" class="tag-item"><span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.article_count || 0}</span></a>`
         )
         .join("");
       const count = group.tags.length;
@@ -119,6 +121,7 @@ export interface CategoryCardRenderLabels {
  * `<article>` 卡片 + 独立链接（分类名可点、标签 chip 可点），**禁止**整卡
  * `<a>` 内再嵌标签链接的嵌套交互元素；卡片显示 article_count / tag_count
  * （tag_count 缺省用分组数兜底）与前 3 个标签 chip；未分类固定最后，其余按文章数降序。
+ * 标签 chip 直接指本分类筛选页（`tagChipHref`，#116），不再绕 `/tags/:slug`。
  */
 export function renderCategoryCards(
   categories: CategoryCardCategory[],
@@ -152,7 +155,7 @@ export function renderCategoryCards(
         .slice(0, 3)
         .map(
           (tag) =>
-            `<a href="/tags/${safePathSegment(tag.slug)}" class="category-tag-chip">${escapeHtml(tag.name)}</a>`
+            `<a href="${tagChipHref({ slug: tag.slug, category: { slug: cat.slug } })}" class="category-tag-chip">${escapeHtml(tag.name)}</a>`
         )
         .join("");
       return `

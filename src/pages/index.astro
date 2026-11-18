@@ -218,6 +218,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   import { t, getLocale } from '../utils/i18n.ts';
   import { renderArticleCardList } from '../utils/articleCard.ts';
   import { escapeHtml, safePathSegment } from '../utils/escape.ts';
+  import { tagChipHref } from '../utils/tagLinks.ts';
 
   async function loadArticles() {
     const container = document.getElementById('article-grid');
@@ -308,15 +309,16 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         </a>`;
       }).join('');
 
-      // 前 12 个热门标签；带分类色点 + title=分类：X
-      const catNameById = new Map(categories.map((c: any) => [c.id, c.name]));
+      // 前 12 个热门标签；带分类色点 + title=分类：X；链接走 tagChipHref（#116）
+      const catById = new Map(categories.map((c: any) => [c.id, c]));
       const topTags = [...tags]
         .sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0))
         .slice(0, 12);
       tagBox.innerHTML = topTags.map((tag: any) => {
-        const catName = tag.category?.name ?? catNameById.get(tag.category_id) ?? '';
-        const color = getCategoryColor(tag.category?.slug, catName);
-        return `<a href="/tags/${safePathSegment(tag.slug)}" class="discovery-tag" title="${escapeHtml(t('taxonomy.belongs_to_category'))}${escapeHtml(catName ? `：${catName}` : '')}">
+        const cat = tag.category ?? catById.get(tag.category_id) ?? null;
+        const catName = cat?.name ?? '';
+        const color = getCategoryColor(cat?.slug, catName);
+        return `<a href="${tagChipHref({ slug: tag.slug, category: cat?.slug ? { slug: cat.slug } : null })}" class="discovery-tag" title="${escapeHtml(t('taxonomy.belongs_to_category'))}${escapeHtml(catName ? `：${catName}` : '')}">
           <span class="discovery-dot" style="background:${color};" aria-hidden="true"></span>
           <span>${escapeHtml(tag.name)}</span>
           <span class="tag-count">${tag.article_count || 0}</span>

@@ -35,14 +35,15 @@
 
 **前端单元层**（根目录 `npm test`，均 `@vitest-environment node`，期望值手写字面量）：
 
-- `tests/article-card.test.ts`（#81）：共享卡片渲染器的转义、标签 / 分类链接、`data-cross-category` 标记、`tagLimit`、日期 locale。
-- `tests/taxonomy-groups.test.ts`（#81）：分组函数的排序（分类按标签数降序）、未分类固定最后、空输入。
+- `tests/article-card.test.ts`（#81 / #116）：共享卡片渲染器的转义、标签 / 分类链接、`data-cross-category` 标记、`tagLimit`、日期 locale；#116 起标签 href 期望为分类筛选 URL（`/categories/frontend?tag=vue`），无归属标签回退 `/tags/:slug`。
+- `tests/tag-links.test.ts`（#116）：单源 `tagChipHref` 的手写字面量断言——有分类 → `/categories/:cat?tag=:tag`、无分类 / `null` → `/tags/:slug`、分类 slug 走路径编码而标签 slug 走查询编码且注入字符不逃逸。
+- `tests/taxonomy-groups.test.ts`（#81 / #116）：分组函数的排序（分类按标签数降序）、未分类固定最后、空输入；#116 起 `/tags` 目录 chip 与分类卡片预览 chip 的 href 期望改为分类筛选 URL（未分类组仍 `/tags/:slug`）。
 - `tests/taxonomy-filter.test.ts`（#81）：`?tag=` 的解析 / 构造 / 非法值处理（纯函数）；#117 起同文件钉住 SSR / 客户端共用的 `resolveActiveTagSlug`（归属校验）、`renderFilterChips`（`<a>` 链接 / 文本与属性转义 / `aria-current="page"` 恰一个 / 非法标签回退「全部」）、`renderFilteredEmpty` 与 `buildCategoryArticlesQuery`（服务端 / 客户端同一份列表 query）。
 - `tests/admin-content-panels.test.ts` / `tests/editor-meta-fields.test.ts` 扩展（#80）：`canManageTag` 前端同源实现、编辑器按当前分类过滤标签、新建标签携带 `category_id`。
 
 **浏览器回归层**（手动 + CI 门禁，命令见上文对应小节）：
 
-- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 只保留关键词搜索（等待输入框挂载，基线要求输入框存在且无加载占位）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另在基准目标页断言 `.nav-links a[href="/tags"]` 为 0（五项导航）。
+- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 仅关键词搜索（等待输入框挂载，基线要求输入框存在且无加载占位）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另在基准目标页断言 `.nav-links a[href="/tags"]` 为 0（五项导航）。#116 起 `/categories` 保留「全部标签」入口（`/tags`）、`/tags` 与 `/tags/:slug` 仍返回 200，文章卡片 / 详情 / 首页 / 分类目录 / 标签页的标签链接无 `/tags/` 残留（未分类标签除外）。
 - BaseLayout / 文章详情改动后跑 `node scripts/verify-article-ssr.mjs`（CI 门禁）；后台面板改动后跑 `node scripts/verify-admin-responsive.mjs`（280 / 375px 无溢出）；观感走 `npm run verify:visual`。
 - i18n：zh / en 词条 parity 由既有词条扫描测试钉住，新增词条（未分类 / 标签数 / 全部 / 清除筛选 / 同分类标签等）必须双语同步。
 

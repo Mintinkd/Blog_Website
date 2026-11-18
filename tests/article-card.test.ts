@@ -34,13 +34,14 @@ const baseArticle = {
 };
 
 describe("renderArticleCard — list 变体（列表页契约）", () => {
-  it("标签恒为 <a href='/tags/:slug'>；分类 badge 恒为 <a href='/categories/:slug'>", () => {
+  it("标签恒为分类筛选页链接（无分类回退 /tags/:slug）；分类 badge 恒为 <a href='/categories/:slug'>", () => {
     const html = renderArticleCard(baseArticle, {
       variant: "list",
       readLabel: "阅读",
     });
-    expect(html).toContain('<a href="/tags/vue"');
-    expect(html).toContain('<a href="/tags/node"');
+    expect(html).toContain('<a href="/categories/frontend?tag=vue"');
+    expect(html).toContain('<a href="/categories/tech?tag=node"');
+    expect(html).toContain('<a href="/tags/go"');
     expect(html).toContain(
       '<a href="/categories/tech" class="list-card-category">'
     );
@@ -58,11 +59,11 @@ describe("renderArticleCard — list 变体（列表页契约）", () => {
     });
     // Vue 属于「前端」而文章属于「技术&前端」→ 跨分类
     expect(html).toContain(
-      'href="/tags/vue" class="list-card-tag" title="分类：前端" data-cross-category="1"'
+      'href="/categories/frontend?tag=vue" class="list-card-tag" title="分类：前端" data-cross-category="1"'
     );
     // Node 与文章同类 → 无跨分类标记，但 title 仍带分类
     expect(html).toContain(
-      'href="/tags/node" class="list-card-tag" title="分类：技术&amp;前端">'
+      'href="/categories/tech?tag=node" class="list-card-tag" title="分类：技术&amp;前端">'
     );
     expect(html).not.toContain(
       'title="分类：技术&amp;前端" data-cross-category'
@@ -77,8 +78,8 @@ describe("renderArticleCard — list 变体（列表页契约）", () => {
       variant: "list",
       tagLimit: 2,
     });
-    expect(html).toContain('href="/tags/vue"');
-    expect(html).toContain('href="/tags/node"');
+    expect(html).toContain('href="/categories/frontend?tag=vue"');
+    expect(html).toContain('href="/categories/tech?tag=node"');
     expect(html).not.toContain('href="/tags/go"');
   });
 
@@ -117,7 +118,7 @@ describe("renderArticleCard — cover 变体（首页大卡契约）", () => {
     );
     expect(withCover).toContain('class="card-cover"');
     expect(withCover).toContain("https://img.example/a.png?x=1&amp;y=2");
-    expect(withCover).toContain('href="/tags/vue"');
+    expect(withCover).toContain('href="/categories/frontend?tag=vue"');
     expect(withCover).not.toContain('href="/tags/go"');
 
     const withGrad = renderArticleCard(

@@ -102,13 +102,14 @@ describe("renderTagGroups — 渲染契约（#81 §2）", () => {
     { name: "生活", slug: "life", article_count: 1, category: null },
   ]);
 
-  it("chip 是 /tags/:slug 链接，文本转义；组头分类名链接分类页；未分类组头无链接", () => {
+  it("chip 走分类筛选页（无分类回退 /tags/:slug），文本转义；组头分类名链接分类页；未分类组头无链接", () => {
     const html = renderTagGroups(groups, {
       uncategorized: "未分类",
       tagCount: "个标签",
     });
-    // 转义：名称危险字符不原样出现；slug 经 safePathSegment 编码
-    expect(html).toContain('href="/tags/tech%3C%3E"');
+    // 转义：名称危险字符不原样出现；分类 slug 走路径编码、标签 slug 走查询编码
+    expect(html).toContain('href="/categories/tech?tag=tech%3C%3E"');
+    expect(html).toContain('href="/tags/life"');
     expect(html).toContain("技术&lt;script&gt;");
     expect(html).not.toContain("技术<script>");
     // 分类组头是链接
@@ -163,11 +164,11 @@ describe("renderCategoryCards — 分类目录卡片（#81 §4）", () => {
     );
     // tag_count 优先 API 字段
     expect(html).toContain("4 标签");
-    // 前 3 个标签 chip（第 4 个被裁掉）
-    expect(html).toContain('href="/tags/vue"');
-    expect(html).toContain('href="/tags/node"');
-    expect(html).toContain('href="/tags/go"');
-    expect(html).not.toContain('href="/tags/rust"');
+    // 前 3 个标签 chip（第 4 个被裁掉）；分类预览 chip 直接指分类筛选页
+    expect(html).toContain('href="/categories/tech?tag=vue"');
+    expect(html).toContain('href="/categories/tech?tag=node"');
+    expect(html).toContain('href="/categories/tech?tag=go"');
+    expect(html).not.toContain('href="/categories/tech?tag=rust"');
     // tag_count 缺省用分组数兜底
     expect(html).toContain("0 标签");
     // 未分类固定最后

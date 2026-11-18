@@ -15,6 +15,7 @@ import {
   getCategoryColor,
 } from '../../utils/categoryColors';
 import { formatArticleDate } from '../../utils/articleDate';
+import { tagChipHref } from '../../utils/tagLinks';
 
 export const prerender = false;
 
@@ -137,7 +138,7 @@ const categoryNameStyle = categoryNameVars(categoryColor);
                 </a>
               )}
               {group.tags.map((tag) => (
-                <a href={`/tags/${encodeURIComponent(tag.slug)}`} class="article-tag">
+                <a href={tagChipHref({ slug: tag.slug, category: group.category })} class="article-tag">
                   {tag.name}
                 </a>
               ))}

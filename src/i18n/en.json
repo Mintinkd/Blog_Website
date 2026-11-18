@@ -39,6 +39,7 @@
   "page.tags_desc": "Browse all articles by tag",
   "page.categories": "Categories",
   "page.categories_desc": "Browse all articles by category",
+  "page.all_tags": "All Tags →",
   "taxonomy.uncategorized": "Uncategorized",
   "taxonomy.tag_count": "tags",
   "taxonomy.articles_suffix": "articles",

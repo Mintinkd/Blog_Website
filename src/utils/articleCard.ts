@@ -1,4 +1,5 @@
 import { escapeHtml, safePathSegment } from "./escape";
+import { tagChipHref } from "./tagLinks";
 import {
   categoryBadgeVars,
   categoryGradVars,
@@ -14,7 +15,7 @@ import {
  * locale 由调用方传入；行为由 tests/article-card.test.ts 用手写字面量钉住。
  *
  * taxonomy v2 契约：
- * - 卡片标签一律 `<a href="/tags/:slug">`（可点）；
+ * - 卡片标签走 `tagChipHref`：有分类 → `/categories/:cat?tag=:tag`，无分类 → `/tags/:slug`；
  * - 分类 badge 一律 `<a href="/categories/:slug">`（可点）；
  * - 标签 title 带所属分类（belongsLabel 前缀）；
  * - 标签归属与文章分类不同时输出 `data-cross-category="1"`（CSS 虚线标记）。
@@ -69,7 +70,7 @@ function renderCardTags(
         tag.category.slug !== article.category.slug
           ? ' data-cross-category="1"'
           : "";
-      return `<a href="/tags/${safePathSegment(tag.slug)}" class="${options.variant === "cover" ? "card-tag" : "list-card-tag"}"${title}${cross}>${escapeHtml(tag.name)}</a>`;
+      return `<a href="${tagChipHref(tag)}" class="${options.variant === "cover" ? "card-tag" : "list-card-tag"}"${title}${cross}>${escapeHtml(tag.name)}</a>`;
     })
     .join("");
 }
