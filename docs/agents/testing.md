@@ -37,7 +37,7 @@
 
 - `tests/article-card.test.ts`（#81）：共享卡片渲染器的转义、标签 / 分类链接、`data-cross-category` 标记、`tagLimit`、日期 locale。
 - `tests/taxonomy-groups.test.ts`（#81）：分组函数的排序（分类按标签数降序）、未分类固定最后、空输入。
-- `tests/taxonomy-filter.test.ts`（#81）：`?tag=` 的解析 / 构造 / 非法值处理（纯函数）；#117 起同文件钉住共享 `renderFilterChips` 的 `<a>` 链接 / 文本与属性转义 / `aria-current="page"` 恰一个 / 非法标签回退「全部」。
+- `tests/taxonomy-filter.test.ts`（#81）：`?tag=` 的解析 / 构造 / 非法值处理（纯函数）；#117 起同文件钉住 SSR / 客户端共用的 `resolveActiveTagSlug`（归属校验）、`renderFilterChips`（`<a>` 链接 / 文本与属性转义 / `aria-current="page"` 恰一个 / 非法标签回退「全部」）、`renderFilteredEmpty` 与 `buildCategoryArticlesQuery`（服务端 / 客户端同一份列表 query）。
 - `tests/admin-content-panels.test.ts` / `tests/editor-meta-fields.test.ts` 扩展（#80）：`canManageTag` 前端同源实现、编辑器按当前分类过滤标签、新建标签携带 `category_id`。
 
 **浏览器回归层**（手动 + CI 门禁，命令见上文对应小节）：

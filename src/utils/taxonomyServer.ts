@@ -1,3 +1,7 @@
+import {
+  buildCategoryArticlesQuery,
+  type FilterChipTag,
+} from "./taxonomyFilter";
 import { resolveArticleApiOrigin } from "./workerOrigin";
 
 /**
@@ -13,9 +17,7 @@ export type TaxonomyKind =
   "categories" | "tags" | "category-articles" | "tag-articles";
 
 /** 目录项（分类 / 标签云）。 */
-export interface TaxonomyItem {
-  name: string;
-  slug: string;
+export interface TaxonomyItem extends FilterChipTag {
   article_count: number;
   description: string;
 }
@@ -57,28 +59,27 @@ export interface LoadTaxonomyOptions {
 
 const FETCH_TIMEOUT_MS = 8_000;
 
-function requestUrl(
-  kind: TaxonomyKind,
-  origin: string,
-  options: LoadTaxonomyOptions
-): string {
+/** requestUrl 的取数上下文：origin 已归一化，其余字段按 kind 取用。 */
+type RequestTarget = LoadTaxonomyOptions & { origin: string };
+
+function requestUrl(kind: TaxonomyKind, target: RequestTarget): string {
+  const { origin } = target;
   switch (kind) {
     case "categories":
       return `${origin}/api/v1/categories`;
     case "tags": {
-      const categoryPart = options.categorySlug
-        ? `?category_slug=${encodeURIComponent(options.categorySlug)}`
+      const categoryPart = target.categorySlug
+        ? `?category_slug=${encodeURIComponent(target.categorySlug)}`
         : "";
       return `${origin}/api/v1/tags${categoryPart}`;
     }
-    case "category-articles": {
-      const tagPart = options.tagSlug
-        ? `&tag_slug=${encodeURIComponent(options.tagSlug)}`
-        : "";
-      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&category_slug=${encodeURIComponent(options.slug ?? "")}${tagPart}`;
-    }
+    case "category-articles":
+      return `${origin}/api/v1/articles?${buildCategoryArticlesQuery({
+        categorySlug: target.slug ?? "",
+        tagSlug: target.tagSlug,
+      })}`;
     case "tag-articles":
-      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&tag_slug=${encodeURIComponent(options.slug ?? "")}`;
+      return `${origin}/api/v1/articles?status=published&page=1&page_size=10&tag_slug=${encodeURIComponent(target.slug ?? "")}`;
   }
 }
 
@@ -162,10 +163,11 @@ function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
                 slug: t.slug,
                 category:
                   isRecord(tag.category) &&
-                  typeof tag.category.name === "string"
+                  typeof tag.category.name === "string" &&
+                  typeof tag.category.slug === "string"
                     ? {
                         name: tag.category.name,
-                        slug: String(tag.category.slug ?? ""),
+                        slug: tag.category.slug,
                       }
                     : null,
               };
@@ -197,7 +199,7 @@ export async function loadTaxonomyForPage(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(requestUrl(kind, origin, options), {
+    const response = await fetch(requestUrl(kind, { ...options, origin }), {
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });

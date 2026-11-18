@@ -7,7 +7,12 @@ import {
   type TaxonomyResult,
 } from '../../utils/taxonomyServer.ts';
 import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
-import { parseTagParam, renderFilterChips } from '../../utils/taxonomyFilter.ts';
+import {
+  parseTagParam,
+  renderFilterChips,
+  renderFilteredEmpty,
+  resolveActiveTagSlug,
+} from '../../utils/taxonomyFilter.ts';
 
 export const prerender = false;
 
@@ -24,12 +29,8 @@ let tagsResult: TaxonomyResult;
 let loaded: TaxonomyResult;
 if (requestedTag) {
   tagsResult = await loadTaxonomyForPage('tags', { categorySlug });
-  if (
-    tagsResult.status === 'ok' &&
-    (tagsResult.items as TaxonomyItem[]).some((tag) => tag.slug === requestedTag)
-  ) {
-    activeTagSlug = requestedTag;
-  }
+  const categoryTags = tagsResult.status === 'ok' ? tagsResult.items as TaxonomyItem[] : [];
+  activeTagSlug = resolveActiveTagSlug(categoryTags, requestedTag);
   loaded = await loadTaxonomyForPage('category-articles', {
     slug: categorySlug,
     tagSlug: activeTagSlug ?? undefined,
@@ -49,7 +50,7 @@ const filterChips = renderFilterChips(basePath, knownTags, activeTagSlug, '全�
 const firstHtml = loaded.status === 'error'
   ? ''
   : activeTagSlug && items.length === 0
-    ? `<div class="filtered-empty"><p>该标签暂无文章</p><a href="${basePath}" id="clear-tag-filter">清除筛选</a></div>`
+    ? renderFilteredEmpty(basePath, '该标签暂无文章', '清除筛选')
     : renderArticleCards(items, { read: '阅读', noArticles: '暂无文章', belongsLabel: '分类：' });
 const firstPagination = renderPagination(1, totalPages, { prev: '上一页', next: '下一页' });
 ---
@@ -255,7 +256,15 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
-  import { parseTagParam, buildTagFilterUrl, renderFilterChips } from '../../utils/taxonomyFilter.ts';
+  import {
+    parseTagParam,
+    buildTagFilterUrl,
+    buildCategoryArticlesQuery,
+    renderFilterChips,
+    renderFilteredEmpty,
+    resolveActiveTagSlug,
+    type FilterChipTag,
+  } from '../../utils/taxonomyFilter.ts';
 
   const wrapper = document.getElementById('article-list');
   const basePath = '/categories/' + safePathSegment(wrapper?.dataset.categorySlug ?? '');
@@ -263,7 +272,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   /** 当前标签筛选（null = 「全部」）；首屏取服务端已校验的 SSR 值。 */
   let activeTagSlug: string | null = wrapper?.dataset.activeTag || null;
   /** 本分类名下的标签（slug → name/article_count），用于校验 ?tag= 合法性。 */
-  let knownTags: Array<{ slug: string; name: string; article_count?: number }> = [];
+  let knownTags: FilterChipTag[] = [];
 
   async function loadArticles(page = 1, tagSlug: string | null = activeTagSlug) {
     const container = document.querySelector('.article-list-inner');
@@ -274,8 +283,12 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
-      const tagPart = tagSlug ? `&tag_slug=${encodeURIComponent(tagSlug)}` : '';
-      const response = await fetch(`/api/v1/articles?page=${page}&status=published&category_slug=${categorySlug}${tagPart}`);
+      const query = buildCategoryArticlesQuery({
+        categorySlug: categorySlug ?? '',
+        tagSlug,
+        page,
+      });
+      const response = await fetch(`/api/v1/articles?${query}`);
       const data = await response.json();
 
       if (data.code === 0 && data.data) {
@@ -283,11 +296,12 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 
         if (items.length === 0 && tagSlug) {
           // #81 §5 / #117：筛选后空结果 → 提示 + 清除筛选链接（无 JS 也能回「全部」）
-          container.innerHTML = `<div class="filtered-empty"><p>${escapeHtml(t('page.no_articles_tag'))}</p><a href="${escapeHtml(buildTagFilterUrl(basePath, null))}" id="clear-tag-filter">${escapeHtml(t('taxonomy.clear_filter'))}</a></div>`;
-          document.getElementById('clear-tag-filter')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectTag(null);
-          });
+          container.innerHTML = renderFilteredEmpty(
+            basePath,
+            t('page.no_articles_tag'),
+            t('taxonomy.clear_filter')
+          );
+          bindClearFilter();
           const paginationMount = document.getElementById('pagination-mount');
           if (paginationMount) paginationMount.innerHTML = '';
           return;
@@ -321,10 +335,6 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     chips.innerHTML = renderFilterChips(basePath, knownTags, activeTagSlug, t('taxonomy.all'));
   }
 
-  function syncFilterUi() {
-    renderFilterChipsUi();
-  }
-
   /** 点击 chip / popstate 统一入口：更新 URL（pushState / replaceState）并重新取数。 */
   function selectTag(tagSlug: string | null, mode: 'push' | 'replace' = 'push') {
     activeTagSlug = tagSlug;
@@ -334,7 +344,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     } else {
       history.replaceState({ tag: tagSlug }, '', url);
     }
-    syncFilterUi();
+    renderFilterChipsUi();
     loadArticles(1, tagSlug);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -350,6 +360,17 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       const slug = link.dataset.tag || null;
       if (slug === activeTagSlug) return;
       selectTag(slug);
+    });
+  }
+
+  /** 筛选空态的「清除筛选」是 <a>（SSR 与客户端共用）；拦截为局部刷新。 */
+  function bindClearFilter() {
+    const link = document.getElementById('clear-tag-filter');
+    if (!link || link.dataset.bound === '1') return;
+    link.dataset.bound = '1';
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      selectTag(null);
     });
   }
 
@@ -400,7 +421,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         // 且不发无效筛选请求（SSR 已按「全部」渲染时无需再取数）。
         const requested = parseTagParam(window.location.search);
         const hasTagParam = new URLSearchParams(window.location.search).has('tag');
-        const legal = requested && knownTags.some((tg) => tg.slug === requested) ? requested : null;
+        const legal = resolveActiveTagSlug(knownTags, requested);
         const serverTag = wrapper.dataset.activeTag || null;
         activeTagSlug = legal;
         if (hasTagParam && !legal) {
@@ -413,12 +434,13 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 
         renderFilterChipsUi();
         bindFilterChips();
+        bindClearFilter();
         window.addEventListener('popstate', () => {
           const restored = parseTagParam(window.location.search);
           // 仅接受本分类名下的 tag；否则回「全部」
-          const restoredLegal = restored && knownTags.some((tg) => tg.slug === restored) ? restored : null;
+          const restoredLegal = resolveActiveTagSlug(knownTags, restored);
           activeTagSlug = restoredLegal;
-          syncFilterUi();
+          renderFilterChipsUi();
           loadArticles(1, restoredLegal);
         });
       }

@@ -148,6 +148,13 @@ function contentCheck(page) {
       activeFilterChips: qa(
         '#category-filter-chips .filter-chip[aria-current="page"]'
       ),
+      activeFilterTags: [
+        ...document.querySelectorAll(
+          '#category-filter-chips .filter-chip[aria-current="page"]'
+        ),
+      ].map((a) => a.dataset.tag || ""),
+      filterVisible:
+        document.getElementById("category-tag-filter")?.hidden === false,
       categoryTagChips: qa(".category-tag-chip"),
       breadcrumbs: qa(".breadcrumb"),
       articleTagGroups: qa(".article-detail .article-tag-group"),
@@ -318,6 +325,16 @@ async function run() {
     if (check && !check(first)) {
       failures.push(`${target} 首次进入未完成加载：${JSON.stringify(first)}`);
     }
+    // 断言 A2（#117）：筛选页恰好选中 URL 指定的 tag（「全部」也算通过会让回归失效）
+    if (target.includes("?tag=")) {
+      const expected = new URL(target, BASE).searchParams.get("tag") ?? "";
+      const active = first.activeFilterTags ?? [];
+      if (active.length !== 1 || active[0] !== expected) {
+        failures.push(
+          `${target} 选中 chip 与 URL 不一致：期望 ${expected}，实际 ${JSON.stringify(active)}`
+        );
+      }
+    }
     // 断言 B：导航返回后内容与首次一致
     const { path: _p, ...a } = first;
     const { path: _q, ...b } = second;
@@ -347,23 +364,16 @@ async function run() {
       await noJsPage.goto(BASE + filterTarget, {
         waitUntil: "domcontentloaded",
       });
-      const ssr = await noJsPage.evaluate(() => ({
-        chips: document.querySelectorAll("#category-filter-chips .filter-chip")
-          .length,
-        active: document.querySelectorAll(
-          '#category-filter-chips .filter-chip[aria-current="page"]'
-        ).length,
-        cards: document.querySelectorAll(".article-list-inner .list-card")
-          .length,
-        filterHidden:
-          document.getElementById("category-tag-filter")?.hidden ?? true,
-        path: location.pathname + location.search,
-      }));
+      await noJsPage.waitForSelector("#category-filter-chips .filter-chip", {
+        timeout: 15000,
+      });
+      const ssr = await contentCheck(noJsPage);
       if (
-        ssr.chips === 0 ||
-        ssr.active !== 1 ||
-        ssr.cards === 0 ||
-        ssr.filterHidden
+        ssr.filterChips === 0 ||
+        ssr.activeFilterChips !== 1 ||
+        ssr.activeFilterTags[0] !== slugs.tagOfCat ||
+        ssr.listCards === 0 ||
+        !ssr.filterVisible
       ) {
         failures.push(
           `禁用 JS 的筛选页 SSR 输出不完整（#117）${filterTarget}：${JSON.stringify(ssr)}`
@@ -387,6 +397,12 @@ async function run() {
     if (slugs.cat)
       mobileTargets.push("/categories/" + encodeURIComponent(slugs.cat));
     if (slugs.tag) mobileTargets.push("/tags/" + encodeURIComponent(slugs.tag));
+    // #117：筛选页本身（?tag=）也要量 375px 横向溢出
+    if (slugs.cat && slugs.tagOfCat) {
+      mobileTargets.push(
+        `/categories/${encodeURIComponent(slugs.cat)}?tag=${encodeURIComponent(slugs.tagOfCat)}`
+      );
+    }
     const overflowFails = [];
     for (const target of mobileTargets) {
       await mpage.goto(BASE + target, { waitUntil: "networkidle" });

@@ -5,10 +5,14 @@ import {
   buildTagFilterUrl,
   isValidTagSlug,
   renderFilterChips,
+  resolveActiveTagSlug,
+  renderFilteredEmpty,
+  buildCategoryArticlesQuery,
 } from "../src/utils/taxonomyFilter";
 
 /**
  * issue #81 §5（taxonomy v2）：分类详情页 ?tag= 筛选的 URL 契约纯函数。
+ * #117 起同文件钉住 SSR / 客户端共用的 chip HTML、筛选空态与列表 query。
  * 期望值均为手写字面量，不从被测函数反推。
  */
 
@@ -72,6 +76,54 @@ describe("buildTagFilterUrl — 构造（「全部」= 无参 basePath）", () =
     );
     expect(buildTagFilterUrl("/categories/tech", "前端")).toBe(
       "/categories/tech?tag=%E5%89%8D%E7%AB%AF"
+    );
+  });
+});
+
+describe("resolveActiveTagSlug — 归属校验（SSR 与客户端共用）", () => {
+  const tags = [{ slug: "vue", name: "Vue", article_count: 3 }];
+
+  it("属于给定标签集 → 原样返回；缺失 / 越界 → null（全部）", () => {
+    expect(resolveActiveTagSlug(tags, "vue")).toBe("vue");
+    expect(resolveActiveTagSlug(tags, "react")).toBeNull();
+    expect(resolveActiveTagSlug(tags, null)).toBeNull();
+    expect(resolveActiveTagSlug([], "vue")).toBeNull();
+  });
+});
+
+describe("renderFilteredEmpty — 筛选空态（SSR 与客户端共用）", () => {
+  it("清除筛选是回无参 basePath 的链接，文案转义", () => {
+    expect(
+      renderFilteredEmpty("/categories/tech", "该标签暂无文章", "清除筛选")
+    ).toBe(
+      '<div class="filtered-empty"><p>该标签暂无文章</p><a href="/categories/tech" id="clear-tag-filter">清除筛选</a></div>'
+    );
+    expect(
+      renderFilteredEmpty("/categories/tech", "<b>空</b>", "清除筛选")
+    ).toBe(
+      '<div class="filtered-empty"><p>&lt;b&gt;空&lt;/b&gt;</p><a href="/categories/tech" id="clear-tag-filter">清除筛选</a></div>'
+    );
+  });
+});
+
+describe("buildCategoryArticlesQuery — 服务端 / 客户端共用 query", () => {
+  it("status / page / page_size / category_slug，筛选时追加 tag_slug", () => {
+    expect(
+      buildCategoryArticlesQuery({ categorySlug: "tech", tagSlug: "vue" })
+    ).toBe(
+      "status=published&page=1&page_size=10&category_slug=tech&tag_slug=vue"
+    );
+  });
+
+  it("页码与中文 slug 均正确编码", () => {
+    expect(
+      buildCategoryArticlesQuery({
+        categorySlug: "前端",
+        tagSlug: "前端",
+        page: 2,
+      })
+    ).toBe(
+      "status=published&page=2&page_size=10&category_slug=%E5%89%8D%E7%AB%AF&tag_slug=%E5%89%8D%E7%AB%AF"
     );
   });
 });

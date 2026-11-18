@@ -24,7 +24,7 @@
 
 > **分类 / 标签页 SSR 首屏（issue #97 / M17）**：四个分类 / 标签页在服务端直连 Worker 取数并渲染首屏 HTML（`src/utils/taxonomyServer.ts` + 共用 `taxonomyRender.ts`），非 JS 抓取器可见真实分类 / 标签 / 文章标题；客户端脚本在中文首屏已渲染时跳过重复 fetch（非中文用户主动刷新套用英文文案），分页与语言切换仍刷新。**只有取数失败（`error`）才降级为客户端接管**（`data-ssr="0"`）；`ok` 与 `empty` 都算 SSR 成功（`data-ssr="1"`），空数据由服务端渲染空态文案，客户端不再补一次请求。代价：每次访问多一次服务端同步 fetch Worker（8s 超时），首屏 TTFB 取决于 Worker 响应。
 
-> **分类页 `?tag=` SSR 筛选（issue #117）**：`/categories/:slug?tag=:tag` 由服务端用 `parseTagParam` 解析、先取本分类标签校验归属；合法时 SSR 直接输出筛选后的文章与分页，非法 / 越界值按「全部」渲染并由客户端 `replaceState` 清参（不发无效筛选请求）。筛选 chip 是服务端渲染的 `<a href="/categories/:slug?tag=:tag">`，选中态用 `aria-current="page"`，禁用 JS 也能完成筛选；客户端拦截点击做 `pushState` + 局部刷新，SSR 已按同一筛选渲染（`data-active-tag`）时不重复取数。不带 `?tag=` 时标签与文章并行取数；带筛选时才先标签后文章串行。
+> **分类页 `?tag=` SSR 筛选（issue #117）**：`/categories/:slug?tag=:tag` 由服务端用 `parseTagParam` 解析、先取本分类标签校验归属；合法时 SSR 直接输出筛选后的文章与分页，非法 / 越界值按「全部」渲染并由客户端 `replaceState` 清参（不发无效筛选请求）。筛选 chip 是服务端渲染的 `<a href="/categories/:slug?tag=:tag">`，选中态用 `aria-current="page"`，禁用 JS 时点击 chip 走整页导航完成标签切换（分页按钮仍为客户端交互）；有 JS 时客户端拦截点击做 `pushState` + 局部刷新，SSR 已按同一筛选渲染（`data-active-tag`）时不重复取数。不带 `?tag=` 时标签与文章并行取数；带筛选时才先标签后文章串行。
 
 `/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
 
