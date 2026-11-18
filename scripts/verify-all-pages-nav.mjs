@@ -134,8 +134,6 @@ function contentCheck(page) {
       aboutProse: qa("#about-content .prose"),
       aboutEmpty: qa("#about-content .about-empty"),
       searchInput: qa(".search-container input"),
-      // #118：导航「标签」入口必须消失（全局断言，逐页检查）
-      navTagLinks: qa('.nav-links a[href="/tags"]'),
       categoryItems: qa(".category-item"),
       tagItems: qa(".tag-item"),
       // taxonomy v2（#81）新增快照维度
@@ -284,6 +282,9 @@ async function run() {
     let first = null;
     let second = null;
     let matched = false;
+    // #118：导航「标签」入口必须消失。单独取数，不放进内容快照——
+    // 否则导航回归会污染「两次快照一致」的判据（断言 B）。
+    let navTagLinks = null;
     // 整个"进入→离开→返回"序列最多跑 2 次：dev 代理远程 API 偶发失败会导致两次结果偶然不一致；
     // 单次尝试内抛异常（导航 / 等待超时）也按"本次未成"处理，重试一次而不是整脚本崩掉
     for (let attempt = 0; attempt < 3 && !matched; attempt++) {
@@ -293,6 +294,9 @@ async function run() {
         await navByLink(page, target);
         await waitForPageLoaded(page, target);
         first = await contentCheck(page);
+        navTagLinks = await page.evaluate(
+          () => document.querySelectorAll('.nav-links a[href="/tags"]').length
+        );
         // 2) 客户端导航离开
         await navByLink(page, "/about");
         await waitForPageLoaded(page, "/about");
@@ -324,8 +328,8 @@ async function run() {
       failures.push(`${target} 首次进入未完成加载：${JSON.stringify(first)}`);
     }
     // 断言 A1（#118）：导航不再有「标签」入口（五项导航：首页 / 文章 / 分类 / 归档 / 关于）
-    if (first.navTagLinks !== 0) {
-      failures.push(`${target} 导航仍含「标签」入口：${first.navTagLinks} 个`);
+    if (navTagLinks !== 0) {
+      failures.push(`${target} 导航仍含「标签」入口：${navTagLinks} 个`);
     }
     // 断言 A2（#117）：筛选页恰好选中 URL 指定的 tag（「全部」也算通过会让回归失效）
     if (target.includes("?tag=")) {

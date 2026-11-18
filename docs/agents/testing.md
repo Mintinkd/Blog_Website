@@ -42,7 +42,7 @@
 
 **浏览器回归层**（手动 + CI 门禁，命令见上文对应小节）：
 
-- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 只保留关键词搜索（输入框 / 结果 / 空态）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另断言每页 `.nav-links a[href="/tags"]` 为 0（五项导航）。
+- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 只保留关键词搜索（等待输入框挂载，基线要求输入框存在且无加载占位）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另在基准目标页断言 `.nav-links a[href="/tags"]` 为 0（五项导航）。
 - BaseLayout / 文章详情改动后跑 `node scripts/verify-article-ssr.mjs`（CI 门禁）；后台面板改动后跑 `node scripts/verify-admin-responsive.mjs`（280 / 375px 无溢出）；观感走 `npm run verify:visual`。
 - i18n：zh / en 词条 parity 由既有词条扫描测试钉住，新增词条（未分类 / 标签数 / 全部 / 清除筛选 / 同分类标签等）必须双语同步。
 
