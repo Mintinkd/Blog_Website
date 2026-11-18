@@ -12,7 +12,7 @@ const groups = loaded.status === 'ok'
   ? groupTagsByCategory(loaded.items as any[])
   : [];
 const ssrHtml = loaded.status === 'ok'
-  ? renderTagGroups(groups, { uncategorized: '未分类', tagCount: '个标签' }, 'link')
+  ? renderTagGroups(groups, { uncategorized: '未分类', tagCount: '个标签' })
   : '';
 ---
 
@@ -196,7 +196,7 @@ const ssrHtml = loaded.status === 'ok'
         container.innerHTML = renderTagGroups(groups, {
           uncategorized: t('taxonomy.uncategorized'),
           tagCount: t('taxonomy.tag_count'),
-        }, 'link');
+        });
       } else {
         renderFailed(container);
       }

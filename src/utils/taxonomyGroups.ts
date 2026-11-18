@@ -69,17 +69,13 @@ export interface TagGroupRenderLabels {
 }
 
 /**
- * 渲染分组标签云 HTML。mode:
- * - "link"（/tags 目录页）：chip 是 `<a href="/tags/:slug">`；
- * - "button"（搜索页）：chip 是 `<button>`，携带 data-type/slug/name，
- *   由页面既有的 taxonomy-filter 点击委托消费（保留 SearchBox 内过滤行为）。
+ * 渲染分组标签云 HTML（/tags 目录页）：chip 是 `<a href="/tags/:slug">`。
  * 组头：分类名（链接 /categories/:slug）+ 标签数；未分类组头无链接。
  * 选择器契约：保留 `#tags-cloud` 容器、`.tag-item` 与 `.tag-group`（回归脚本断言）。
  */
 export function renderTagGroups(
   groups: TagGroup[],
-  labels: TagGroupRenderLabels,
-  mode: "link" | "button" = "link"
+  labels: TagGroupRenderLabels
 ): string {
   if (groups.length === 0) return "";
   return groups
@@ -89,13 +85,10 @@ export function renderTagGroups(
         ? escapeHtml(labels.uncategorized)
         : `<a href="/categories/${safePathSegment(group.category!.slug)}" class="tag-group-name">${escapeHtml(group.category!.name)}</a>`;
       const chips = group.tags
-        .map((tag) => {
-          const inner = `<span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.article_count || 0}</span>`;
-          if (mode === "button") {
-            return `<button type="button" class="tag-item taxonomy-item" data-type="tag" data-slug="${escapeHtml(tag.slug)}" data-name="${escapeHtml(tag.name)}" data-category-name="${escapeHtml(group.category?.name ?? "")}">${inner}</button>`;
-          }
-          return `<a href="/tags/${safePathSegment(tag.slug)}" class="tag-item">${inner}</a>`;
-        })
+        .map(
+          (tag) =>
+            `<a href="/tags/${safePathSegment(tag.slug)}" class="tag-item"><span>${escapeHtml(tag.name)}</span><span class="tag-count">${tag.article_count || 0}</span></a>`
+        )
         .join("");
       const count = group.tags.length;
       const countLabel = labels.tagCount

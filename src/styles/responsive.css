@@ -105,7 +105,6 @@
 /* 标签/分类云：长名称可换行，不把卡片顶出容器 */
 .tag-item,
 .category-item,
-.taxonomy-item,
 .profile-card__link {
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -153,7 +152,6 @@ iframe {
   .search-btn,
   .tag-item,
   .category-item,
-  .taxonomy-item,
   .profile-card__link {
     min-height: 44px;
   }
@@ -162,11 +160,6 @@ iframe {
   .nav-toggle {
     min-width: 40px;
     min-height: 40px;
-  }
-
-  .active-filter-clear {
-    width: 32px;
-    height: 32px;
   }
 
   .code-copy {

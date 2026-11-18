@@ -119,7 +119,6 @@ const initialCss = buildCss(initialSettings);
           <a href="/" data-i18n="nav.home">首页</a>
           <a href="/articles" data-i18n="nav.articles">文章</a>
           <a href="/categories" data-i18n="nav.categories">分类</a>
-          <a href="/tags" data-i18n="nav.tags">标签</a>
           <a href="/archives" data-i18n="nav.archives">归档</a>
           <a href="/about" data-i18n="nav.about">关于</a>
         </div>
@@ -280,7 +279,7 @@ const initialCss = buildCss(initialSettings);
     color: #ffffff;
     background: var(--color-accent);
   }
-  /* taxonomy v2（#81）：六项导航在 768–1024px 收窄间距，不隐藏分类 / 标签 */
+  /* #118：五项导航（首页 / 文章 / 分类 / 归档 / 关于）在 768–1024px 收窄间距 */
   @media (min-width: 768px) and (max-width: 1024px) {
     .nav-links a {
       padding: 0.4rem 0.6rem;

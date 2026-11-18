@@ -91,9 +91,8 @@ async function waitForPageLoaded(page, target) {
       timeout: 15000,
     });
   } else if (target === "/search") {
-    await page.waitForSelector("#search-tags > :not(.taxonomy-loading)", {
-      timeout: 15000,
-    });
+    // #118：搜索页只剩关键词搜索，等待输入框挂载即可
+    await page.waitForSelector(".search-container input", { timeout: 15000 });
   } else if (target === "/categories") {
     await page.waitForSelector(
       "#categories-cloud > :not(.categories-loading)",
@@ -134,15 +133,14 @@ function contentCheck(page) {
       archiveYears: qa(".archive-year"),
       aboutProse: qa("#about-content .prose"),
       aboutEmpty: qa("#about-content .about-empty"),
-      searchTags: qa("#search-tags .taxonomy-item"),
-      searchCats: qa("#search-categories .taxonomy-item"),
       searchInput: qa(".search-container input"),
+      // #118：导航「标签」入口必须消失（全局断言，逐页检查）
+      navTagLinks: qa('.nav-links a[href="/tags"]'),
       categoryItems: qa(".category-item"),
       tagItems: qa(".tag-item"),
       // taxonomy v2（#81）新增快照维度
       tagGroups: qa("#tags-cloud .tag-group"),
       tagGroupLinks: qa("#tags-cloud .tag-group-name"),
-      searchTagGroups: qa("#search-tags .tag-group"),
       sameCatChips: qa("#same-category-tags:not([hidden]) .same-category-tag"),
       filterChips: qa("#category-filter-chips .filter-chip"),
       activeFilterChips: qa(
@@ -324,6 +322,10 @@ async function run() {
     const check = baselineFor(target);
     if (check && !check(first)) {
       failures.push(`${target} 首次进入未完成加载：${JSON.stringify(first)}`);
+    }
+    // 断言 A1（#118）：导航不再有「标签」入口（五项导航：首页 / 文章 / 分类 / 归档 / 关于）
+    if (first.navTagLinks !== 0) {
+      failures.push(`${target} 导航仍含「标签」入口：${first.navTagLinks} 个`);
     }
     // 断言 A2（#117）：筛选页恰好选中 URL 指定的 tag（「全部」也算通过会让回归失效）
     if (target.includes("?tag=")) {

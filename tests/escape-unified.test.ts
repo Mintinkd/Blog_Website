@@ -44,9 +44,9 @@ describe("escapeHtml / escapeAttr 五字符口径统一（issue #95）", () => {
 });
 
 describe("页面不再重复定义 esc（issue #95 AC）", () => {
+  // #118：搜索页不再从 API 渲染标签 / 分类 DOM，已无 escape 消费方，移出清单。
   const PAGES = [
     "src/pages/categories/index.astro",
-    "src/pages/search.astro",
     "src/pages/tags/[slug].astro",
   ];
 

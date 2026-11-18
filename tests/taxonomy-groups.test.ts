@@ -91,7 +91,7 @@ describe("groupTagsByCategory — 分组与排序（#81 §2）", () => {
   });
 });
 
-describe("renderTagGroups — 渲染契约（#81 §2 / §6）", () => {
+describe("renderTagGroups — 渲染契约（#81 §2）", () => {
   const groups = groupTagsByCategory([
     {
       name: "技术<script>",
@@ -102,12 +102,11 @@ describe("renderTagGroups — 渲染契约（#81 §2 / §6）", () => {
     { name: "生活", slug: "life", article_count: 1, category: null },
   ]);
 
-  it("link 模式：chip 是 /tags/:slug 链接，文本转义；组头分类名链接分类页；未分类组头无链接", () => {
-    const html = renderTagGroups(
-      groups,
-      { uncategorized: "未分类", tagCount: "个标签" },
-      "link"
-    );
+  it("chip 是 /tags/:slug 链接，文本转义；组头分类名链接分类页；未分类组头无链接", () => {
+    const html = renderTagGroups(groups, {
+      uncategorized: "未分类",
+      tagCount: "个标签",
+    });
     // 转义：名称危险字符不原样出现；slug 经 safePathSegment 编码
     expect(html).toContain('href="/tags/tech%3C%3E"');
     expect(html).toContain("技术&lt;script&gt;");
@@ -122,23 +121,6 @@ describe("renderTagGroups — 渲染契约（#81 §2 / §6）", () => {
     // 选择器契约：.tag-group / .tag-item 保留（回归脚本断言）
     expect(html).toContain("tag-group");
     expect(html).toContain("tag-item");
-  });
-
-  it("button 模式（搜索页）：chip 是 button 且携带 data-type/slug/name/category-name", () => {
-    const html = renderTagGroups(
-      groups,
-      { uncategorized: "未分类", tagCount: "个标签" },
-      "button"
-    );
-    expect(html).toContain(
-      '<button type="button" class="tag-item taxonomy-item"'
-    );
-    expect(html).toContain('data-type="tag"');
-    expect(html).toContain('data-slug="tech&lt;&gt;"');
-    expect(html).toContain('data-name="技术&lt;script&gt;"');
-    expect(html).toContain('data-category-name="技术"');
-    // 未分类组的 chip 无分类名
-    expect(html).toContain('data-category-name=""');
   });
 
   it("空分组：返回空串", () => {

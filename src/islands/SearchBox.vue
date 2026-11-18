@@ -26,27 +26,9 @@
       </button>
     </div>
 
-    <div v-if="activeFilter" class="active-filter">
-      <span class="active-filter-label">
-        {{ filterLabelText }}
-      </span>
-      <button
-        class="active-filter-clear"
-        @click="clearFilter"
-        :aria-label="t('taxonomy.clear_filter')"
-      >
-        &times;
-      </button>
-    </div>
-
     <div v-if="results.length > 0" class="search-results">
       <p class="results-info">
-        <template v-if="activeFilter">{{
-          t("search.results_filtered", { count: total })
-        }}</template>
-        <template v-else>{{
-          t("search.results_found", { count: total })
-        }}</template>
+        {{ t("search.results_found", { count: total }) }}
       </p>
       <TransitionGroup name="result" tag="div" class="search-results-list">
         <div v-for="item in results" :key="item.id" class="search-result-item">
@@ -77,8 +59,7 @@
     </div>
 
     <div v-else-if="searched && !loading" class="no-results">
-      <p v-if="activeFilter">{{ t("search.no_results_filtered") }}</p>
-      <p v-else>{{ t("search.no_results") }}</p>
+      <p>{{ t("search.no_results") }}</p>
     </div>
 
     <div v-if="loading" class="search-loading">
@@ -88,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref } from "vue";
 import { t } from "../utils/i18n";
 import { sanitizeHighlight, safePathSegment } from "../utils/escape";
 
@@ -97,38 +78,11 @@ const results = ref<any[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const searched = ref(false);
-const activeFilter = ref<{
-  type: "tag" | "category";
-  slug: string;
-  name: string;
-  /** taxonomy v2（#81 §6）：标签的所属分类名（可选，仅 tag 类型且有分组信息时）。 */
-  categoryName?: string | null;
-} | null>(null);
-
-// locale-changed 触发重算，保证筛选条 / 空态文案随语言切换刷新
-const localeTick = ref(0);
-function onLocaleChanged() {
-  localeTick.value += 1;
-}
-
-const filterLabelText = computed(() => {
-  void localeTick.value;
-  const f = activeFilter.value;
-  if (!f) return "";
-  const prefix = f.type === "tag" ? t("page.tags") : t("page.categories");
-  let label = `${prefix}：<strong>${f.name}</strong>`;
-  if (f.type === "tag" && f.categoryName) {
-    label += `（${t("page.categories")}：${f.categoryName}）`;
-  }
-  return label;
-});
 
 async function doSearch() {
   const q = query.value.trim();
   if (!q || q.length > 100) return;
 
-  // 关键词搜索时清除标签/分类筛选
-  activeFilter.value = null;
   loading.value = true;
   searched.value = true;
 
@@ -148,64 +102,6 @@ async function doSearch() {
     loading.value = false;
   }
 }
-
-async function filterByTaxonomy(
-  type: "tag" | "category",
-  slug: string,
-  name: string,
-  categoryName?: string | null
-) {
-  if (!slug) return;
-
-  activeFilter.value = { type, slug, name, categoryName: categoryName ?? null };
-  query.value = "";
-  loading.value = true;
-  searched.value = true;
-  results.value = [];
-
-  try {
-    const param =
-      type === "tag"
-        ? `tag_slug=${encodeURIComponent(slug)}`
-        : `category_slug=${encodeURIComponent(slug)}`;
-    const response = await fetch(
-      `/api/v1/articles?page=1&page_size=20&status=published&${param}`
-    );
-    const data = await response.json();
-
-    if (data.code === 0 && data.data) {
-      results.value = data.data.items || [];
-      total.value = data.data.total || 0;
-    }
-  } catch (e) {
-    console.error("Filter failed:", e);
-  } finally {
-    loading.value = false;
-  }
-}
-
-function clearFilter() {
-  activeFilter.value = null;
-  results.value = [];
-  total.value = 0;
-  searched.value = false;
-}
-
-function handleTaxonomyFilter(e: Event) {
-  const detail = (e as CustomEvent).detail;
-  if (!detail) return;
-  filterByTaxonomy(detail.type, detail.slug, detail.name, detail.categoryName);
-}
-
-onMounted(() => {
-  window.addEventListener("taxonomy-filter", handleTaxonomyFilter);
-  window.addEventListener("locale-changed", onLocaleChanged);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("taxonomy-filter", handleTaxonomyFilter);
-  window.removeEventListener("locale-changed", onLocaleChanged);
-});
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -267,50 +163,6 @@ function formatDate(dateStr: string): string {
 
 .search-btn:disabled {
   opacity: 0.6;
-}
-
-.active-filter {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  padding: 0.5rem 0.9rem;
-  background: var(--color-accent-subtle);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  width: fit-content;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.active-filter-label {
-  min-width: 0;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-  overflow-wrap: anywhere;
-}
-
-.active-filter-label strong {
-  color: var(--color-accent);
-}
-
-.active-filter-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  color: var(--color-text-tertiary);
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.active-filter-clear:hover {
-  background: var(--color-accent);
-  color: #fff;
 }
 
 .search-results {
