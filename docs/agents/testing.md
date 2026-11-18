@@ -43,7 +43,7 @@
 
 **浏览器回归层**（手动 + CI 门禁，命令见上文对应小节）：
 
-- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 仅关键词搜索（等待输入框挂载，基线要求输入框存在且无加载占位）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另在基准目标页断言 `.nav-links a[href="/tags"]` 为 0（五项导航）。#116 起 `/categories` 保留「全部标签」入口（`/tags`）、`/tags` 与 `/tags/:slug` 仍返回 200，文章卡片 / 详情 / 首页 / 分类目录 / 标签页的标签链接无 `/tags/` 残留（未分类标签除外）。
+- `scripts/verify-all-pages-nav.mjs` 扩展（#81）：`/tags` 分组、`/tags/:slug` 面包屑、`/categories` 标签预览、`/categories/:slug?tag=` 筛选与 URL 同步、`/search` 仅关键词搜索（等待输入框挂载，基线要求输入框存在且无加载占位）、375px 无横向滚动、控制台无报错。#117 起该脚本另断言筛选页恰一个 `aria-current="page"` chip（不再用 `aria-pressed`）、筛选卡片已渲染，并在禁用 JS 的 context 中确认 SSR 输出同样完整；#118 起另在基准目标页断言 `.nav-links a[href="/tags"]` 为 0（五项导航）。#116 起 `/categories` 保留「全部标签」入口（`/tags`）；`/tags`、`/tags/:slug`、`/categories`、`/categories/:slug?tag=` 四个用例保留并通过。标签 chip 目标 URL 的「有分类 → 分类筛选 / 无分类 → `/tags/:slug`」形态由 `tests/tag-links.test.ts` / `article-card.test.ts` / `taxonomy-groups.test.ts` 钉住，浏览器脚本不重复断言链接形态。
 - BaseLayout / 文章详情改动后跑 `node scripts/verify-article-ssr.mjs`（CI 门禁）；后台面板改动后跑 `node scripts/verify-admin-responsive.mjs`（280 / 375px 无溢出）；观感走 `npm run verify:visual`。
 - i18n：zh / en 词条 parity 由既有词条扫描测试钉住，新增词条（未分类 / 标签数 / 全部 / 清除筛选 / 同分类标签等）必须双语同步。
 
