@@ -151,8 +151,10 @@ function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
         item.tag_count = finiteNumber(row.tag_count) ?? 0;
       } else {
         // issue #119：保留标签归属，/tags 的 SSR 才能按分类分组；缺失 / 畸形降级为 null。
-        item.category_id = finiteNumber(row.category_id);
-        item.category = parseCategoryRef(row.category);
+        // category_id 以解析后的 category 为准（两个消费方取不同一份，避免静默分歧）。
+        const category = parseCategoryRef(row.category);
+        item.category = category;
+        item.category_id = category?.id ?? finiteNumber(row.category_id);
       }
       items.push(item);
     }

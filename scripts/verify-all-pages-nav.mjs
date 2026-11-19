@@ -62,6 +62,46 @@ async function warmUpApi(page) {
   }
 }
 
+/**
+ * taxonomy SSR 回归（#119）的接口真值。本机 dev→远端 API 偶发失败，
+ * 沿用 warmUpApi 的容错约定换发直至成功（上限 3 次）。
+ */
+async function fetchTaxonomyTruth(page) {
+  for (let i = 0; i < 3; i++) {
+    await warmUpApi(page);
+    const data = await page
+      .evaluate(async () => {
+        const pick = (d) => (Array.isArray(d) ? d : d.items || []);
+        const [c, t] = await Promise.all([
+          fetch("/api/v1/categories").then((r) => r.json()),
+          fetch("/api/v1/tags").then((r) => r.json()),
+        ]);
+        return {
+          categories:
+            c.code === 0
+              ? pick(c.data).map((x) => ({
+                  name: x.name,
+                  slug: x.slug,
+                  tag_count: x.tag_count ?? 0,
+                }))
+              : null,
+          tags:
+            t.code === 0
+              ? pick(t.data).map((x) => ({
+                  name: x.name,
+                  slug: x.slug,
+                  categorySlug: x.category?.slug ?? null,
+                }))
+              : null,
+        };
+      })
+      .catch(() => null);
+    if (data?.categories && data?.tags) return data;
+    await page.waitForTimeout(800);
+  }
+  throw new Error("接口取数失败，无法比对 taxonomy SSR");
+}
+
 // 等待页面动态内容真正渲染（卡片或空状态/错误占位出现），替代固定 sleep，避免把未完成加载当结果
 async function waitForPageLoaded(page, target) {
   // 先等所有"加载中"占位消失（占位可能有多个）
@@ -396,35 +436,7 @@ async function run() {
   // /categories：每个分类的「N 标签」与接口 tag_count 一致，前 3 个标签 chip 恢复；
   // /tags：有分类归属的标签落在对应分类组，而不是全落到「未分类」。
   try {
-    await warmUpApi(page);
-    const apiTaxonomy = await page.evaluate(async () => {
-      const pick = (d) => (Array.isArray(d) ? d : d.items || []);
-      const [c, t] = await Promise.all([
-        fetch("/api/v1/categories").then((r) => r.json()),
-        fetch("/api/v1/tags").then((r) => r.json()),
-      ]);
-      return {
-        categories:
-          c.code === 0
-            ? pick(c.data).map((x) => ({
-                name: x.name,
-                slug: x.slug,
-                tag_count: x.tag_count ?? 0,
-              }))
-            : null,
-        tags:
-          t.code === 0
-            ? pick(t.data).map((x) => ({
-                name: x.name,
-                slug: x.slug,
-                categorySlug: x.category?.slug ?? null,
-              }))
-            : null,
-      };
-    });
-    if (!apiTaxonomy.categories || !apiTaxonomy.tags) {
-      throw new Error("接口取数失败，无法比对 taxonomy SSR");
-    }
+    const apiTaxonomy = await fetchTaxonomyTruth(page);
 
     const noJsContext = await browser.newContext({
       javaScriptEnabled: false,

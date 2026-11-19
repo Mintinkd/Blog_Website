@@ -113,7 +113,7 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
     }
   });
 
-  it("目录项畸形字段降级为 0 / null，不影响同批其它项（#119）", async () => {
+  it("categories：tag_count / article_count 畸形或缺失降级为 0，不影响同批其它项（#119）", async () => {
     stubFetch(
       jsonResponse({
         code: 0,
@@ -161,7 +161,7 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
     }
   });
 
-  it("tags：category 畸形 / 缺字段降级为 null，不影响同批其它项（#119）", async () => {
+  it("tags：category 畸形 / 缺字段降级为 null，category_id 以解析后的 category 为准（#119）", async () => {
     stubFetch(
       jsonResponse({
         code: 0,
@@ -183,6 +183,14 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
             category: { name: "缺 id", slug: "no-id" },
           },
           { id: 3, name: "无归属", slug: "none", article_count: 0 },
+          {
+            id: 4,
+            name: "冲突归属",
+            slug: "conflict",
+            article_count: 0,
+            category_id: 9,
+            category: { id: 7, name: "前端", slug: "frontend" },
+          },
         ],
       })
     );
@@ -218,6 +226,15 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
           description: "",
           category_id: null,
           category: null,
+        },
+        {
+          id: 4,
+          name: "冲突归属",
+          slug: "conflict",
+          article_count: 0,
+          description: "",
+          category_id: 7,
+          category: { id: 7, name: "前端", slug: "frontend" },
         },
       ]);
     }
