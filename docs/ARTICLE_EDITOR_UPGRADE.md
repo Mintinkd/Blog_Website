@@ -220,8 +220,8 @@ closed
   - 同样不装配：`code-mirror`、`latex`、`ai`、`top-bar`。代码块使用 CommonMark 围栏，不做高亮，保持与前台一致。
   - 图片上传改走「保留内置 `upload` 插件但覆盖 `uploadConfig.uploader`」的路径（见 §8.4），不依赖 `image-block`。
   - 按 `docs/agents/domain.md` 显式标注冲突：_Contradicts 本方案原稿与 ADR 0006 原文的「`image-block` 必选」，实测启用会破坏正文契约，故改为不装配。_
-- `data-embed="1"` 锚点、编辑器 UI 文案、主题分别由 `milkdown/embedLink.ts`（专用内联节点 + NodeView）、`reactive` 工具栏 label + `locale-changed` 事件、`classic.css` + 站点 CSS 变量承接；T0 实测默认行为不达标，不能依赖内核默认。
-- 主题：`@milkdown/crepe/theme/classic.css` + 用现有 CSS 变量覆盖颜色、圆角、字体；暗色跟随 `[data-theme]`，不引入第二套主题令牌。
+- `data-embed="1"` 锚点、编辑器 UI 文案、主题分别由 `milkdown/embedLink.ts`（专用内联节点 + NodeView）、`reactive` 工具栏 label + `locale-changed` 事件、`crepe-theme.css` + 站点 CSS 变量承接；T0 实测默认行为不达标，不能依赖内核默认。
+- 主题：布局来自 `@milkdown/crepe/theme/common/style.css`，颜色变量来自 `theme/classic.css`；两者统一由本地 `milkdown/crepe-theme.css` 引入（依赖包 `sideEffects: false`，直接从包内 import 会被 tree-shake）。再用现有 CSS 变量覆盖颜色、圆角、字体；暗色跟随 `[data-theme]`，不引入第二套主题令牌。
 - i18n：编辑器 UI 文案从 `zh.json` / `en.json` 读取；Milkdown 内置文案通过配置覆盖；语言切换不重建编辑器，只更新文案与主题。
 - 依赖：`package.json` 固定 `@milkdown/core` / `@milkdown/crepe` 等同主版本（7.x）并提交 lockfile；不引入 `@milkdown/plugin-*` 里未装配的插件。T0 记录实际解析到的版本。
 - 懒加载：`MarkdownWorkspace.vue` 用 `defineAsyncComponent` + `import()`，Milkdown 及其 CSS 只在首次打开编辑器时加载。

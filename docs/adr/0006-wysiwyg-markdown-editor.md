@@ -53,3 +53,12 @@
 - **工作区**：`MarkdownWorkspace.vue` 提供 WYSIWYG / 源码 / 分屏 / 线上预览四档，`defineAsyncComponent + import()` 懒加载；分屏预览与 `EditorPreviewDialog.vue` 都消费同一 `renderMarkdown`（150ms 防抖、只在可见时渲染、`enhanceMediaLinks` 限定容器）；分屏 ≥1024 并排 / 768–1023 堆叠 / <768 隐藏入口。
 - **包体与 CSP**：`npm run build` 通过，`patch-csp` 的静态 / SSR 两份 CSP 逐字符一致；Milkdown 增量 chunk `createEditor.*.js` gzip **181,194 B** + `MilkdownEditor.*.js` gzip **848 B**，合计约 **182 KiB**，低于 350 KiB 预算，且经 `__vite__mapDeps` 确认只由动态 `import()` 触发，不进入后台首屏静态 import。`classic.css`（1,088 B 变量定义）被 Astro 内联进首屏 HTML，就此显式说明：CSS 体积可忽略，但「CSS 也完全不进首屏」严格来说未成立，变量覆盖用 `:root .milkdown` 提高优先级以保证亮暗主题跟随。
 - **未闭环**：真机中文输入法组合输入、真实拖拽上传、CDP 级事件监听器计数、编辑器 Playwright 回归与 CI 门禁仍按 `docs/agents/issue-tracker.md` 的 cross-ticket 约定留给 T5 / T7；这些不改变本 ADR 的决策。
+
+## 布局样式修复（2026-11-19，issue #122）
+
+上节「`classic.css`（1,088 B 变量定义）被 Astro 内联进首屏 HTML」的口径需要更正：`theme/classic.css` **只定义 `--crepe-color-*` 等颜色变量，不含布局**。浮动工具栏、slash 菜单、列表、链接浮层、表格、block handle 的布局在 `@milkdown/crepe/theme/common/style.css`（其内部再 `@import` `prosemirror.css` / `reset.css` / `toolbar.css` / `block-edit.css` / `list-item.css` / `table.css` / `link-tooltip.css` 等）。T4 只引了 `classic.css`，布局 CSS 从未进入产物，编辑器 UI 因此错乱。
+
+- **修法**：新增本地 `src/admin/editor/milkdown/crepe-theme.css`，按 `common/style.css` → `classic.css` 的顺序引入；`createEditor.ts` 改为 `import "./crepe-theme.css"`。`@milkdown/crepe` 声明 `"sideEffects": false`，直接从包内 import CSS 会被 Rollup tree-shake；本地源码文件不受该标记影响。
+- **产物**：`npm run build` 后 `dist/_assets/createEditor.*.css` 含 `.milkdown-toolbar` / `.milkdown-slash-menu` / `.milkdown-block-handle` / `.milkdown-list-item-block` 等选择器；本地实测 **83,849 B 原始 / 16,128 B gzip**（T4 预估约 60 KB / 9–12 KB，实际偏大，因为 common 入口同时带入未装配 feature 的 CSS）。该 CSS 仍只在编辑器懒加载 chunk 中下载，不进入后台首屏；JS 包体预算 350 KiB 不受影响。
+- **主题**：`classic.css` 变量与 common 布局现在同属懒加载 CSS chunk，不再内联首屏；亮暗主题继续由 `src/admin/admin-shared.css` 的 `:root .milkdown` 映射（优先级高于 `.milkdown`）覆盖，加载顺序 common → classic 不会把站点令牌顶回去。
+- **回归**：`scripts/verify-article-editor.mjs` 新增「1b. Crepe 布局样式生效」场景，用 computed style 钉住 toolbar `position: absolute`、slash 菜单默认 `display: none` / 输入 `/` 后 `absolute`、列表项 `display: flex` + `gap: 10px` + 标签槽 `32px`；布局 CSS 被 tree-shake 时这些断言会直接变红。

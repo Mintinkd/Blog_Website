@@ -1,0 +1,15 @@
+/*
+ * Crepe 主题入口（#122）。
+ *
+ * `@milkdown/crepe/theme/classic.css` 只定义 `--crepe-color-*` 等变量，
+ * 真正的布局（toolbar / slash menu / list / table / link tooltip / block
+ * handle）在 `theme/common/style.css` 里。依赖包声明了
+ * `"sideEffects": false`，直接在 TS 里 import 包内 CSS 会被 Rollup
+ * tree-shake 掉；本地源码文件不受该标记影响，因此统一从这里引入。
+ *
+ * 顺序保持 common → classic：布局先落地，主题变量后覆盖；后台
+ * `admin-shared.css` 的 `:root .milkdown` 映射优先级更高，亮暗主题仍以
+ * 站点令牌为准。
+ */
+@import "@milkdown/crepe/theme/common/style.css";
+@import "@milkdown/crepe/theme/classic.css";

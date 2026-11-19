@@ -461,6 +461,115 @@ async function scenarioGuardModes(browser) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 检查单 1b（#122）：Crepe common 布局样式确实进入产物。
+ *
+ * `classic.css` 只有颜色变量，布局在 `theme/common/style.css`。依赖包声明
+ * `sideEffects: false`，直接从包内 import 会被 tree-shake；这里用 computed
+ * style 证明布局真的生效，而不是只看某个 class 是否存在。
+ * ------------------------------------------------------------------ */
+async function scenarioLayoutStyles(browser) {
+  await resetMock();
+  await withScenario(
+    "1b. Crepe 布局样式生效（toolbar / slash menu / list）",
+    browser,
+    async ({ page }) => {
+      await openEditor(page, { fresh: true });
+      await waitForWysiwyg(page);
+      const prose = page.locator(".milkdown-host .ProseMirror");
+      await prose.click();
+
+      // toolbar：common 未加载时 position 为 static，图标会被挤进文档流。
+      // 必须限定在可见 `.milkdown-host` 内：回写守卫另有一个隐藏的往返实例
+      // （`[data-editor-roundtrip]`），它也会生成 toolbar / slash menu。
+      await page.waitForSelector(".milkdown-host .milkdown-toolbar", {
+        state: "attached",
+        timeout: 10000,
+      });
+      const toolbarPosition = await page.evaluate(
+        () =>
+          getComputedStyle(
+            document.querySelector(".milkdown-host .milkdown-toolbar")
+          ).position
+      );
+      assert.equal(
+        toolbarPosition,
+        "absolute",
+        "浮动工具栏必须绝对定位（theme/common/toolbar.css）"
+      );
+
+      // slash menu：默认 data-show=false → display:none；输入 / 后成为浮层。
+      const slash = page.locator(".milkdown-host .milkdown-slash-menu");
+      await slash.waitFor({ state: "attached", timeout: 10000 });
+      assert.equal(
+        await slash.getAttribute("data-show"),
+        "false",
+        "slash 菜单默认应隐藏"
+      );
+      assert.equal(
+        await slash.evaluate((el) => getComputedStyle(el).display),
+        "none",
+        "未输入 / 时 slash 菜单不得占据文档流"
+      );
+      await page.keyboard.type("/");
+      await page.waitForFunction(
+        () =>
+          document.querySelector(".milkdown-host .milkdown-slash-menu")?.dataset
+            .show === "true",
+        undefined,
+        { timeout: 10000 }
+      );
+      const slashStyle = await slash.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { display: style.display, position: style.position };
+      });
+      assert.equal(slashStyle.display, "block", "slash 菜单显示时应为浮层");
+      assert.equal(
+        slashStyle.position,
+        "absolute",
+        "slash 菜单必须绝对定位（theme/common/block-edit.css）"
+      );
+      await page.keyboard.press("Backspace");
+      await page.waitForFunction(
+        () =>
+          document.querySelector(".milkdown-host .milkdown-slash-menu")?.dataset
+            .show === "false",
+        undefined,
+        { timeout: 10000 }
+      );
+
+      // list：common 未加载时 li 是普通 block、标签与正文没有 flex 间距。
+      await page.keyboard.type("- 列表项");
+      await page.waitForSelector(".milkdown-host .milkdown-list-item-block", {
+        state: "visible",
+        timeout: 10000,
+      });
+      const listStyle = await page.evaluate(() => {
+        const block = document.querySelector(
+          ".milkdown-host .milkdown-list-item-block"
+        );
+        const item = block?.querySelector(":scope > .list-item");
+        const label = item?.querySelector(".label-wrapper");
+        if (!block || !item || !label) return null;
+        return {
+          itemDisplay: getComputedStyle(item).display,
+          itemGap: getComputedStyle(item).gap,
+          labelHeight: getComputedStyle(label).height,
+        };
+      });
+      assert.ok(listStyle, "列表项应渲染 Crepe 的 NodeView 结构");
+      assert.equal(
+        listStyle.itemDisplay,
+        "flex",
+        "列表项应 flex 排布标签与正文（theme/common/list-item.css）"
+      );
+      assert.equal(listStyle.itemGap, "10px", "列表项标签与正文间距应为 10px");
+      assert.equal(listStyle.labelHeight, "32px", "列表标签槽高度应为 32px");
+    }
+  );
+  await resetMock();
+}
+
+/* ------------------------------------------------------------------ *
  * 检查单 2 + 3：WYSIWYG 编辑 / 链接 / 上传 → 保存只含 Markdown →
  * 回读 SSR 页，正文 / 表格 / 代码 / 内嵌链接仍渲染。
  * ------------------------------------------------------------------ */
@@ -907,6 +1016,7 @@ async function run() {
     });
 
     await scenarioGuardModes(browser);
+    await scenarioLayoutStyles(browser);
     await scenarioSaveAndSsr(browser);
     await scenarioUnsavedProtection(browser);
     await scenarioFailureStates(browser);

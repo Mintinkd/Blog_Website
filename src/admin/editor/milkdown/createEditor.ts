@@ -16,7 +16,7 @@
  * 依赖固定 `@milkdown/*` 7.23.0（package-lock.json）；本模块只在编辑器首次
  * 打开时由 MarkdownWorkspace 动态 import，不进入后台首屏 chunk。
  */
-import "@milkdown/crepe/theme/classic.css";
+import "./crepe-theme.css";
 import { CrepeBuilder } from "@milkdown/crepe/builder";
 import { blockEdit } from "@milkdown/crepe/feature/block-edit";
 import { cursor } from "@milkdown/crepe/feature/cursor";
