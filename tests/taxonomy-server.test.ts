@@ -37,12 +37,12 @@ afterEach(() => {
 });
 
 describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
-  it("categories：code=0 数组 → ok，items 含 name/slug/article_count", async () => {
+  it("categories：保留 id / tag_count（#119），缺 tag_count 降级为 0", async () => {
     const fetchMock = stubFetch(
       jsonResponse({
         code: 0,
         data: [
-          { id: 1, name: "技术", slug: "tech", article_count: 3 },
+          { id: 1, name: "技术", slug: "tech", article_count: 3, tag_count: 5 },
           { id: 2, name: "生活", slug: "life", article_count: 0 },
         ],
       })
@@ -56,18 +56,41 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.items).toEqual([
-        { name: "技术", slug: "tech", article_count: 3, description: "" },
-        { name: "生活", slug: "life", article_count: 0, description: "" },
+        {
+          id: 1,
+          name: "技术",
+          slug: "tech",
+          article_count: 3,
+          description: "",
+          tag_count: 5,
+        },
+        {
+          id: 2,
+          name: "生活",
+          slug: "life",
+          article_count: 0,
+          description: "",
+          tag_count: 0,
+        },
       ]);
     }
   });
 
-  it("tags：data.items 形式也支持（兼容分页响应）", async () => {
+  it("tags：data.items 形式也支持，保留 category_id / category（#119）", async () => {
     stubFetch(
       jsonResponse({
         code: 0,
         data: {
-          items: [{ id: 3, name: "Astro", slug: "astro", article_count: 2 }],
+          items: [
+            {
+              id: 3,
+              name: "Astro",
+              slug: "astro",
+              article_count: 2,
+              category_id: 7,
+              category: { id: 7, name: "前端", slug: "frontend" },
+            },
+          ],
         },
       })
     );
@@ -77,7 +100,125 @@ describe("loadTaxonomyForPage 取数与三态（issue #97）", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.items).toEqual([
-        { name: "Astro", slug: "astro", article_count: 2, description: "" },
+        {
+          id: 3,
+          name: "Astro",
+          slug: "astro",
+          article_count: 2,
+          description: "",
+          category_id: 7,
+          category: { id: 7, name: "前端", slug: "frontend" },
+        },
+      ]);
+    }
+  });
+
+  it("目录项畸形字段降级为 0 / null，不影响同批其它项（#119）", async () => {
+    stubFetch(
+      jsonResponse({
+        code: 0,
+        data: [
+          {
+            id: 1,
+            name: "坏计数",
+            slug: "bad-count",
+            article_count: "3",
+            tag_count: null,
+          },
+          {
+            id: 2,
+            name: "好计数",
+            slug: "good-count",
+            article_count: 2,
+            tag_count: 4,
+          },
+        ],
+      })
+    );
+    const result = await loadTaxonomyForPage("categories", {
+      origin: "https://worker.test",
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.items).toEqual([
+        {
+          id: 1,
+          name: "坏计数",
+          slug: "bad-count",
+          article_count: 0,
+          description: "",
+          tag_count: 0,
+        },
+        {
+          id: 2,
+          name: "好计数",
+          slug: "good-count",
+          article_count: 2,
+          description: "",
+          tag_count: 4,
+        },
+      ]);
+    }
+  });
+
+  it("tags：category 畸形 / 缺字段降级为 null，不影响同批其它项（#119）", async () => {
+    stubFetch(
+      jsonResponse({
+        code: 0,
+        data: [
+          {
+            id: 1,
+            name: "好归属",
+            slug: "good",
+            article_count: 1,
+            category_id: 7,
+            category: { id: 7, name: "前端", slug: "frontend" },
+          },
+          {
+            id: 2,
+            name: "坏归属",
+            slug: "bad",
+            article_count: 0,
+            category_id: "7",
+            category: { name: "缺 id", slug: "no-id" },
+          },
+          { id: 3, name: "无归属", slug: "none", article_count: 0 },
+        ],
+      })
+    );
+    const result = await loadTaxonomyForPage("tags", {
+      origin: "https://worker.test",
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.items).toEqual([
+        {
+          id: 1,
+          name: "好归属",
+          slug: "good",
+          article_count: 1,
+          description: "",
+          category_id: 7,
+          category: { id: 7, name: "前端", slug: "frontend" },
+        },
+        {
+          id: 2,
+          name: "坏归属",
+          slug: "bad",
+          article_count: 0,
+          description: "",
+          category_id: null,
+          category: null,
+        },
+        {
+          id: 3,
+          name: "无归属",
+          slug: "none",
+          article_count: 0,
+          description: "",
+          category_id: null,
+          category: null,
+        },
       ]);
     }
   });

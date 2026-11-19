@@ -18,8 +18,16 @@ export type TaxonomyKind =
 
 /** 目录项（分类 / 标签云）。 */
 export interface TaxonomyItem extends FilterChipTag {
+  /** Worker 行 id（分类卡片按 id 把标签归到分类，issue #119）。 */
+  id?: number;
   article_count: number;
   description: string;
+  /** 分类名下标签数（不受文章状态影响，issue #119）。 */
+  tag_count?: number;
+  /** 标签归属分类 id；无归属 / 缺字段为 null（issue #119）。 */
+  category_id?: number | null;
+  /** 标签归属分类概要；无归属 / 畸形值为 null（issue #119）。 */
+  category?: { id: number; name: string; slug: string } | null;
 }
 
 /** 详情列表项（分类 / 标签下的文章）。 */
@@ -87,6 +95,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/** 有限数值收敛；缺失 / 非数值 / NaN / Infinity → null。 */
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** 标签归属分类概要；形状不符（缺 id / name / slug）→ null。 */
+function parseCategoryRef(
+  value: unknown
+): { id: number; name: string; slug: string } | null {
+  if (!isRecord(value)) return null;
+  const id = finiteNumber(value.id);
+  if (id === null || typeof value.name !== "string") return null;
+  if (typeof value.slug !== "string") return null;
+  return { id, name: value.name, slug: value.slug };
+}
+
 /** 解析 `{ code: 0, data: [...] | { items: [...] } }`，畸形数据 fail-closed → error。 */
 function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
   if (!isRecord(payload) || payload.code !== 0) return { status: "error" };
@@ -114,16 +138,23 @@ function parseResult(payload: unknown, kind: TaxonomyKind): TaxonomyResult {
         typeof row.slug !== "string"
       )
         continue;
-      items.push({
+      const id = finiteNumber(row.id);
+      const item: TaxonomyItem = {
         name: row.name,
         slug: row.slug,
-        article_count:
-          typeof row.article_count === "number" &&
-          Number.isFinite(row.article_count)
-            ? row.article_count
-            : 0,
+        article_count: finiteNumber(row.article_count) ?? 0,
         description: typeof row.description === "string" ? row.description : "",
-      });
+      };
+      if (id !== null) item.id = id;
+      if (kind === "categories") {
+        // issue #119：分类卡片的「N 标签」直接取 Worker 的 tag_count，缺字段降级为 0。
+        item.tag_count = finiteNumber(row.tag_count) ?? 0;
+      } else {
+        // issue #119：保留标签归属，/tags 的 SSR 才能按分类分组；缺失 / 畸形降级为 null。
+        item.category_id = finiteNumber(row.category_id);
+        item.category = parseCategoryRef(row.category);
+      }
+      items.push(item);
     }
     return items.length === 0
       ? { status: "empty" }

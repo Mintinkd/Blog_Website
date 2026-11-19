@@ -391,6 +391,143 @@ async function run() {
     }
   }
 
+  // taxonomy SSR（#119）：中文首屏会跳过首次客户端刷新，错误 SSR 数据不会自愈，
+  // 因此用禁用 JS 的 context 直接比对服务端 HTML 与接口真值。
+  // /categories：每个分类的「N 标签」与接口 tag_count 一致，前 3 个标签 chip 恢复；
+  // /tags：有分类归属的标签落在对应分类组，而不是全落到「未分类」。
+  try {
+    await warmUpApi(page);
+    const apiTaxonomy = await page.evaluate(async () => {
+      const pick = (d) => (Array.isArray(d) ? d : d.items || []);
+      const [c, t] = await Promise.all([
+        fetch("/api/v1/categories").then((r) => r.json()),
+        fetch("/api/v1/tags").then((r) => r.json()),
+      ]);
+      return {
+        categories:
+          c.code === 0
+            ? pick(c.data).map((x) => ({
+                name: x.name,
+                slug: x.slug,
+                tag_count: x.tag_count ?? 0,
+              }))
+            : null,
+        tags:
+          t.code === 0
+            ? pick(t.data).map((x) => ({
+                name: x.name,
+                slug: x.slug,
+                categorySlug: x.category?.slug ?? null,
+              }))
+            : null,
+      };
+    });
+    if (!apiTaxonomy.categories || !apiTaxonomy.tags) {
+      throw new Error("接口取数失败，无法比对 taxonomy SSR");
+    }
+
+    const noJsContext = await browser.newContext({
+      javaScriptEnabled: false,
+      locale: "zh-CN",
+    });
+    const noJsPage = await noJsContext.newPage();
+
+    // /categories：计数 + chip
+    await noJsPage.goto(BASE + "/categories", {
+      waitUntil: "domcontentloaded",
+    });
+    await noJsPage.waitForSelector("#categories-cloud .category-item", {
+      timeout: 15000,
+    });
+    const ssrCategories = await noJsPage.evaluate(() =>
+      [...document.querySelectorAll("#categories-cloud .category-item")].map(
+        (el) => ({
+          name: el.querySelector(".category-name")?.textContent?.trim() ?? "",
+          countText:
+            el.querySelector(".category-count")?.textContent?.trim() ?? "",
+          chips: [...el.querySelectorAll(".category-tag-chip")].map((a) =>
+            a.getAttribute("href")
+          ),
+        })
+      )
+    );
+    if (ssrCategories.length !== apiTaxonomy.categories.length) {
+      failures.push(
+        `/categories SSR 卡片数 ${ssrCategories.length} ≠ 接口分类数 ${apiTaxonomy.categories.length}（#119）`
+      );
+    }
+    for (const cat of apiTaxonomy.categories) {
+      const card = ssrCategories.find((c) => c.name === cat.name);
+      if (!card) {
+        failures.push(`/categories SSR 缺少分类卡片「${cat.name}」（#119）`);
+        continue;
+      }
+      // 卡片结构：`<article_count> 篇文章 · <tag_count> 标签`——取「·」后第一个数字
+      const shown = Number(
+        (card.countText.split("·")[1] ?? "").match(/\d+/)?.[0]
+      );
+      if (shown !== cat.tag_count) {
+        failures.push(
+          `/categories SSR「${cat.name}」标签数 ${shown} ≠ 接口 tag_count ${cat.tag_count}（#119）：${card.countText}`
+        );
+      }
+      const expectedChips = apiTaxonomy.tags
+        .filter((t) => t.categorySlug === cat.slug)
+        .slice(0, 3)
+        .map(
+          (t) =>
+            `/categories/${encodeURIComponent(cat.slug)}?tag=${encodeURIComponent(t.slug)}`
+        );
+      if (JSON.stringify(card.chips) !== JSON.stringify(expectedChips)) {
+        failures.push(
+          `/categories SSR「${cat.name}」标签 chip 不符（#119）：期望 ${JSON.stringify(expectedChips)}，实际 ${JSON.stringify(card.chips)}`
+        );
+      }
+    }
+
+    // /tags：分类分组归属 + chip 目标
+    await noJsPage.goto(BASE + "/tags", { waitUntil: "domcontentloaded" });
+    await noJsPage.waitForSelector("#tags-cloud .tag-group", {
+      timeout: 15000,
+    });
+    const ssrTags = await noJsPage.evaluate(() =>
+      [...document.querySelectorAll("#tags-cloud .tag-group")].map((g) => ({
+        head: g.querySelector(".tag-group-name")?.getAttribute("href") ?? null,
+        items: [...g.querySelectorAll(".tag-item")].map((a) =>
+          a.getAttribute("href")
+        ),
+      }))
+    );
+    const ssrTagCount = ssrTags.reduce((n, g) => n + g.items.length, 0);
+    if (ssrTagCount !== apiTaxonomy.tags.length) {
+      failures.push(
+        `/tags SSR 标签数 ${ssrTagCount} ≠ 接口标签数 ${apiTaxonomy.tags.length}（#119）`
+      );
+    }
+    for (const tag of apiTaxonomy.tags) {
+      const groupHead = tag.categorySlug
+        ? `/categories/${encodeURIComponent(tag.categorySlug)}`
+        : null;
+      const expectedHref = tag.categorySlug
+        ? `${groupHead}?tag=${encodeURIComponent(tag.slug)}`
+        : `/tags/${encodeURIComponent(tag.slug)}`;
+      const group = ssrTags.find((g) => g.items.includes(expectedHref));
+      if (!group) {
+        failures.push(
+          `/tags SSR 未输出标签「${tag.name}」的 chip ${expectedHref}（#119）`
+        );
+      } else if (group.head !== groupHead) {
+        failures.push(
+          `/tags SSR 标签「${tag.name}」落入分组 ${group.head ?? "未分类"}，期望 ${groupHead ?? "未分类"}（#119）`
+        );
+      }
+    }
+
+    await noJsContext.close();
+  } catch (e) {
+    failures.push("taxonomy SSR 检查异常（#119）：" + e.message);
+  }
+
   await browser.close();
 
   // taxonomy v2（#81 §8）：375px 触控视口无横向滚动（六条 taxonomy 页面）
