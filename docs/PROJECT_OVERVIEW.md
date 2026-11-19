@@ -12,7 +12,7 @@
 
 - **Astro v5** — SSG/SSR 混合渲染（静态页面 + SSR 动态路由）
 - **Vue 3** — 岛屿架构交互组件（搜索、评论、点赞等）
-- **Milkdown 7（ProseMirror + remark）/ Crepe** — 后台文章编辑器的所见即所得内核，固定 `@milkdown/*` 7.23.0 一组；`defineAsyncComponent + import()` 懒加载，只在首次打开编辑器时进入增量 chunk（实测 gzip 约 182 KiB，预算 350 KiB），不进后台首屏（issue #65 / ADR 0006）
+- **Milkdown 7（ProseMirror + remark）/ Crepe** — 后台文章编辑器的所见即所得内核，固定 `@milkdown/*` 7.23.0 一组；`defineAsyncComponent + import()` 懒加载，只在首次打开编辑器时进入增量 chunk（实测 gzip 约 198 KiB = JS 约 182 KiB + #122 布局 CSS 16 KiB，预算 350 KiB），不进后台首屏（issue #65 / ADR 0006）
 - **Element Plus** — 后台管理UI组件库
 - **marked + DOMPurify / sanitize-html** — Markdown渲染（`renderMarkdown` 与服务端正文渲染器共用一份正文白名单，分别由 DOMPurify / sanitize-html 执行；文章编辑器预览复用同一 `renderMarkdown`；marked v14 后无内置高亮，代码高亮未接线；highlight.js 依赖已于 issue #51 卸载，prose.css 的 hljs 样式为渲染侧残留）
 
@@ -176,7 +176,7 @@
 │   ├── verify-visual-friendliness.mjs # 页面观感友好度检查（CI + 手动；13 条规则 / 亮暗主题 / 多视口 / 带源码定位的报告）
 │   ├── verify-admin-responsive.mjs # 后台移动端回归（CI + 手动；T7 #68 补编辑器遮罩 / fixture）
 │   ├── verify-editor-responsive.mjs # 编辑器元信息 / 响应式 / 可访问性回归（T6 #67；CI 门禁）
-│   ├── verify-article-editor.mjs # 文章编辑器端到端回归（T7 #68；§10.3 九条检查单 / 12 个独立 context 场景 / 有状态 mock 双通道 / CI 门禁）
+│   ├── verify-article-editor.mjs # 文章编辑器端到端回归（T7 #68；§10.3 九条检查单 / 13 个独立 context 场景 / 有状态 mock 双通道 / CI 门禁）
 │   ├── mock-admin-api.mjs        # 有状态 admin mock 纯状态机（T7 #68；登录 / 列表 / edit 详情 / PUT / 编辑锁 / 上传 / 公开读取）
 │   ├── mock-admin-api.d.mts      # 上述 mock 的类型声明
 │   ├── mock-article-api.mjs      # 同一进程同时服务文章 SSR 回归（#41）与 admin 回归（#68）；/__stats / /__control / /__reset

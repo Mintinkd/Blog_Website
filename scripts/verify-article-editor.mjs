@@ -62,6 +62,12 @@ const CHANNEL = process.env.PW_CHANNEL;
 const TOKEN = "regression-token";
 const DRAFT_PREFIX = "blog:article-draft:v1:u1:";
 const ARTICLE_PATH = `/articles/${EDITOR_ARTICLE_SLUG}`;
+/**
+ * 布局断言只认可见编辑器：回写守卫另有一个隐藏的往返实例
+ * （`[data-editor-roundtrip]`），它也会生成 toolbar / slash menu。
+ */
+const VISIBLE_EDITOR = ".milkdown-host";
+const SLASH_MENU = `${VISIBLE_EDITOR} .milkdown-slash-menu`;
 
 /** 控制台报错白名单：按 URL + 错误文本精确匹配，不做笼统忽略。 */
 const IGNORABLE_ERRORS = [
@@ -293,6 +299,16 @@ async function waitForWysiwyg(page) {
   );
 }
 
+/** 等待 slash 菜单的 data-show 变成预期值（true = 浮层展开）。 */
+async function waitForSlashMenu(page, shown) {
+  await page.waitForFunction(
+    ({ selector, expected }) =>
+      document.querySelector(selector)?.dataset.show === expected,
+    { selector: SLASH_MENU, expected: shown ? "true" : "false" },
+    { timeout: 10000 }
+  );
+}
+
 /**
  * 切到源码模式并确认它稳定。
  *
@@ -426,6 +442,27 @@ async function scenarioGuardModes(browser) {
     const prose = await page.locator(".milkdown-host .ProseMirror").innerText();
     assert.ok(prose.includes(BASE_MARKER), "WYSIWYG 应保留引用段落标记");
     assert.ok(prose.includes("内嵌预览"), "WYSIWYG 应保留 data-embed 锚点文本");
+
+    // 表格布局同样来自 Crepe common（table.css）；未加载时单元格没有边框。
+    // 限定在可见 `.milkdown-host` 内，避开回写守卫的隐藏往返实例；
+    // 表格块内的拖拽预览副本没有单元格，直接取真实表头 / 单元格。
+    const tableStyle = await page.evaluate(() => {
+      const cell = document.querySelector(
+        ".milkdown-host .milkdown-table-block th, .milkdown-host .milkdown-table-block td"
+      );
+      if (!cell) return null;
+      return {
+        border: getComputedStyle(cell).borderTopWidth,
+        padding: getComputedStyle(cell).paddingTop,
+      };
+    });
+    assert.ok(tableStyle, "安全语料应渲染 GFM 表格");
+    assert.equal(
+      tableStyle.border,
+      "1px",
+      "表格单元格应有边框（theme/common/table.css）"
+    );
+    assert.equal(tableStyle.padding, "4px", "表格单元格应有内边距");
   });
 
   await setArticleContent(LOSSY_MARKDOWN);
@@ -470,35 +507,41 @@ async function scenarioGuardModes(browser) {
 async function scenarioLayoutStyles(browser) {
   await resetMock();
   await withScenario(
-    "1b. Crepe 布局样式生效（toolbar / slash menu / list）",
+    "1b. Crepe 布局样式生效（toolbar / slash menu / list / link / theme）",
     browser,
     async ({ page }) => {
       await openEditor(page, { fresh: true });
       await waitForWysiwyg(page);
-      const prose = page.locator(".milkdown-host .ProseMirror");
+      const prose = page.locator(`${VISIBLE_EDITOR} .ProseMirror`);
       await prose.click();
 
       // toolbar：common 未加载时 position 为 static，图标会被挤进文档流。
-      // 必须限定在可见 `.milkdown-host` 内：回写守卫另有一个隐藏的往返实例
-      // （`[data-editor-roundtrip]`），它也会生成 toolbar / slash menu。
-      await page.waitForSelector(".milkdown-host .milkdown-toolbar", {
-        state: "attached",
-        timeout: 10000,
-      });
-      const toolbarPosition = await page.evaluate(
-        () =>
-          getComputedStyle(
-            document.querySelector(".milkdown-host .milkdown-toolbar")
-          ).position
-      );
+      const toolbar = page.locator(`${VISIBLE_EDITOR} .milkdown-toolbar`);
+      await toolbar.waitFor({ state: "attached", timeout: 10000 });
       assert.equal(
-        toolbarPosition,
+        await toolbar.evaluate((el) => getComputedStyle(el).position),
         "absolute",
         "浮动工具栏必须绝对定位（theme/common/toolbar.css）"
       );
 
+      // 链接浮层：common 未加载时没有绝对定位，默认隐藏也失效。
+      const linkPreview = page.locator(
+        `${VISIBLE_EDITOR} .milkdown-link-preview`
+      );
+      await linkPreview.waitFor({ state: "attached", timeout: 10000 });
+      const linkStyle = await linkPreview.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { position: style.position, display: style.display };
+      });
+      assert.equal(
+        linkStyle.position,
+        "absolute",
+        "链接浮层必须绝对定位（theme/common/link-tooltip.css）"
+      );
+      assert.equal(linkStyle.display, "none", "链接浮层默认应隐藏");
+
       // slash menu：默认 data-show=false → display:none；输入 / 后成为浮层。
-      const slash = page.locator(".milkdown-host .milkdown-slash-menu");
+      const slash = page.locator(SLASH_MENU);
       await slash.waitFor({ state: "attached", timeout: 10000 });
       assert.equal(
         await slash.getAttribute("data-show"),
@@ -511,13 +554,7 @@ async function scenarioLayoutStyles(browser) {
         "未输入 / 时 slash 菜单不得占据文档流"
       );
       await page.keyboard.type("/");
-      await page.waitForFunction(
-        () =>
-          document.querySelector(".milkdown-host .milkdown-slash-menu")?.dataset
-            .show === "true",
-        undefined,
-        { timeout: 10000 }
-      );
+      await waitForSlashMenu(page, true);
       const slashStyle = await slash.evaluate((el) => {
         const style = getComputedStyle(el);
         return { display: style.display, position: style.position };
@@ -529,33 +566,35 @@ async function scenarioLayoutStyles(browser) {
         "slash 菜单必须绝对定位（theme/common/block-edit.css）"
       );
       await page.keyboard.press("Backspace");
-      await page.waitForFunction(
-        () =>
-          document.querySelector(".milkdown-host .milkdown-slash-menu")?.dataset
-            .show === "false",
-        undefined,
-        { timeout: 10000 }
-      );
+      await waitForSlashMenu(page, false);
 
       // list：common 未加载时 li 是普通 block、标签与正文没有 flex 间距。
       await page.keyboard.type("- 列表项");
-      await page.waitForSelector(".milkdown-host .milkdown-list-item-block", {
-        state: "visible",
-        timeout: 10000,
-      });
-      const listStyle = await page.evaluate(() => {
+      await page.waitForSelector(
+        `${VISIBLE_EDITOR} .milkdown-list-item-block`,
+        {
+          state: "visible",
+          timeout: 10000,
+        }
+      );
+      const listStyle = await page.evaluate((host) => {
         const block = document.querySelector(
-          ".milkdown-host .milkdown-list-item-block"
+          `${host} .milkdown-list-item-block`
         );
         const item = block?.querySelector(":scope > .list-item");
         const label = item?.querySelector(".label-wrapper");
-        if (!block || !item || !label) return null;
+        const children = item?.querySelector(".children");
+        if (!block || !item || !label || !children) return null;
+        const labelBox = label.getBoundingClientRect();
+        const childrenBox = children.getBoundingClientRect();
         return {
           itemDisplay: getComputedStyle(item).display,
           itemGap: getComputedStyle(item).gap,
           labelHeight: getComputedStyle(label).height,
+          hasBullet: Boolean(label.querySelector("svg")),
+          indent: childrenBox.left - labelBox.right,
         };
-      });
+      }, VISIBLE_EDITOR);
       assert.ok(listStyle, "列表项应渲染 Crepe 的 NodeView 结构");
       assert.equal(
         listStyle.itemDisplay,
@@ -564,6 +603,50 @@ async function scenarioLayoutStyles(browser) {
       );
       assert.equal(listStyle.itemGap, "10px", "列表项标签与正文间距应为 10px");
       assert.equal(listStyle.labelHeight, "32px", "列表标签槽高度应为 32px");
+      assert.equal(listStyle.hasBullet, true, "列表项应显示项目符号");
+      assert.ok(
+        listStyle.indent >= 9,
+        `列表正文应缩进在标签右侧，实际 ${listStyle.indent}px`
+      );
+
+      // 主题顺序：common 后加载也不能把站点背景令牌顶回 classic 默认值。
+      const themeProbe = await page.evaluate((host) => {
+        const root = document.documentElement;
+        const milkdown = document.querySelector(`${host} .milkdown`);
+        if (!milkdown) return null;
+        const probe = document.createElement("div");
+        probe.style.color = "var(--color-bg-primary)";
+        document.body.appendChild(probe);
+        const read = () => ({
+          editorBg: getComputedStyle(milkdown).backgroundColor,
+          siteBg: getComputedStyle(probe).color,
+        });
+        const previous = root.getAttribute("data-theme");
+        root.setAttribute("data-theme", "light");
+        const light = read();
+        root.setAttribute("data-theme", "dark");
+        const dark = read();
+        probe.remove();
+        if (previous === null) root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme", previous);
+        return { light, dark };
+      }, VISIBLE_EDITOR);
+      assert.ok(themeProbe, "应能定位编辑器主题根节点");
+      assert.equal(
+        themeProbe.light.editorBg,
+        themeProbe.light.siteBg,
+        "亮色主题应沿用站点背景令牌"
+      );
+      assert.equal(
+        themeProbe.dark.editorBg,
+        themeProbe.dark.siteBg,
+        "暗色主题应沿用站点背景令牌"
+      );
+      assert.notEqual(
+        themeProbe.light.editorBg,
+        themeProbe.dark.editorBg,
+        "亮暗主题背景应切换"
+      );
     }
   );
   await resetMock();
@@ -935,6 +1018,16 @@ async function scenarioResponsive(browser) {
         await page.setViewportSize({ width, height });
         await openEditor(page);
         await waitForWysiwyg(page);
+        // Crepe common/reset.css 的 60px 120px 内边距会在窄屏挤没正文，
+        // admin-shared.css 必须用更高优先级收回（#122）。
+        assert.equal(
+          await page.evaluate(() => {
+            const prose = document.querySelector(".milkdown-host .ProseMirror");
+            return prose ? getComputedStyle(prose).paddingLeft : null;
+          }),
+          "0px",
+          `${name}: 编辑器正文不得继承 Crepe 的 120px 内边距`
+        );
         const geometry = await page.evaluate(() => ({
           page: document.documentElement.scrollWidth,
           pageClient: document.documentElement.clientWidth,

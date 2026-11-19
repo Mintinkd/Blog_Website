@@ -4,7 +4,8 @@
  *
  * 本组件由 MarkdownWorkspace 用 defineAsyncComponent + import() 懒加载，
  * 因此 Milkdown / Crepe / crepe-theme.css 全部落在「首次打开编辑器」的增量 chunk，
- * 不进入后台首屏（T0 实测增量 gzip 226,078 B，预算 350 KiB）。
+ * 不进入后台首屏（T4 实测 JS 增量约 182 KiB，#122 布局 CSS 再 +16 KiB，
+ * 合计约 198 KiB，预算 350 KiB）。
  *
  * 契约：打开时不回写正文；只有用户在编辑器内实际改字才 emit change。
  * 外部 content 变化（源码模式切回、草稿恢复）走 setMarkdown，同样不 emit change。

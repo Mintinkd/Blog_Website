@@ -7,9 +7,9 @@
  * `"sideEffects": false`，直接在 TS 里 import 包内 CSS 会被 Rollup
  * tree-shake 掉；本地源码文件不受该标记影响，因此统一从这里引入。
  *
- * 顺序保持 common → classic：布局先落地，主题变量后覆盖；后台
- * `admin-shared.css` 的 `:root .milkdown` 映射优先级更高，亮暗主题仍以
- * 站点令牌为准。
+ * 顺序为 common → classic：先加载布局，再加载 classic 的默认颜色变量。
+ * 实际亮暗主题由后台 `admin-shared.css` 的 `:root .milkdown` 映射以更高
+ * 优先级覆盖，加载顺序不会把站点令牌顶回去。
  */
 @import "@milkdown/crepe/theme/common/style.css";
 @import "@milkdown/crepe/theme/classic.css";

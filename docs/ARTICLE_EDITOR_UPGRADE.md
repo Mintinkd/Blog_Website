@@ -154,6 +154,7 @@ src/admin/
 │   └── milkdown/                   # T4：所见即所得内核（懒加载，不进首屏 chunk）
 │       ├── MilkdownEditor.vue      # defineAsyncComponent 的 Vue 壳层
 │       ├── createEditor.ts         # CrepeBuilder 7 项装配 / uploader / 响应式文案
+│       ├── crepe-theme.css         # Crepe common 布局 + classic 颜色变量入口
 │       ├── embedLink.ts            # data-embed 专用内联节点 + NodeView + remark 合并
 │       └── milkdownService.ts      # 守卫用的同装配隐藏实例往返
 ├── panels/                         # T8：余下后台面板
@@ -183,6 +184,7 @@ src/utils/editor/
 
 src/admin/editor/milkdown/
 ├── createEditor.ts                 # CrepeBuilder 装配、功能裁剪、主题、懒加载
+├── crepe-theme.css                 # Crepe common 布局 + classic 颜色变量入口
 ├── embedLink.ts                    # data-embed 内联节点 / remark 解析与序列化
 └── milkdownService.ts              # 守卫用同装配隐藏实例往返
 ```
@@ -351,7 +353,7 @@ closed
 
 新增 `scripts/verify-article-editor.mjs`，复用本地 mock，不访问真实 Worker。mock 必须是有状态的本地 HTTP API：编辑器的 `PUT` 与 SSR 的 `GET` 共用同一份内存数据；只用浏览器 `page.route` 拦截无法覆盖 Astro SSR 的服务端取数。
 
-**T7 #68 已落地**：脚本重写为 12 个独立 browser context 的场景，覆盖下面 9 条；`scripts/mock-admin-api.mjs`（纯状态机）+ `scripts/mock-article-api.mjs`（HTTP 适配，同一进程）提供有状态 API，`PUT /articles/:id` 与 SSR 的 `GET /articles/:slug` 共用内存文章数据。`POST /__control` 注入加载 / 保存 / 锁故障，`POST /__reset` 恢复初始状态，`GET /__stats` 提供请求体与计数断言；未匹配的 slug 仍交回 #41 的 SSR 三态分支。部署前由 `.github/workflows/deploy.yml` 的 Playwright 步骤调用，失败阻断部署。状态机本身由 `tests/mock-admin-api.test.ts` 单测钉住（9 项）。
+**T7 #68 已落地**：脚本重写为 13 个独立 browser context 的场景（1b 为 #122 的布局样式断言），覆盖下面 9 条；`scripts/mock-admin-api.mjs`（纯状态机）+ `scripts/mock-article-api.mjs`（HTTP 适配，同一进程）提供有状态 API，`PUT /articles/:id` 与 SSR 的 `GET /articles/:slug` 共用内存文章数据。`POST /__control` 注入加载 / 保存 / 锁故障，`POST /__reset` 恢复初始状态，`GET /__stats` 提供请求体与计数断言；未匹配的 slug 仍交回 #41 的 SSR 三态分支。部署前由 `.github/workflows/deploy.yml` 的 Playwright 步骤调用，失败阻断部署。状态机本身由 `tests/mock-admin-api.test.ts` 单测钉住（9 项）。
 
 运行方式（脚本自己拉起 / 关闭 mock，端口 4322；`MOCK_PORT` 可覆盖，须与 `ARTICLE_API_ORIGIN` 一致）：
 
@@ -363,7 +365,7 @@ node scripts/verify-article-editor.mjs
 
 真实用户从桌面拖文件进编辑器未自动化复现（浏览器合成 `DragEvent` 由 T5 单测与骨架覆盖），保留在 §10.4 手工检查。
 
-1. 安全语料（GFM 表格 / 围栏代码 / 引用 / `data-embed` / 原始 HTML）→ 断言进入 WYSIWYG；lossy 语料 → 断言进入源码模式并显示提示。
+1. 安全语料（GFM 表格 / 围栏代码 / 引用 / `data-embed` / 原始 HTML）→ 断言进入 WYSIWYG；lossy 语料 → 断言进入源码模式并显示提示。同一场景另用 computed style 断言 Crepe 布局样式确实生效（工具栏绝对定位、slash 菜单默认隐藏 / 输入 `/` 后成为浮层、列表项 flex + 缩进、表格单元格边框、链接浮层绝对定位、亮暗主题背景跟随站点令牌）。
 2. 在 WYSIWYG 中编辑文字、插入普通链接与内嵌链接、上传图片（`setInputFiles` + mock 上传）→ 保存 → 断言 `PUT` 请求体是 Markdown、含 `data-embed="1"`、不含预览 HTML。
 3. 用保存后的 Markdown 写入有状态 mock → 访问文章 SSR 页 → 断言正文 / 表格 / 代码 / 内嵌链接仍可渲染（语义等价端到端证据）。
 4. 取消 / X / Esc / 刷新触发未保存保护；放弃后锁 `DELETE` 被调用；继续编辑则编辑器保持。

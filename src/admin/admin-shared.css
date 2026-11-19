@@ -1745,6 +1745,13 @@
   line-height: 1.75;
 }
 
+/* Crepe common/reset.css 给 .milkdown .ProseMirror 设了 60px 120px 内边距；
+   懒加载 CSS 后到会赢过同等优先级的规则，窄屏下会把正文挤没。外层
+   .milkdown-host 已有留白，这里用更高优先级收回内边距。 */
+.milkdown-host .milkdown .ProseMirror {
+  padding: 0;
+}
+
 /* 编辑态的内嵌链接：保留链接外观，点击不导航（NodeView 内处理）。 */
 .milkdown-host a[data-editor-embed] {
   color: var(--color-accent);
