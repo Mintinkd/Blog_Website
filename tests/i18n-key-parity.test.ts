@@ -71,4 +71,10 @@ describe("中英 i18n 契约", () => {
     expect(zhKeys.filter((key) => removed.includes(key))).toEqual([]);
     expect(enKeys.filter((key) => removed.includes(key))).toEqual([]);
   });
+
+  it("#121 移除的首页热门标签 / 分类页全部标签入口文案已删除", () => {
+    const removed = ["taxonomy.hot_tags", "page.all_tags"];
+    expect(zhKeys.filter((key) => removed.includes(key))).toEqual([]);
+    expect(enKeys.filter((key) => removed.includes(key))).toEqual([]);
+  });
 });

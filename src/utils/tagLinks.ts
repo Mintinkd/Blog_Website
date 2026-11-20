@@ -7,7 +7,7 @@ import { safePathSegment } from "./escape";
  *   让「标签是分类子类」在交互上闭环）；
  * - 无归属分类（迁移期）→ 兼容入口 `/tags/:tagSlug`。
  *
- * 文章卡片、文章详情、首页热门标签、分类卡片预览、标签页同分类 chip 与
+ * 文章卡片、文章详情、分类卡片预览、标签页同分类 chip 与
  * `/tags` 目录 chip 共用，避免 URL 形态漂移。
  * 行为由 tests/tag-links.test.ts 用手写字面量钉住。
  */

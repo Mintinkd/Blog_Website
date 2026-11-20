@@ -9,7 +9,7 @@
 | `/`                  | 首页（Hero + 最新文章卡片网格）                                         | 静态     |
 | `/articles`          | 文章列表（分页）                                                        | 静态     |
 | `/articles/:slug`    | 文章详情（Markdown + 每篇 meta + Tier 0 计数与 `HttpOnly` 去重 Cookie） | SSR      |
-| `/categories`        | 分类目录（全部分类，含标签数与标签预览；「全部标签」入口指向 `/tags`）  | SSR      |
+| `/categories`        | 分类目录（全部分类，含标签数与标签预览）                                | SSR      |
 | `/categories/:slug`  | 分类文章 + `?tag=<tag-slug>` 标签筛选（服务端直出筛选结果与 chip）      | SSR      |
 | `/tags`              | 标签目录（按分类分组，「未分类」固定最后，taxonomy v2；兼容入口）       | SSR      |
 | `/tags/:slug`        | 标签文章（含分类面包屑与同分类标签跳转；兼容入口）                      | SSR      |
@@ -26,7 +26,7 @@
 
 > **分类页 `?tag=` SSR 筛选（issue #117）**：`/categories/:slug?tag=:tag` 由服务端用 `parseTagParam` 解析、先取本分类标签校验归属；合法时 SSR 直接输出筛选后的文章与分页，非法 / 越界值按「全部」渲染并由客户端 `replaceState` 清参（不发无效筛选请求）。筛选 chip 是服务端渲染的 `<a href="/categories/:slug?tag=:tag">`，选中态用 `aria-current="page"`，禁用 JS 时点击 chip 走整页导航完成标签切换（分页按钮仍为客户端交互）；有 JS 时客户端拦截点击做 `pushState` + 局部刷新，SSR 已按同一筛选渲染（`data-active-tag`）时不重复取数。不带 `?tag=` 时标签与文章并行取数；带筛选时才先标签后文章串行。
 
-> **标签 chip 主路径（issue #116）**：全站标签 chip（文章卡片、文章详情、首页热门标签、分类目录预览、标签页同分类标签、`/tags` 目录 chip）统一走单源 `src/utils/tagLinks.ts` 的 `tagChipHref`：有归属分类 → `/categories/:catSlug?tag=:tagSlug`（「标签是分类子类」的交互闭环），无归属分类（迁移期）→ 回退兼容入口 `/tags/:tagSlug`。`/tags`、`/tags/:slug` 均保留，不做删除 / 301；因导航已移除「标签」（#118），`/categories` 页保留「全部标签」入口指向 `/tags`，`/tags/:slug` 的面包屑与「标签不存在」空态也指向 `/tags`，避免兼容入口成为孤儿页。搜索页只做关键词搜索，不再列 taxonomy 区块（#118）。
+> **标签 chip 主路径（issue #116）**：全站标签 chip（文章卡片、文章详情、分类目录预览、标签页同分类标签、`/tags` 目录 chip）统一走单源 `src/utils/tagLinks.ts` 的 `tagChipHref`：有归属分类 → `/categories/:catSlug?tag=:tagSlug`（「标签是分类子类」的交互闭环），无归属分类（迁移期）→ 回退兼容入口 `/tags/:tagSlug`。`/tags`、`/tags/:slug` 均保留，不做删除 / 301；导航已移除「标签」（#118），#121 起首页热门标签区块与 `/categories` 的「全部标签」入口也一并移除，兼容入口只由 `/tags/:slug` 的面包屑与「标签不存在」空态回流。搜索页只做关键词搜索，不再列 taxonomy 区块（#118）。
 
 `/privacy` 为预渲染页面：已列入 `scripts/cloudflare-guards.mjs` 的 `HTML_ROUTE_PATTERNS`，由 `npm run gen:headers` 生成 `public/_headers` 中的 `no-transform` / `Speculation-Rules` 护栏块；正文与页脚入口文案走 `data-i18n` + `refreshDomTranslations()`（中英同步，无 JS 首屏为中文），`<title>` 与 meta description 沿用站点其它页面的静态中文约定，入口在页脚。
 

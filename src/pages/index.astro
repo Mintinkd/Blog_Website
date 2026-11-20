@@ -29,7 +29,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     </div>
   </section>
 
-  <!-- taxonomy v2（#81 §1）：分类 / 热门标签可发现区块。取数失败整块隐藏，不影响文章列表。 -->
+  <!-- taxonomy v2（#81 §1）：分类可发现区块。取数失败整块隐藏，不影响文章列表。 -->
   <section class="taxonomy-discovery" id="taxonomy-discovery" hidden>
     <div class="discovery-grid">
       <div class="discovery-block">
@@ -38,13 +38,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
           <a href="/categories" class="section-link" data-i18n="section.view_all">查看全部 →</a>
         </div>
         <div id="discovery-categories" class="discovery-items"></div>
-      </div>
-      <div class="discovery-block">
-        <div class="section-header">
-          <h2 class="section-title" data-i18n="taxonomy.hot_tags">热门标签</h2>
-          <a href="/tags" class="section-link" data-i18n="section.view_all">查看全部 →</a>
-        </div>
-        <div id="discovery-tags" class="discovery-items"></div>
       </div>
     </div>
   </section>
@@ -218,7 +211,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   import { t, getLocale } from '../utils/i18n.ts';
   import { renderArticleCardList } from '../utils/articleCard.ts';
   import { escapeHtml, safePathSegment } from '../utils/escape.ts';
-  import { tagChipHref } from '../utils/tagLinks.ts';
 
   async function loadArticles() {
     const container = document.getElementById('article-grid');
@@ -259,9 +251,9 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     }
   }
 
-  // taxonomy v2（#81 §1）：分类 / 热门标签并行取数；失败重试一次再隐藏整块
+  // taxonomy v2（#81 §1）：首页只保留分类可发现区块；失败重试一次再隐藏整块
   // （单次 502 / 弱网首连失败不丢区块），仍失败则按票面约定整块隐藏。
-  async function loadTaxonomyDiscovery() {
+  async function loadCategoryDiscovery() {
     const section = document.getElementById('taxonomy-discovery');
     if (!section) return;
     const fetchJson = async (url: string) => {
@@ -275,22 +267,17 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       return null;
     };
     try {
-      const [catData, tagData] = await Promise.all([
-        fetchJson('/api/v1/categories'),
-        fetchJson('/api/v1/tags'),
-      ]);
-      if (!catData || !tagData) {
+      const catData = await fetchJson('/api/v1/categories');
+      if (!catData) {
         section.hidden = true;
         return;
       }
       const categories = (Array.isArray(catData.data) ? catData.data : catData.data?.items || []) as any[];
-      const tags = (Array.isArray(tagData.data) ? tagData.data : tagData.data?.items || []) as any[];
 
       const catBox = document.getElementById('discovery-categories');
-      const tagBox = document.getElementById('discovery-tags');
-      if (!catBox || !tagBox) return;
+      if (!catBox) return;
 
-      if (categories.length === 0 || tags.length === 0) {
+      if (categories.length === 0) {
         section.hidden = true;
         return;
       }
@@ -309,22 +296,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         </a>`;
       }).join('');
 
-      // 前 12 个热门标签；带分类色点 + title=分类：X；链接走 tagChipHref（#116）
-      const catById = new Map(categories.map((c: any) => [c.id, c]));
-      const topTags = [...tags]
-        .sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0))
-        .slice(0, 12);
-      tagBox.innerHTML = topTags.map((tag: any) => {
-        const cat = tag.category ?? catById.get(tag.category_id) ?? null;
-        const catName = cat?.name ?? '';
-        const color = getCategoryColor(cat?.slug, catName);
-        return `<a href="${tagChipHref({ slug: tag.slug, category: cat?.slug ? { slug: cat.slug } : null })}" class="discovery-tag" title="${escapeHtml(t('taxonomy.belongs_to_category'))}${escapeHtml(catName ? `：${catName}` : '')}">
-          <span class="discovery-dot" style="background:${color};" aria-hidden="true"></span>
-          <span>${escapeHtml(tag.name)}</span>
-          <span class="tag-count">${tag.article_count || 0}</span>
-        </a>`;
-      }).join('');
-
       section.hidden = false;
     } catch (e) {
       if (section) section.hidden = true;
@@ -333,9 +304,9 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
   // ClientRouter 客户端导航不会重跑已执行过的模块脚本，而导航会把容器替换为 SSR 空状态，
   // 因此初始化必须挂 astro:page-load（首次硬加载同样触发一次），否则返回首页时列表空白
-  document.addEventListener('astro:page-load', () => { loadArticles(); loadTaxonomyDiscovery(); });
+  document.addEventListener('astro:page-load', () => { loadArticles(); loadCategoryDiscovery(); });
 
-  document.addEventListener('locale-changed', () => { loadArticles(); loadTaxonomyDiscovery(); });
+  document.addEventListener('locale-changed', () => { loadArticles(); loadCategoryDiscovery(); });
 </script>
 
 <style is:global>
@@ -503,7 +474,7 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     border: 1px dashed var(--color-accent);
   }
 
-  /* taxonomy v2（#81 §1）：分类 / 热门标签可发现区块（取数失败整块隐藏） */
+  /* taxonomy v2（#81 §1）：首页分类可发现区块（取数失败整块隐藏） */
   .taxonomy-discovery {
     margin-top: clamp(1.5rem, 4vw, 2.5rem);
   }
@@ -511,11 +482,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     display: grid;
     grid-template-columns: 1fr;
     gap: clamp(1.25rem, 3vw, 2rem);
-  }
-  @media (min-width: 768px) {
-    .discovery-grid {
-      grid-template-columns: 1fr 1fr;
-    }
   }
   .discovery-items {
     display: flex;
@@ -554,37 +520,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     font-size: 0.72rem;
     opacity: 0.85;
     white-space: nowrap;
-  }
-  .discovery-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    max-width: 100%;
-    min-height: 44px;
-    padding: 0.4rem 0.8rem;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-lg);
-    color: var(--color-text-secondary);
-    text-decoration: none;
-    font-size: 0.85rem;
-    overflow-wrap: anywhere;
-    transition: all var(--transition-fast);
-  }
-  .discovery-tag:hover {
-    border-color: var(--color-accent);
-    color: var(--color-accent);
-    transform: translateY(-1px);
-  }
-  .discovery-dot {
-    width: 8px;
-    height: 8px;
-    flex: none;
-    border-radius: 50%;
-  }
-  .discovery-tag .tag-count {
-    font-size: 0.72rem;
-    color: var(--color-text-tertiary);
   }
 
   .card-tag:hover {

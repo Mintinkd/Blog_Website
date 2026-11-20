@@ -116,6 +116,13 @@ async function waitForPageLoaded(page, target) {
     .catch(() => {});
   if (target === "/") {
     await page.waitForSelector("#article-grid > *", { timeout: 15000 });
+    // #121：分类 discovery 取数完成后再快照；失败保持 hidden 时由断言给出原因
+    await page
+      .waitForSelector(
+        "#taxonomy-discovery:not([hidden]) #discovery-categories .discovery-cat",
+        { timeout: 15000 }
+      )
+      .catch(() => {});
   } else if (
     target === "/articles" ||
     target.startsWith("/categories/") ||
@@ -196,6 +203,10 @@ function contentCheck(page) {
       articleTagGroups: qa(".article-detail .article-tag-group"),
       discoveryVisible:
         document.getElementById("taxonomy-discovery")?.hidden === false,
+      discoveryCats: qa("#discovery-categories .discovery-cat"),
+      discoveryTags: qa("#discovery-tags"),
+      taxonomyTagLinks: qa('#taxonomy-discovery a[href^="/tags"]'),
+      allTagsLink: qa(".all-tags-link"),
       articleTitle: q(".article-title")?.textContent || null,
       articleContent: qa(".article-content"),
       likeMounted: qa("#like-button-mount > *"),
@@ -243,6 +254,12 @@ async function run() {
   });
   page.on("pageerror", (e) => consoleErrors.push("PAGEERROR: " + e.message));
 
+  // #121：首页 taxonomy 区块只取分类，不再请求 /api/v1/tags
+  const homeApiRequests = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/")) homeApiRequests.push(r.url());
+  });
+
   // 首页硬加载基线（taxonomy v2 回归期：dev→远端 API 首连偶发挂起，
   // 失败重试一次再判死，属网络环境容错、不掩盖真实回归）
   let homeLoaded = false;
@@ -261,6 +278,16 @@ async function run() {
       if (i === 2) throw e;
       console.log("[retry] 首页硬加载超时，重试一次…");
     }
+  }
+
+  // #121：首页 taxonomy 区块只取分类，不再请求 /api/v1/tags
+  const homeTagRequests = homeApiRequests.filter((u) =>
+    u.includes("/api/v1/tags")
+  );
+  if (homeTagRequests.length) {
+    failures.push(
+      `首页仍请求 /api/v1/tags（#121）：${homeTagRequests.join(", ")}`
+    );
   }
 
   // 收集真实 slug（在浏览器内 fetch，规避 Node fetch 与 dev server 代理响应的编码兼容问题）
@@ -318,6 +345,17 @@ async function run() {
     );
   }
 
+  // #121：前台入口移除后 /tags、/tags/:slug 仍保留为兼容入口，直连必须 200
+  await warmUpApi(page);
+  const tagEntryRoutes = ["/tags"];
+  if (slugs.tag) tagEntryRoutes.push("/tags/" + encodeURIComponent(slugs.tag));
+  for (const route of tagEntryRoutes) {
+    const res = await page.request.get(BASE + route);
+    if (res.status() !== 200) {
+      failures.push(`${route} 直连返回 ${res.status()}，期望 200（#121）`);
+    }
+  }
+
   for (const target of targets) {
     let first = null;
     let second = null;
@@ -370,6 +408,30 @@ async function run() {
     // 断言 A1（#118）：导航不再有「标签」入口（五项导航：首页 / 文章 / 分类 / 归档 / 关于）
     if (navTagLinks !== 0) {
       failures.push(`${target} 导航仍含「标签」入口：${navTagLinks} 个`);
+    }
+    // 断言 A1b（#121）：首页 taxonomy 区块只剩分类，不再有热门标签入口
+    if (target === "/") {
+      if (!first.discoveryVisible || first.discoveryCats === 0) {
+        failures.push(
+          `首页分类 discovery 未渲染（#121）：${JSON.stringify(first)}`
+        );
+      }
+      if (first.discoveryTags !== 0) {
+        failures.push(
+          `首页仍存在 #discovery-tags 容器（#121）：${first.discoveryTags} 个`
+        );
+      }
+      if (first.taxonomyTagLinks !== 0) {
+        failures.push(
+          `首页 taxonomy 区块仍含 /tags 链接（#121）：${first.taxonomyTagLinks} 个`
+        );
+      }
+    }
+    // 断言 A1c（#121）：分类页移除「全部标签」入口
+    if (target === "/categories" && first.allTagsLink !== 0) {
+      failures.push(
+        `/categories 仍含「全部标签」入口（#121）：${first.allTagsLink} 个`
+      );
     }
     // 断言 A2（#117）：筛选页恰好选中 URL 指定的 tag（「全部」也算通过会让回归失效）
     if (target.includes("?tag=")) {

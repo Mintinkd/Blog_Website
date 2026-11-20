@@ -28,7 +28,6 @@ const ssrHtml = loaded.status === 'ok'
       <h1 class="page-title" data-i18n="page.categories">分类</h1>
     </div>
     <p class="page-desc" data-i18n="page.categories_desc">按分类浏览所有文章</p>
-    <p class="page-desc"><a href="/tags" class="all-tags-link" data-i18n="page.all_tags">全部标签 →</a></p>
     <div id="categories-cloud" class="categories-cloud" data-ssr={loaded.status !== 'error' ? '1' : '0'}>
       {loaded.status === 'ok' ? (
         categories.length === 0 ? (
@@ -58,15 +57,6 @@ const ssrHtml = loaded.status === 'ok'
     color: var(--color-text-tertiary);
     font-size: 0.9rem;
     margin-bottom: clamp(1.25rem, 3vw, 2rem);
-  }
-  /* #116：/tags 未进导航，分类页保留「全部标签」入口避免孤儿页 */
-  .categories-page .all-tags-link {
-    color: var(--color-accent);
-    font-size: 0.9rem;
-    text-decoration: none;
-  }
-  .categories-page .all-tags-link:hover {
-    text-decoration: underline;
   }
   .categories-page .categories-cloud {
     display: flex;
