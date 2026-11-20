@@ -2,6 +2,7 @@
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import { loadTaxonomyForPage } from '../../utils/taxonomyServer.ts';
 import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
+  import { ssrLocaleIsZh, bindPagination } from '@/scripts/layout/taxonomy-helpers';
 
 export const prerender = false;
 
@@ -183,6 +184,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 <script>
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
+  import { ssrLocaleIsZh, bindPagination } from '@/scripts/layout/taxonomy-helpers';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
   import { tagChipHref } from '../../utils/tagLinks.ts';
 
@@ -215,7 +217,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
           paginationMount.innerHTML = renderPagination(page, total_pages, {
             prev: t('page.prev'), next: t('page.next'),
           });
-          bindPagination();
+          bindPagination(loadArticles);
         }
       }
     } catch (e) {
@@ -301,33 +303,14 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     }
   }
 
-  // issue #97：分页绑定独立成函数——SSR 首屏也带 .pag-btn，跳过首次 fetch 时仍需绑定。
-  function bindPagination() {
-    const paginationMount = document.getElementById('pagination-mount');
-    if (!paginationMount) return;
-    paginationMount.querySelectorAll('.pag-btn').forEach(btn => {
-      if ((btn as HTMLElement).dataset.bound === '1') return;
-      (btn as HTMLElement).dataset.bound = '1';
-      btn.addEventListener('click', () => {
-        const p = parseInt((btn as HTMLElement).dataset.page || '1', 10);
-        loadArticles(p);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
-    });
-  }
-
-  // issue #97：SSR 首屏默认中文；非中文用户必须主动刷新一次套用正确文案。
-  function ssrLocaleIsZh(): boolean {
-    const stored = localStorage.getItem('locale');
-    return stored ? stored === 'zh' : navigator.language.toLowerCase().startsWith('zh');
-  }
+  // ssrLocaleIsZh / bindPagination 从 @/scripts/layout/taxonomy-helpers 导入（#112 item 12）
   // taxonomy v2（#81）：模块脚本跨导航常驻——pathname 不在 /tags/:slug 时让位，
   // 避免覆盖 /categories/:slug 等其它同样使用 #article-list 的页面。
   document.addEventListener('astro:page-load', () => {
     if (!location.pathname.startsWith('/tags/')) return;
     loadTagMeta();
     if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
-      bindPagination();
+      bindPagination(loadArticles);
       return;
     }
     initLocale();

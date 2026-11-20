@@ -151,6 +151,15 @@ push 审查发现 8 项「假绿风险」——测试通过的理由与被测代
 7. **deploy-base-url-drift.test.ts**（新增）：锁定 `DEPLOY_BASE_URL` 三份来源的关系——脚本默认（`wait-for-deploy.mjs` 的 `DEFAULT_BASE_URL`）与测试断言一致、CI 默认（`deploy.yml` fallback）刻意不同（CI 打 Pages 别名避免 WAF 拦截、脚本默认打自定义域供本地用）、两值均为 https URL；改任一份都会红。
 8. **d1-migration-verify.test.ts**：`EXPECTED_D1_COLUMNS`（新增导出）登记迁移脚本添加的列（`articles.reading_time`），`schema-verify.sql` 用 `UNION ALL` 合并 `pragma_table_info` 查询；新增「脚本加的列必须在核对清单里」断言——从 `migrate-reading-time.mjs` 源码提取 `ADD COLUMN` 语句，逐列校验在 `EXPECTED_D1_COLUMNS` 中登记。
 
+### 代码口径整改（issue #112 / L4）
+
+push 审查发现 4 项「重复实现 / 分层债 / 熵文档」问题，整改后每项都有守卫测试：
+
+12. **ssrLocaleIsZh / bindPagination 单源**：从 `categories/[slug].astro` 与 `tags/[slug].astro` 收敛到 `src/scripts/layout/taxonomy-helpers.ts`；`tests/taxonomy-helpers-single-source.test.ts`（新增）扫描全仓 `.astro` 确认无本地定义、共享模块导出两个函数。
+13. **admin.ts SQL 下沉**：内联的 SELECT / INSERT / DELETE / COUNT 拼接移到 `worker/src/services/admin_sql.ts`；`worker/tests/admin_sql.test.ts`（新增）钉住各 builder 输出格式 + 源码守卫确认 `admin.ts` 不再含模板字符串 SQL。
+14. **PBKDF2 迭代数漂移守卫**：`worker/tests/pbkdf2-drift-guard.test.ts`（新增）锁定 `SEED_PBKDF2_ITERATIONS`（seed-credential.mjs）与 `PBKDF2_ITERATIONS`（password.ts）一致；`seed-credential.mjs` 注释补 60 bit 熵说明（适用边界：一次性种子口令 + must_change_password=1，不适用：长期口令）。
+15. **sameAddressSet 边界**：`worker/tests/same_address_set_boundary.test.ts`（新增）钉住 GeoDNS / RRset 截断 / 子集关系的放行与拒绝边界；`img_proxy.ts` 注释引用 ADR 0007「误拒风险」段落。
+
 ### 后台移动端（CI + 手动）
 
 后台数据表在 `< 768px` 改为卡片布局，字段名依赖 `data-label`。回归脚本用本地 fixture

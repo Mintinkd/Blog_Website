@@ -37,6 +37,16 @@ export function hashSeedPassword(password, saltBytes = randomBytes(16)) {
 /**
  * 生成一组随机种子凭据。口令取 randomUUID().slice(0,16)（票面字面要求），
  * 哈希立即可被 worker 的 verifyPassword 校验。
+ *
+ * 熵说明（#112 item 14）：
+ * randomUUID() 产出 36 字符 UUID（含 4 个连字符），前 16 字符含 16 个十六进制位
+ * = 16 × 4 = 64 bit 熵（UUID v4 的前 16 字符含时间戳 + 随机段，实际熵约 60 bit）。
+ * 60 bit 熵的取舍：
+ * - 适用：一次性种子口令，仅在 db-seed 首次写入后终端打印一次，且 must_change_password=1
+ *   强制首次登录改密——即使口令泄露，攻击者仍需在首次改密前抢登。
+ * - 不适用：长期口令或无强制改密场景——60 bit < 推荐的 80 bit 最低线。
+ * - 若需更高熵：改用 randomBytes(20).toString('hex')（160 bit），但票面要求 slice(0,16)。
+ *
  * @returns {{ password: string, passwordHash: string }}
  */
 export function generateSeedCredential() {

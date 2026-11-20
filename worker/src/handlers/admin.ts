@@ -8,6 +8,15 @@ import {
 import { sanitizeHtml } from "../utils/sanitizer";
 import { isPlainObject } from "../utils/object";
 import { isValidUrl } from "../utils/validator";
+import {
+  exportQuerySql,
+  countQuerySql,
+  backupQuerySql,
+  deleteAllSql,
+  deleteSkipSql,
+  insertSql,
+  UNCATEGORIZED_LOOKUP_SQL,
+} from "../services/admin_sql";
 import { deleteMediaObject } from "../utils/media_storage";
 
 /**
@@ -231,9 +240,7 @@ export async function handleExport(
     // 列清单取自描述符白名单（与导入白名单同一来源），不再全列读取。
     const cols = IMPORTABLE_TABLES[table].columns.join(", ");
     // 多取一行判断是否还有数据：有则 has_more=true 并裁掉哨兵行。
-    const result = await env.DB.prepare(
-      `SELECT ${cols} FROM ${table} LIMIT ? OFFSET ?`
-    )
+    const result = await env.DB.prepare(exportQuerySql(table, cols))
       .bind(pageSize + 1, offset)
       .all();
     const rows = result.results as unknown[];
@@ -304,9 +311,7 @@ async function assessImportScale(
   let needsConfirm = false;
 
   for (const [table, rows] of byTable) {
-    const result = await env.DB.prepare(
-      `SELECT COUNT(*) AS count FROM ${table}`
-    ).all();
+    const result = await env.DB.prepare(countQuerySql(table)).all();
     const countRow = result.results?.[0] as { count?: number } | undefined;
     const oldCount = Number(countRow?.count ?? 0);
     existing[table] = oldCount;
@@ -340,7 +345,7 @@ async function backupBeforeImport(
   const snapshot: Record<string, unknown[]> = {};
   for (const table of byTable.keys()) {
     const cols = IMPORTABLE_TABLES[table].columns.join(", ");
-    const result = await env.DB.prepare(`SELECT ${cols} FROM ${table}`).all();
+    const result = await env.DB.prepare(backupQuerySql(table, cols)).all();
     snapshot[table] = result.results as unknown[];
   }
   const key = `${BACKUP_KEY_PREFIX}${new Date().toISOString()}.${crypto.randomUUID().slice(0, 8)}`;
@@ -375,12 +380,10 @@ function buildDeleteStatements(
     if (skipKeys) {
       // 密钥行所在的表：只清理非密钥行，本机密钥/凭据保留
       statements.push(
-        env.DB.prepare(
-          `DELETE FROM ${table} WHERE key NOT IN (${skipKeys.map(() => "?").join(", ")})`
-        ).bind(...skipKeys)
+        env.DB.prepare(deleteSkipSql(table, skipKeys.length)).bind(...skipKeys)
       );
     } else {
-      statements.push(env.DB.prepare(`DELETE FROM ${table}`));
+      statements.push(env.DB.prepare(deleteAllSql(table)));
     }
   }
   return statements;
@@ -449,11 +452,8 @@ function buildInsertStatements(
 
     for (const row of writable) {
       const cols = descriptor.columns.filter((c) => c in row);
-      const placeholders = cols.map(() => "?").join(", ");
       statements.push(
-        env.DB.prepare(
-          `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
-        ).bind(...cols.map((c) => row[c]))
+        env.DB.prepare(insertSql(table, cols)).bind(...cols.map((c) => row[c]))
       );
     }
     imported[table] = writable.length;
@@ -636,9 +636,7 @@ export async function handleImport(
     const touchedTables = new Set(byTable.keys());
     // taxonomy v2（#79）：未分类分类 id 单点（旧备份 tags 缺列归一化的目标值）
     const uncategorized = (
-      await env.DB.prepare(
-        "SELECT id FROM categories WHERE slug = 'uncategorized'"
-      ).first<{ id: number }>()
+      await env.DB.prepare(UNCATEGORIZED_LOOKUP_SQL).first<{ id: number }>()
     )?.id;
     const insertOptions = {
       sanitize: true,

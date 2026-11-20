@@ -442,7 +442,15 @@ function roundFailure(round: DohRound): "deny" | "error" | null {
   return failures.some((x) => !x.ok && x.kind === "deny") ? "deny" : "error";
 }
 
-/** 地址集合比较（顺序无关，重复项视为同一集合） */
+/**
+ * 地址集合比较（顺序无关，重复项视为同一集合）。
+ *
+ * #112 item 15：要求两解析器答案集**完全相等**——对 GeoDNS / 分地域解析的站点
+ * 不友好（同一域名从 Cloudflare 与 Google 解析到不同 CDN 节点会被判 rebinding）。
+ * 这是刻意选择「宁可少显示一张图，也不放行一次内网请求」；
+ * 代价与后续放宽路径见 ADR 0007「误拒风险」段落
+ *（docs/adr/0007-dns-rebinding-connection-binding.md）。
+ */
 function sameAddressSet(x: string[], y: string[]): boolean {
   const a = [...new Set(x)].sort();
   const b = [...new Set(y)].sort();
