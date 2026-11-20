@@ -217,11 +217,11 @@ CREATE TABLE IF NOT EXISTS analytics_consent (
 | ------ | --------------------------------------------------------- | -------------------------------------------------------------- |
 | `GET`  | `/api/v1/articles/:slug`                                  | 现有接口；内部接入 Tier 0 计数与过滤，响应契约不变             |
 | `POST` | `/api/v1/analytics/engagement`                            | Tier 1 beacon；要求 `analytics_consent` 同意 Cookie；204，限流 |
-| `GET`  | `/api/v1/admin/analytics/overview?range=7d`               | 概览卡                                                         |
-| `GET`  | `/api/v1/admin/analytics/articles?range=7d&page=1`        | 文章明细表                                                     |
-| `GET`  | `/api/v1/admin/analytics/dimensions?dim=device&range=30d` | 分布；省略 `article_id` 表示全站聚合                           |
-| `GET`  | `/api/v1/admin/analytics/quality?range=7d`                | 数据质量面板                                                   |
-| `GET`  | `/api/v1/admin/analytics/trend?range=7d`                  | 按日趋势（#58 补，供 §7.3 双线图）                             |
+| `GET`  | `/api/v1/admin/analytics/overview?range=7d`               | 概览卡；可选 `article_id` 过滤单篇                             |
+| `GET`  | `/api/v1/admin/analytics/articles?range=7d&page=1`        | 文章明细表；可选 `article_id` 过滤单篇                         |
+| `GET`  | `/api/v1/admin/analytics/dimensions?dim=device&range=30d` | 分布；可选 `article_id` 过滤单篇，省略表示全站聚合             |
+| `GET`  | `/api/v1/admin/analytics/quality?range=7d`                | 数据质量面板（全站健康指标，不支持 `article_id`）              |
+| `GET`  | `/api/v1/admin/analytics/trend?range=7d`                  | 按日趋势（#58 补，供 §7.3 双线图）；可选 `article_id` 过滤单篇 |
 | `GET`  | `/api/v1/admin/analytics/consent?range=30d`               | 同意率（Tier 1）                                               |
 
 后台接口全部走现有 auth 中间件，且要求 `admin` 角色（统计是站级数据，不对 editor 开放）。`range` 只接受 `today|7d|30d|90d`，非法值 400。
