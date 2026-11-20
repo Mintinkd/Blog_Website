@@ -31,15 +31,11 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 
   <!-- taxonomy v2（#81 §1）：分类可发现区块。取数失败整块隐藏，不影响文章列表。 -->
   <section class="taxonomy-discovery" id="taxonomy-discovery" hidden>
-    <div class="discovery-grid">
-      <div class="discovery-block">
-        <div class="section-header">
-          <h2 class="section-title" data-i18n="page.categories">分类</h2>
-          <a href="/categories" class="section-link" data-i18n="section.view_all">查看全部 →</a>
-        </div>
-        <div id="discovery-categories" class="discovery-items"></div>
-      </div>
+    <div class="section-header">
+      <h2 class="section-title" data-i18n="page.categories">分类</h2>
+      <a href="/categories" class="section-link" data-i18n="section.view_all">查看全部 →</a>
     </div>
+    <div id="discovery-categories" class="discovery-items"></div>
   </section>
 </BaseLayout>
 
@@ -477,11 +473,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   /* taxonomy v2（#81 §1）：首页分类可发现区块（取数失败整块隐藏） */
   .taxonomy-discovery {
     margin-top: clamp(1.5rem, 4vw, 2.5rem);
-  }
-  .discovery-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: clamp(1.25rem, 3vw, 2rem);
   }
   .discovery-items {
     display: flex;

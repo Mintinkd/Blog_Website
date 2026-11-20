@@ -14,6 +14,7 @@ import en from "../src/i18n/en.json";
  * 旧三档 textarea 模式（编辑 / 分屏 / 预览）在 T4 改为
  * WYSIWYG / 源码 / 分屏 / 线上预览四档后已无引用，T7 从 zh/en 与
  * worker/src/handlers/settings.ts 的默认文案字典一并删除；此用例防止回归。
+ * #121 又移除了首页「热门标签」与分类页「全部标签」入口的文案，同样在此钉住。
  */
 
 type JsonObject = Record<string, unknown>;
@@ -62,18 +63,16 @@ describe("中英 i18n 契约", () => {
     expect(zhKeys.filter((key) => zhParams[key] !== enParams[key])).toEqual([]);
   });
 
-  it("T4 之前的三档旧模式 key 已删除", () => {
-    const removed = [
-      "admin.edit_mode",
-      "admin.split_mode",
-      "admin.preview_mode",
-    ];
-    expect(zhKeys.filter((key) => removed.includes(key))).toEqual([]);
-    expect(enKeys.filter((key) => removed.includes(key))).toEqual([]);
-  });
-
-  it("#121 移除的首页热门标签 / 分类页全部标签入口文案已删除", () => {
-    const removed = ["taxonomy.hot_tags", "page.all_tags"];
+  it.each<[string, string[]]>([
+    [
+      "T4 之前的三档旧模式 key",
+      ["admin.edit_mode", "admin.split_mode", "admin.preview_mode"],
+    ],
+    [
+      "#121 移除的首页热门标签 / 分类页全部标签入口文案",
+      ["taxonomy.hot_tags", "page.all_tags"],
+    ],
+  ])("%s 已删除", (_label, removed) => {
     expect(zhKeys.filter((key) => removed.includes(key))).toEqual([]);
     expect(enKeys.filter((key) => removed.includes(key))).toEqual([]);
   });

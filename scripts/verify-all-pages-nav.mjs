@@ -206,6 +206,7 @@ function contentCheck(page) {
       discoveryCats: qa("#discovery-categories .discovery-cat"),
       discoveryTags: qa("#discovery-tags"),
       taxonomyTagLinks: qa('#taxonomy-discovery a[href^="/tags"]'),
+      taxonomyText: q("#taxonomy-discovery")?.textContent || "",
       allTagsLink: qa(".all-tags-link"),
       articleTitle: q(".article-title")?.textContent || null,
       articleContent: qa(".article-content"),
@@ -254,10 +255,10 @@ async function run() {
   });
   page.on("pageerror", (e) => consoleErrors.push("PAGEERROR: " + e.message));
 
-  // #121：首页 taxonomy 区块只取分类，不再请求 /api/v1/tags
-  const homeApiRequests = [];
+  // #121：记录首页硬加载期间的 taxonomy 请求，稍后断言不含 /api/v1/tags
+  const homeTagRequests = [];
   page.on("request", (r) => {
-    if (r.url().includes("/api/")) homeApiRequests.push(r.url());
+    if (r.url().includes("/api/v1/tags")) homeTagRequests.push(r.url());
   });
 
   // 首页硬加载基线（taxonomy v2 回归期：dev→远端 API 首连偶发挂起，
@@ -273,6 +274,13 @@ async function run() {
       await page.waitForSelector("#article-grid .article-card", {
         timeout: 15000,
       });
+      // 等分类 discovery 取数完成（#121 断言覆盖 taxonomy 取数；失败保持 hidden 时由断言报原因）
+      await page
+        .waitForSelector(
+          "#taxonomy-discovery:not([hidden]) #discovery-categories .discovery-cat",
+          { timeout: 15000 }
+        )
+        .catch(() => {});
       homeLoaded = true;
     } catch (e) {
       if (i === 2) throw e;
@@ -281,12 +289,9 @@ async function run() {
   }
 
   // #121：首页 taxonomy 区块只取分类，不再请求 /api/v1/tags
-  const homeTagRequests = homeApiRequests.filter((u) =>
-    u.includes("/api/v1/tags")
-  );
   if (homeTagRequests.length) {
     failures.push(
-      `首页仍请求 /api/v1/tags（#121）：${homeTagRequests.join(", ")}`
+      `首页硬加载仍请求 /api/v1/tags（#121）：${homeTagRequests.join(", ")}`
     );
   }
 
@@ -348,7 +353,13 @@ async function run() {
   // #121：前台入口移除后 /tags、/tags/:slug 仍保留为兼容入口，直连必须 200
   await warmUpApi(page);
   const tagEntryRoutes = ["/tags"];
-  if (slugs.tag) tagEntryRoutes.push("/tags/" + encodeURIComponent(slugs.tag));
+  if (slugs.tag) {
+    tagEntryRoutes.push("/tags/" + encodeURIComponent(slugs.tag));
+  } else {
+    console.log(
+      "[skip] /tags/:slug 直连 200 回归：标签 API 未返回任何标签 slug（#121）"
+    );
+  }
   for (const route of tagEntryRoutes) {
     const res = await page.request.get(BASE + route);
     if (res.status() !== 200) {
@@ -360,6 +371,8 @@ async function run() {
     let first = null;
     let second = null;
     let matched = false;
+    // #121：记录本次客户端导航进入 / 返回首页窗口内的 /api/v1/tags 请求
+    let homeNavTagRequests = [];
     // #118：导航「标签」入口必须消失。单独取数，不放进内容快照——
     // 否则导航回归会污染「两次快照一致」的判据（断言 B）。
     let navTagLinks = null;
@@ -369,9 +382,15 @@ async function run() {
       try {
         await warmUpApi(page);
         // 1) 客户端导航进入目标页
+        const enterTagMark = homeTagRequests.length;
         await navByLink(page, target);
         await waitForPageLoaded(page, target);
         first = await contentCheck(page);
+        if (target === "/") {
+          homeNavTagRequests = homeNavTagRequests.concat(
+            homeTagRequests.slice(enterTagMark)
+          );
+        }
         navTagLinks = await page.evaluate(
           () => document.querySelectorAll('.nav-links a[href="/tags"]').length
         );
@@ -379,9 +398,15 @@ async function run() {
         await navByLink(page, "/about");
         await waitForPageLoaded(page, "/about");
         // 3) 客户端导航返回目标页
+        const returnTagMark = homeTagRequests.length;
         await navByLink(page, target);
         await waitForPageLoaded(page, target);
         second = await contentCheck(page);
+        if (target === "/") {
+          homeNavTagRequests = homeNavTagRequests.concat(
+            homeTagRequests.slice(returnTagMark)
+          );
+        }
 
         const { path: _p, ...a } = first;
         const { path: _q, ...b } = second;
@@ -400,6 +425,12 @@ async function run() {
       }
     }
 
+    // 断言 A0（#121）：客户端导航进入 / 返回首页都不得请求 /api/v1/tags
+    if (target === "/" && homeNavTagRequests.length) {
+      failures.push(
+        `首页客户端导航回访仍请求 /api/v1/tags（#121）：${homeNavTagRequests.join(", ")}`
+      );
+    }
     // 断言 A：首次进入满足基线
     const check = baselineFor(target);
     if (check && !check(first)) {
@@ -425,6 +456,9 @@ async function run() {
         failures.push(
           `首页 taxonomy 区块仍含 /tags 链接（#121）：${first.taxonomyTagLinks} 个`
         );
+      }
+      if (first.taxonomyText.includes("热门标签")) {
+        failures.push("首页 taxonomy 区块仍含「热门标签」文案（#121）");
       }
     }
     // 断言 A1c（#121）：分类页移除「全部标签」入口
