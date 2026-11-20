@@ -14,6 +14,7 @@ const JWT_SECRET = "issue58-trend-test-secret";
 const NOW = new Date("2026-11-09T04:00:00.000Z"); // 上海 2026-11-09 12:00
 
 interface DailyRow {
+  article_id: number;
   day: string;
   pv: number;
   uv: number;
@@ -21,12 +22,14 @@ interface DailyRow {
 }
 
 const ROWS: DailyRow[] = [
-  { day: "2026-11-09", pv: 10, uv: 6, bot_filtered: 2 },
-  { day: "2026-11-08", pv: 5, uv: 3, bot_filtered: 1 },
+  { article_id: 7, day: "2026-11-09", pv: 10, uv: 6, bot_filtered: 2 },
+  { article_id: 7, day: "2026-11-08", pv: 5, uv: 3, bot_filtered: 1 },
   // 只有被过滤请求的一天：PV/UV 为 0，仍应出现在悬停信息里
-  { day: "2026-11-07", pv: 0, uv: 0, bot_filtered: 3 },
+  { article_id: 7, day: "2026-11-07", pv: 0, uv: 0, bot_filtered: 3 },
   // 范围外，不得计入
-  { day: "2026-10-01", pv: 99, uv: 9, bot_filtered: 0 },
+  { article_id: 7, day: "2026-10-01", pv: 99, uv: 9, bot_filtered: 0 },
+  // article_id=8 的数据，用于 #120 过滤测试
+  { article_id: 8, day: "2026-11-09", pv: 4, uv: 2, bot_filtered: 0 },
 ];
 
 function makeEnv(role?: "admin" | "editor"): Env {
@@ -52,10 +55,14 @@ function makeEnv(role?: "admin" | "editor"): Env {
       all: (): Promise<{ results: unknown[] }> => {
         if (sql.includes("GROUP BY day")) {
           const [from, to] = statement.binds.map(String);
+          const articleId =
+            statement.binds.length > 2 ? Number(statement.binds[2]) : null;
           const grouped = new Map<string, DailyRow>();
           for (const row of ROWS) {
             if (row.day < from || row.day > to) continue;
+            if (articleId !== null && row.article_id !== articleId) continue;
             const current = grouped.get(row.day) ?? {
+              article_id: row.article_id,
               day: row.day,
               pv: 0,
               uv: 0,
@@ -140,6 +147,7 @@ describe("issue #58：按日序列", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       range: "7d",
+      article_id: null,
       from: "2026-11-03",
       to: "2026-11-09",
       days: [
@@ -149,7 +157,7 @@ describe("issue #58：按日序列", () => {
         { day: "2026-11-06", pv: 0, uv: 0, bot_filtered: 0 },
         { day: "2026-11-07", pv: 0, uv: 0, bot_filtered: 3 },
         { day: "2026-11-08", pv: 5, uv: 3, bot_filtered: 1 },
-        { day: "2026-11-09", pv: 10, uv: 6, bot_filtered: 2 },
+        { day: "2026-11-09", pv: 14, uv: 8, bot_filtered: 2 }, // 7:(10,6) + 8:(4,2)
       ],
     });
   });
@@ -158,21 +166,61 @@ describe("issue #58：按日序列", () => {
     const res = await callTrend("?range=today", "admin");
     expect(res.body.data).toEqual({
       range: "today",
+      article_id: null,
       from: "2026-11-09",
       to: "2026-11-09",
-      days: [{ day: "2026-11-09", pv: 10, uv: 6, bot_filtered: 2 }],
+      days: [{ day: "2026-11-09", pv: 14, uv: 8, bot_filtered: 2 }], // 7:(10,6) + 8:(4,2)
     });
   });
 
   it("同日多行按 SUM 聚合", async () => {
-    // ROWS 里 11-09 只有一行；用 30d 覆盖多行场景由桩保证 SUM 语义
+    // ROWS 里 11-09 有 article_id=7 和 8 两行；用 30d 覆盖多行场景由桩保证 SUM 语义
     const res = await callTrend("?range=30d", "admin");
     const last = res.body.data.days.at(-1);
     expect(last).toEqual({
       day: "2026-11-09",
-      pv: 10,
-      uv: 6,
+      pv: 14, // 10 + 4
+      uv: 8, // 6 + 2
       bot_filtered: 2,
     });
+  });
+
+  it("非法 article_id 返回 400（#120）", async () => {
+    expect((await callTrend("?range=7d&article_id=abc", "admin")).status).toBe(
+      400
+    );
+    expect((await callTrend("?range=7d&article_id=0", "admin")).status).toBe(
+      400
+    );
+  });
+
+  it("带 article_id=7 只返回该文章的按日数据（#120）", async () => {
+    const res = await callTrend("?range=7d&article_id=7", "admin");
+    expect(res.status).toBe(200);
+    expect(res.body.data.article_id).toBe(7);
+    expect(res.body.data.days).toEqual([
+      { day: "2026-11-03", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-04", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-05", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-06", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-07", pv: 0, uv: 0, bot_filtered: 3 },
+      { day: "2026-11-08", pv: 5, uv: 3, bot_filtered: 1 },
+      { day: "2026-11-09", pv: 10, uv: 6, bot_filtered: 2 },
+    ]);
+  });
+
+  it("带 article_id=8 只返回该文章的按日数据（#120）", async () => {
+    const res = await callTrend("?range=7d&article_id=8", "admin");
+    expect(res.status).toBe(200);
+    expect(res.body.data.article_id).toBe(8);
+    expect(res.body.data.days).toEqual([
+      { day: "2026-11-03", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-04", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-05", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-06", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-07", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-08", pv: 0, uv: 0, bot_filtered: 0 },
+      { day: "2026-11-09", pv: 4, uv: 2, bot_filtered: 0 },
+    ]);
   });
 });

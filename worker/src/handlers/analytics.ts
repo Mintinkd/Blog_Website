@@ -29,12 +29,17 @@ const ANOMALY_SIGMA = 3;
 /** 心跳是 UTC `YYYY-MM-DD HH:MM:SS`（`datetime('now')` 同格式），不接受残缺值 */
 const HEARTBEAT_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
-/** 概览与质量共用的日聚合汇总：同一份 SQL，避免两处各写一份后漂移 */
-const DAILY_TOTALS_SQL =
-  "SELECT COALESCE(SUM(pv), 0) AS pv, COALESCE(SUM(uv), 0) AS uv, " +
-  "COALESCE(SUM(requests), 0) AS requests, " +
-  "COALESCE(SUM(bot_filtered), 0) AS bot_filtered " +
-  "FROM analytics_article_daily WHERE day >= ? AND day <= ?";
+/** 概览与质量共用的日聚合汇总：同一份 SQL，避免两处各写一份后漂移。
+ * issue #120 起支持可选 article_id 过滤。 */
+function dailyTotalsSql(withArticle: boolean): string {
+  return (
+    "SELECT COALESCE(SUM(pv), 0) AS pv, COALESCE(SUM(uv), 0) AS uv, " +
+    "COALESCE(SUM(requests), 0) AS requests, " +
+    "COALESCE(SUM(bot_filtered), 0) AS bot_filtered " +
+    "FROM analytics_article_daily WHERE day >= ? AND day <= ?" +
+    (withArticle ? " AND article_id = ?" : "")
+  );
+}
 
 interface TotalsRow {
   pv: number;
@@ -83,6 +88,19 @@ function parseRange(params: URLSearchParams): AnalyticsRange | Response {
   return value;
 }
 
+/** article_id 校验（issue #120）：省略返回 null（全站），非正整数返回 400 */
+function parseArticleId(params: URLSearchParams): number | null | Response {
+  const articleIdParam = params.get("article_id");
+  if (articleIdParam === null) return null;
+  if (!/^\d+$/.test(articleIdParam) || Number(articleIdParam) <= 0) {
+    return error(
+      ErrorCodes.VALIDATION_FAILED,
+      "无效的 article_id 参数（须为正整数）"
+    );
+  }
+  return Number(articleIdParam);
+}
+
 /** 最近 `days` 个站点时区日界，升序，最后一项是今天 */
 function daySequence(days: number): string[] {
   return Array.from({ length: days }, (_, i) =>
@@ -116,17 +134,23 @@ export async function handleAnalyticsOverview(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const range = parseRange(new URL(request.url).searchParams);
+  const params = new URL(request.url).searchParams;
+  const range = parseRange(params);
   if (range instanceof Response) return range;
+  const articleId = parseArticleId(params);
+  if (articleId instanceof Response) return articleId;
 
   const { from, to } = rangeBounds(range);
+  const withArticle = articleId !== null;
+  const binds = withArticle ? [from, to, articleId] : [from, to];
 
-  const row = await env.DB.prepare(DAILY_TOTALS_SQL)
-    .bind(from, to)
+  const row = await env.DB.prepare(dailyTotalsSql(withArticle))
+    .bind(...binds)
     .first<TotalsRow>();
 
   return successResponse({
     range,
+    article_id: articleId,
     pv: row?.pv ?? 0,
     uv: row?.uv ?? 0,
     bot_filtered: row?.bot_filtered ?? 0,
@@ -144,24 +168,14 @@ export async function handleAnalyticsDimensions(
   const range = parseRange(params);
   if (range instanceof Response) return range;
   const dim = params.get("dim");
-  const articleIdParam = params.get("article_id");
+  const articleId = parseArticleId(params);
+  if (articleId instanceof Response) return articleId;
 
   if (!isAnalyticsDimension(dim)) {
     return error(
       ErrorCodes.VALIDATION_FAILED,
       `无效的 dim 参数（仅支持 ${ANALYTICS_DIMENSIONS.join(" / ")}）`
     );
-  }
-
-  let articleId: number | null = null;
-  if (articleIdParam !== null) {
-    if (!/^\d+$/.test(articleIdParam) || Number(articleIdParam) <= 0) {
-      return error(
-        ErrorCodes.VALIDATION_FAILED,
-        "无效的 article_id 参数（须为正整数）"
-      );
-    }
-    articleId = Number(articleIdParam);
   }
 
   const { from, to } = rangeBounds(range);
@@ -219,8 +233,12 @@ export async function handleAnalyticsArticles(
   const page = parsePage(params);
   if (page instanceof Response) return page;
 
+  const articleId = parseArticleId(params);
+  if (articleId instanceof Response) return articleId;
+
   const { from, to } = rangeBounds(range);
   const days = daySequence(SPARKLINE_DAYS);
+  const articleFilter = articleId !== null;
 
   const [totalRow, sinceRow, articles, referrers, sparks] = await Promise.all([
     // 与 items 一样 JOIN articles：文章删除后日聚合仍保留 400 天，
@@ -228,34 +246,54 @@ export async function handleAnalyticsArticles(
     env.DB.prepare(
       "SELECT COUNT(DISTINCT d.article_id) AS total FROM analytics_article_daily d " +
         "JOIN articles a ON a.id = d.article_id " +
-        "WHERE d.day >= ? AND d.day <= ?"
+        "WHERE d.day >= ? AND d.day <= ?" +
+        (articleFilter ? " AND d.article_id = ?" : "")
     )
-      .bind(from, to)
+      .bind(...(articleFilter ? [from, to, articleId] : [from, to]))
       .first<{ total: number }>(),
+    // issue #120：过滤视图只查该文章的 MIN(day)，否则「自 X 起」会误导为全站起点
     env.DB.prepare(
-      "SELECT MIN(day) AS since FROM analytics_article_daily"
-    ).first<{ since: string | null }>(),
+      "SELECT MIN(day) AS since FROM analytics_article_daily" +
+        (articleFilter ? " WHERE article_id = ?" : "")
+    )
+      .bind(...(articleFilter ? [articleId] : []))
+      .first<{ since: string | null }>(),
     env.DB.prepare(
       "SELECT d.article_id AS id, a.title AS title, a.slug AS slug, " +
         "SUM(d.pv) AS pv, SUM(d.uv) AS uv FROM analytics_article_daily d " +
         "JOIN articles a ON a.id = d.article_id " +
-        "WHERE d.day >= ? AND d.day <= ? GROUP BY d.article_id " +
+        "WHERE d.day >= ? AND d.day <= ?" +
+        (articleFilter ? " AND d.article_id = ?" : "") +
+        " GROUP BY d.article_id " +
         "ORDER BY pv DESC, d.article_id ASC LIMIT ? OFFSET ?"
     )
-      .bind(from, to, ARTICLES_PAGE_SIZE, (page - 1) * ARTICLES_PAGE_SIZE)
+      .bind(
+        ...(articleFilter
+          ? [
+              from,
+              to,
+              articleId,
+              ARTICLES_PAGE_SIZE,
+              (page - 1) * ARTICLES_PAGE_SIZE,
+            ]
+          : [from, to, ARTICLES_PAGE_SIZE, (page - 1) * ARTICLES_PAGE_SIZE])
+      )
       .all<ArticleAggregateRow>(),
     env.DB.prepare(
       "SELECT article_id, bucket, SUM(count) AS total FROM analytics_dim_daily " +
         "WHERE day >= ? AND day <= ? AND dim = 'referrer' " +
+        (articleFilter ? " AND article_id = ? " : "") +
         "GROUP BY article_id, bucket"
     )
-      .bind(from, to)
+      .bind(...(articleFilter ? [from, to, articleId] : [from, to]))
       .all<ReferrerAggregateRow>(),
     env.DB.prepare(
       "SELECT article_id, day, SUM(pv) AS pv FROM analytics_article_daily " +
-        "WHERE day >= ? AND day <= ? GROUP BY article_id, day"
+        "WHERE day >= ? AND day <= ?" +
+        (articleFilter ? " AND article_id = ?" : "") +
+        " GROUP BY article_id, day"
     )
-      .bind(days[0], to)
+      .bind(...(articleFilter ? [days[0], to, articleId] : [days[0], to]))
       .all<SparkRow>(),
   ]);
 
@@ -300,6 +338,7 @@ export async function handleAnalyticsArticles(
   const total = totalRow?.total ?? 0;
   return successResponse({
     range,
+    article_id: articleId,
     page,
     page_size: ARTICLES_PAGE_SIZE,
     total,
@@ -325,7 +364,7 @@ export async function handleAnalyticsQuality(
   // 8 个日界：前 7 个为基线，最后一个是当日
   const days = daySequence(SPARKLINE_DAYS + 1);
   const [totals, heartbeat, tokenRow, daily] = await Promise.all([
-    env.DB.prepare(DAILY_TOTALS_SQL).bind(from, to).first<TotalsRow>(),
+    env.DB.prepare(dailyTotalsSql(false)).bind(from, to).first<TotalsRow>(),
     env.DB.prepare(
       "SELECT value FROM site_config WHERE key = 'analytics_last_job_at'"
     ).first<{ value: string }>(),
@@ -409,21 +448,28 @@ export async function handleAnalyticsTrend(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const range = parseRange(new URL(request.url).searchParams);
+  const params = new URL(request.url).searchParams;
+  const range = parseRange(params);
   if (range instanceof Response) return range;
+  const articleId = parseArticleId(params);
+  if (articleId instanceof Response) return articleId;
   const { from, to } = rangeBounds(range);
+  const withArticle = articleId !== null;
 
   const result = await env.DB.prepare(
     "SELECT day, SUM(pv) AS pv, SUM(uv) AS uv, " +
       "SUM(bot_filtered) AS bot_filtered FROM analytics_article_daily " +
-      "WHERE day >= ? AND day <= ? GROUP BY day ORDER BY day"
+      "WHERE day >= ? AND day <= ?" +
+      (withArticle ? " AND article_id = ?" : "") +
+      " GROUP BY day ORDER BY day"
   )
-    .bind(from, to)
+    .bind(...(withArticle ? [from, to, articleId] : [from, to]))
     .all<TrendDayRow>();
   const byDay = new Map((result.results ?? []).map((row) => [row.day, row]));
 
   return successResponse({
     range,
+    article_id: articleId,
     from,
     to,
     days: daySequence(RANGE_DAYS[range]).map((day) => {

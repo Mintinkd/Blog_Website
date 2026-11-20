@@ -138,11 +138,11 @@ describe("AnalyticsPanel — analyticsRequestPaths（对应 8 条并发 URL）",
     ]);
   });
 
-  it("带 article_id：3 条 dimensions 追加编码后的 article_id", () => {
+  it("带 article_id：overview / trend / articles / 3 条 dimensions 均追加编码后的 article_id；quality 与文章选项不追加（#120）", () => {
     expect(analyticsRequestPaths("30d", 1, "a b&1")).toEqual([
-      "/admin/analytics/overview?range=30d",
-      "/admin/analytics/trend?range=30d",
-      "/admin/analytics/articles?range=30d&page=1",
+      "/admin/analytics/overview?range=30d&article_id=a%20b%261",
+      "/admin/analytics/trend?range=30d&article_id=a%20b%261",
+      "/admin/analytics/articles?range=30d&page=1&article_id=a%20b%261",
       "/admin/analytics/quality?range=30d",
       "/admin/analytics/dimensions?dim=device&range=30d&article_id=a%20b%261",
       "/admin/analytics/dimensions?dim=country&range=30d&article_id=a%20b%261",
@@ -160,6 +160,12 @@ describe("AnalyticsPanel — articleFilterId（对应 applyAnalyticsArticleFilte
 
   it("精确命中标题返回字符串 id（含去空白）", () => {
     expect(articleFilterId("  World  ", options)).toBe("2");
+  });
+
+  it("大小写不敏感匹配（#120）", () => {
+    expect(articleFilterId("hello", options)).toBe("1");
+    expect(articleFilterId("WORLD", options)).toBe("2");
+    expect(articleFilterId("  HeLLo  ", options)).toBe("1");
   });
 
   it("空串 / 未命中返回空串", () => {

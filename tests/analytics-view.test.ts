@@ -65,6 +65,8 @@ const EXPECTED_KEYS = [
   "analytics.quality_alert",
   "analytics.quality_heartbeat_missing",
   "analytics.quality_anomaly_hint",
+  "analytics.article_not_found",
+  "analytics.quality_scope",
   "analytics.other",
 ] as const;
 import {

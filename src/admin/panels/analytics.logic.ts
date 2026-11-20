@@ -35,9 +35,9 @@ export function analyticsRequestPaths(
     : "";
   const base = "/admin/analytics";
   return [
-    `${base}/overview?range=${range}`,
-    `${base}/trend?range=${range}`,
-    `${base}/articles?range=${range}&page=${page}`,
+    `${base}/overview?range=${range}${articleQuery}`,
+    `${base}/trend?range=${range}${articleQuery}`,
+    `${base}/articles?range=${range}&page=${page}${articleQuery}`,
     `${base}/quality?range=${range}`,
     `${base}/dimensions?dim=device&range=${range}${articleQuery}`,
     `${base}/dimensions?dim=country&range=${range}${articleQuery}`,
@@ -46,14 +46,15 @@ export function analyticsRequestPaths(
   ];
 }
 
-/** 对应 applyAnalyticsArticleFilter() 的匹配逻辑 */
+/** 对应 applyAnalyticsArticleFilter() 的匹配逻辑。
+ * issue #120：改为 trim + toLowerCase 比较，降低大小写 / 首尾空格造成的「输入了却没过滤」。 */
 export function articleFilterId(
   query: string,
   options: readonly { id: number; title: string }[]
 ): string {
-  const trimmed = query.trim();
-  const match = options.find((item) => item.title === trimmed);
-  return trimmed !== "" && match ? String(match.id) : "";
+  const normalized = query.trim().toLowerCase();
+  const match = options.find((item) => item.title.toLowerCase() === normalized);
+  return normalized !== "" && match ? String(match.id) : "";
 }
 
 /** 对应 §7.1 数据时间：优先心跳，无心跳回落本次取数时刻，坏值显示「—」 */

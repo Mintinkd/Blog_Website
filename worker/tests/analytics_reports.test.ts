@@ -148,9 +148,15 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
         }
         if (sql.includes("COUNT(DISTINCT")) {
           const [from, to] = statement.binds.map(String);
+          const articleId =
+            statement.binds.length > 2 ? Number(statement.binds[2]) : null;
           const ids = new Set(
             state.daily
-              .filter((row) => inRange(row, from, to))
+              .filter(
+                (row) =>
+                  inRange(row, from, to) &&
+                  (articleId === null || row.article_id === articleId)
+              )
               .map((row) => row.article_id)
               .filter((id) =>
                 state.articles.some((article) => article.id === id)
@@ -159,7 +165,12 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
           return Promise.resolve({ total: ids.size });
         }
         if (sql.includes("MIN(day)")) {
-          const days = state.daily.map((row) => row.day).sort();
+          const articleId =
+            statement.binds.length > 0 ? Number(statement.binds[0]) : null;
+          const days = state.daily
+            .filter((row) => articleId === null || row.article_id === articleId)
+            .map((row) => row.day)
+            .sort();
           return Promise.resolve({ since: days[0] ?? null });
         }
         if (sql.includes("SUM(bot_filtered)")) {
@@ -185,15 +196,18 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
       },
       all: (): Promise<{ results: unknown[] }> => {
         if (sql.includes("JOIN articles a")) {
-          // bind 顺序：[from, to, limit, offset]
+          // bind 顺序：[from, to, (articleId), limit, offset]
           const raw = statement.binds;
           const rangeFrom = String(raw[0]);
           const rangeTo = String(raw[1]);
-          const pageSize = Number(raw[2]);
-          const skip = Number(raw[3]);
+          const hasArticleFilter = raw.length > 4;
+          const articleId = hasArticleFilter ? Number(raw[2]) : null;
+          const pageSize = Number(hasArticleFilter ? raw[3] : raw[2]);
+          const skip = Number(hasArticleFilter ? raw[4] : raw[3]);
           const grouped = new Map<number, { pv: number; uv: number }>();
           for (const row of state.daily) {
             if (!inRange(row, rangeFrom, rangeTo)) continue;
+            if (articleId !== null && row.article_id !== articleId) continue;
             const current = grouped.get(row.article_id) ?? { pv: 0, uv: 0 };
             current.pv += row.pv;
             current.uv += row.uv;
@@ -216,12 +230,15 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
         }
         if (sql.includes("dim = 'referrer'")) {
           const [from, to] = statement.binds.map(String);
+          const articleId =
+            statement.binds.length > 2 ? Number(statement.binds[2]) : null;
           const grouped = new Map<
             string,
             { article_id: number; bucket: string; total: number }
           >();
           for (const row of state.dim) {
             if (row.dim !== "referrer" || !inRange(row, from, to)) continue;
+            if (articleId !== null && row.article_id !== articleId) continue;
             const key = `${row.article_id}\u0000${row.bucket}`;
             const current = grouped.get(key) ?? {
               article_id: row.article_id,
@@ -235,12 +252,15 @@ function makeEnv(state: State, role?: "admin" | "editor"): Env {
         }
         if (sql.includes("GROUP BY article_id, day")) {
           const [from, to] = statement.binds.map(String);
+          const articleId =
+            statement.binds.length > 2 ? Number(statement.binds[2]) : null;
           const grouped = new Map<
             string,
             { article_id: number; day: string; pv: number }
           >();
           for (const row of state.daily) {
             if (!inRange(row, from, to)) continue;
+            if (articleId !== null && row.article_id !== articleId) continue;
             const key = `${row.article_id}\u0000${row.day}`;
             const current = grouped.get(key) ?? {
               article_id: row.article_id,
@@ -338,6 +358,7 @@ describe("issue #57：文章明细接口", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       range: "7d",
+      article_id: null,
       page: 1,
       page_size: 20,
       total: 2,
@@ -405,6 +426,7 @@ describe("issue #57：文章明细接口", () => {
 
     expect(res.body.data).toEqual({
       range: "7d",
+      article_id: null,
       page: 1,
       page_size: 20,
       total: 0,
@@ -569,5 +591,97 @@ describe("issue #57：复审修复回归", () => {
         raw
       ).toBe(true);
     }
+  });
+});
+
+describe("issue #120：文章明细按 article_id 过滤", () => {
+  it("非法 article_id 返回 400", async () => {
+    expect(
+      (await call("articles", "?range=7d&article_id=abc", makeState(), "admin"))
+        .status
+    ).toBe(400);
+    expect(
+      (await call("articles", "?range=7d&article_id=0", makeState(), "admin"))
+        .status
+    ).toBe(400);
+  });
+
+  it("带 article_id=8 只返回该文章（total=1、items 仅含第二篇、since 为该文章最早日）", async () => {
+    const res = await call(
+      "articles",
+      "?range=7d&article_id=8",
+      makeState(),
+      "admin"
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      range: "7d",
+      article_id: 8,
+      page: 1,
+      page_size: 20,
+      total: 1,
+      total_pages: 1,
+      since: "2026-11-09", // article_id=8 只有 2026-11-09 的数据
+      items: [
+        {
+          id: 8,
+          title: "第二篇",
+          slug: "second",
+          pv: 7,
+          uv: 4,
+          top_referrer: "social.example",
+          sparkline: [0, 0, 0, 0, 0, 0, 7],
+          engaged_rate: null,
+          avg_dwell_bucket: null,
+        },
+      ],
+    });
+  });
+
+  it("带 article_id=7 只返回该文章（含 2 天数据合并）", async () => {
+    const res = await call(
+      "articles",
+      "?range=7d&article_id=7",
+      makeState(),
+      "admin"
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.article_id).toBe(7);
+    expect(res.body.data.total).toBe(1);
+    expect(res.body.data.items).toHaveLength(1);
+    expect(res.body.data.items[0]).toMatchObject({
+      id: 7,
+      title: "服务端渲染",
+      pv: 15, // 10 + 5
+      uv: 9, // 6 + 3
+    });
+    // since 应为 article_id=7 的最早日期（2026-11-08 在 7d 范围内）
+    expect(res.body.data.since).toBe("2026-11-08");
+  });
+
+  it("带 article_id=9 在 7d 范围内无数据（范围外），返回空 items", async () => {
+    const res = await call(
+      "articles",
+      "?range=7d&article_id=9",
+      makeState(),
+      "admin"
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.article_id).toBe(9);
+    expect(res.body.data.total).toBe(0);
+    expect(res.body.data.items).toEqual([]);
+  });
+
+  it("quality 接口不接受 article_id（全站口径），传了也忽略", async () => {
+    const res = await call(
+      "quality",
+      "?range=7d&article_id=7",
+      makeState(),
+      "admin"
+    );
+    expect(res.status).toBe(200);
+    // quality 响应不含 article_id 字段
+    expect(res.body.data).not.toHaveProperty("article_id");
+    expect(res.body.data.pv).toBe(22); // 全站 PV
   });
 });

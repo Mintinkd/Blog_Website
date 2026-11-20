@@ -81,8 +81,13 @@ function makeEnv(role?: "admin" | "editor"): Env {
           sql.includes("SUM(")
         ) {
           const [from, to] = statement.binds.map(String);
+          const articleId =
+            statement.binds.length > 2 ? Number(statement.binds[2]) : null;
           const rows = SEEDED_DAILY.filter(
-            (row) => row.day >= from && row.day <= to
+            (row) =>
+              row.day >= from &&
+              row.day <= to &&
+              (articleId === null || row.article_id === articleId)
           );
           const sum = (pick: (row: DailyRow) => number) =>
             rows.reduce((total, row) => total + pick(row), 0);
@@ -171,6 +176,7 @@ describe("issue #55：概览接口鉴权与 range 白名单", () => {
       message: "ok",
       data: {
         range: "7d",
+        article_id: null,
         pv: 8, // 2026-11-09 的 3 + 2026-11-03 的 5
         uv: 6, // 2 + 4
         bot_filtered: 3, // 1 + 2
@@ -185,9 +191,52 @@ describe("issue #55：概览接口鉴权与 range 白名单", () => {
     const body = (await res.json()) as { data: unknown };
     expect(body.data).toEqual({
       range: "today",
+      article_id: null,
       pv: 3,
       uv: 2,
       bot_filtered: 1,
+      engaged: null,
+    });
+  });
+
+  it("非法 article_id 返回 400（#120）", async () => {
+    expect(
+      (await callOverview("?range=7d&article_id=abc", "admin")).status
+    ).toBe(400);
+    expect((await callOverview("?range=7d&article_id=0", "admin")).status).toBe(
+      400
+    );
+    expect(
+      (await callOverview("?range=7d&article_id=-1", "admin")).status
+    ).toBe(400);
+  });
+
+  it("带 article_id=7 只返回该文章数据（#120）", async () => {
+    const res = await callOverview("?range=7d&article_id=7", "admin");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: unknown };
+    // article_id=7 在 7d 范围内只有 2026-11-09 (pv=3, uv=2, bot=1) 和 2026-11-03 (pv=5, uv=4, bot=2)
+    expect(body.data).toEqual({
+      range: "7d",
+      article_id: 7,
+      pv: 8,
+      uv: 6,
+      bot_filtered: 3,
+      engaged: null,
+    });
+  });
+
+  it("带 article_id=8 在 7d 范围内无数据（#120）", async () => {
+    const res = await callOverview("?range=7d&article_id=8", "admin");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: unknown };
+    // article_id=8 的数据在 2026-10-01 和 2026-11-10，都不在 7d 范围（11-03 ~ 11-09）内
+    expect(body.data).toEqual({
+      range: "7d",
+      article_id: 8,
+      pv: 0,
+      uv: 0,
+      bot_filtered: 0,
       engaged: null,
     });
   });

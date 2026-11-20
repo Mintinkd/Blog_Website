@@ -31,6 +31,12 @@
             ></option>
           </datalist>
         </label>
+        <span
+          v-if="analyticsArticleQuery.trim() && !analyticsArticleId"
+          class="analytics-article-not-found"
+        >
+          {{ t("analytics.article_not_found") }}
+        </span>
         <span class="analytics-updated">{{
           t("analytics.updated_at", { time: analyticsUpdatedAt })
         }}</span>
@@ -259,9 +265,14 @@
         </div>
       </section>
 
-      <!-- §7.6：数据质量 -->
+      <!-- §7.6：数据质量（全站口径，不随文章筛选变化） -->
       <section class="analytics-section">
-        <h3>{{ t("analytics.quality_title") }}</h3>
+        <h3>
+          {{ t("analytics.quality_title") }}
+          <small class="analytics-quality-scope">{{
+            t("analytics.quality_scope")
+          }}</small>
+        </h3>
         <div class="analytics-quality">
           <div
             v-for="row in analyticsQualityRows"
