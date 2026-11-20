@@ -128,3 +128,37 @@ describe("matchRoute 分型行为（issue #100）", () => {
     expect(matchRoute("OPTIONS", "/articles")).toBeNull();
   });
 });
+
+describe("HEAD 与 GET 同桶（issue #113 / M20）", () => {
+  it("HEAD /articles 命中 GET 路由（不为 null），参数一致", () => {
+    const get = matchRoute("GET", "/articles");
+    const head = matchRoute("HEAD", "/articles");
+    expect(get).not.toBeNull();
+    expect(head).not.toBeNull();
+    expect(head!.handler).toBe(get!.handler);
+    expect(head!.requireAuth).toBe(get!.requireAuth);
+    expect(head!.requireAdmin).toBe(get!.requireAdmin);
+  });
+
+  it("HEAD /articles/:slug 命中 GET 路由，slug 参数正确解析", () => {
+    const head = matchRoute("HEAD", "/articles/hello-world");
+    expect(head).not.toBeNull();
+    expect(head!.params).toEqual({ slug: "hello-world" });
+  });
+
+  it("HEAD /health 命中 GET 路由", () => {
+    const head = matchRoute("HEAD", "/health");
+    expect(head).not.toBeNull();
+  });
+
+  it("HEAD 未注册路径仍返回 null（404）", () => {
+    expect(matchRoute("HEAD", "/nonexistent")).toBeNull();
+  });
+
+  it("HEAD /articles/:id/edit 命中 GET 路由，id 参数正确解析", () => {
+    const head = matchRoute("HEAD", "/articles/42/edit");
+    expect(head).not.toBeNull();
+    expect(head!.params).toEqual({ id: "42" });
+    expect(head!.requireAuth).toBe(true);
+  });
+});

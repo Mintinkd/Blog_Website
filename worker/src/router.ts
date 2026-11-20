@@ -211,7 +211,12 @@ export function matchRoute(
   requireAdmin: boolean;
 } | null {
   // 只遍历该 method 的桶（issue #100 / M20，兼 L10 method 分桶）
-  for (const route of routesByMethod.get(method) ?? []) {
+  // issue #113 / M20：HEAD 与 GET 同桶——HEAD 无独立路由时复用 GET 桶（响应体由平台剥离）
+  const bucket =
+    routesByMethod.get(method) ??
+    (method === "HEAD" ? routesByMethod.get("GET") : undefined) ??
+    [];
+  for (const route of bucket) {
     const match = pathname.match(route.pattern);
     if (match) {
       const params: Record<string, string> = {};

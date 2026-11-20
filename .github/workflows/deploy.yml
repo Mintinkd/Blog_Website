@@ -179,6 +179,11 @@ jobs:
       - name: 构建 Astro 站点
         run: npm run build
 
+      # issue #113 / L4：SSR 一致性 CI 断言——构建后检查产物结构（页面存在 / script 指纹 / CSP 收紧），
+      # 故意改一个字节应红；纯本地文件检查，排除远端噪声。
+      - name: SSR 一致性断言
+        run: node scripts/verify-ssr-consistency.mjs
+
       # 供 D1 迁移 / Worker 部署共用：把 vars 里的资源标识与 R2 桶名渲染进
       # worker/wrangler.deploy.jsonc（生成物，不入 git）。未配置的变量保留仓库默认值。
       - name: 渲染 Worker 部署配置

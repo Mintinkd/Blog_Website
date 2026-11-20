@@ -136,6 +136,8 @@ fixture 里 `MOTION_CHUNK_RE` 的匹配口径由根包 `tests/article-ssr-fixtur
 
 CI 门禁在 `.github/workflows/deploy.yml` 的同一 Playwright 步骤新增 `scripts/verify-article-editor.mjs` 与 T6 的 `scripts/verify-editor-responsive.mjs`，与原有 `verify-article-ssr` / `verify-admin-responsive` / `verify-visual-friendliness` 一并执行，失败即阻断部署；`scripts/verify-admin-responsive.mjs` 与 `scripts/verify-visual-friendliness.mjs` 另补编辑器遮罩 / fixture 检查。本地手动复现的 `ARTICLE_API_ORIGIN` / `PW_CHANNEL` 与上节文章 SSR 回归一致。
 
+`scripts/verify-ssr-consistency.mjs`（issue #113 / L4）在 `npm run build` 后运行，纯本地文件检查构建产物结构（关键页面存在、外部 module script 带 hash 指纹、CSP 已收紧不含 unsafe-inline 且含 sha256 hash、_worker.js / _routes.json / _assets/ 存在、ClientRouter 运行时在场），故意改一个字节应红；排除远端噪声（不发起任何网络请求），接入 `deploy.yml` 构建后步骤。
+
 ### 后台移动端（CI + 手动）
 
 后台数据表在 `< 768px` 改为卡片布局，字段名依赖 `data-label`。回归脚本用本地 fixture
