@@ -7,6 +7,7 @@ import {
   forbidden,
   unauthorized,
   notFound,
+  parseJsonBody,
 } from "../utils/response";
 import { validate } from "../utils/validator";
 import { sanitizeHtml, escapeHtml } from "../utils/sanitizer";
@@ -61,7 +62,8 @@ export async function handleSubmitComment(
   params: Record<string, string>
 ): Promise<Response> {
   const { article_id } = params;
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const result = validate(body, [
     {

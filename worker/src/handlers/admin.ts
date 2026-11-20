@@ -1,5 +1,10 @@
 import { Env } from "../index";
-import { successResponse, error, ErrorCodes } from "../utils/response";
+import {
+  successResponse,
+  error,
+  ErrorCodes,
+  parseJsonBody,
+} from "../utils/response";
 import { sanitizeHtml } from "../utils/sanitizer";
 import { isPlainObject } from "../utils/object";
 import { isValidUrl } from "../utils/validator";
@@ -521,7 +526,8 @@ export async function handleImport(
   const dryRun = url.searchParams.get("dry_run") === "1";
   const confirmed = url.searchParams.get("confirm") === "1";
   try {
-    const raw = (await request.json()) as { export_data?: unknown };
+    const raw = await parseJsonBody<{ export_data?: unknown }>(request);
+    if (raw instanceof Response) return raw;
     if (!isPlainObject(raw) || !isPlainObject(raw.export_data)) {
       return error(ErrorCodes.PARAM_ERROR, "Invalid import data format");
     }

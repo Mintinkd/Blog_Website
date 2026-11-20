@@ -4,6 +4,7 @@ import {
   error,
   ErrorCodes,
   notFound,
+  parseJsonBody,
 } from "../utils/response";
 import { validate, isValidUrl } from "../utils/validator";
 import { FRIEND_LINK_COLUMNS, FRIEND_LINK_ID_COLUMNS } from "../utils/columns";
@@ -34,7 +35,8 @@ export async function handleCreateFriendLink(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const result = validate(body, [
     {
@@ -56,6 +58,11 @@ export async function handleCreateFriendLink(
 
   if (!isValidUrl(String(body.url))) {
     return error(ErrorCodes.VALIDATION_FAILED, "Invalid URL format");
+  }
+
+  if (body.logo_url && String(body.logo_url).trim() !== "") {
+    if (!isValidUrl(String(body.logo_url)))
+      return error(ErrorCodes.VALIDATION_FAILED, "Invalid logo URL format");
   }
 
   const res = await env.DB.prepare(
@@ -88,7 +95,8 @@ export async function handleUpdateFriendLink(
   params: Record<string, string>
 ): Promise<Response> {
   const { id } = params;
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const existing = await env.DB.prepare(
     `SELECT ${FRIEND_LINK_ID_COLUMNS} FROM friend_links WHERE id = ?`
@@ -115,6 +123,11 @@ export async function handleUpdateFriendLink(
     values.push(String(body.description));
   }
   if (body.logo_url !== undefined) {
+    if (
+      String(body.logo_url).trim() !== "" &&
+      !isValidUrl(String(body.logo_url))
+    )
+      return error(ErrorCodes.VALIDATION_FAILED, "Invalid logo URL format");
     sets.push("logo_url = ?");
     values.push(String(body.logo_url));
   }

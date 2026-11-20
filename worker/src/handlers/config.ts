@@ -1,5 +1,10 @@
 import { Env } from "../index";
-import { successResponse, error, ErrorCodes } from "../utils/response";
+import {
+  successResponse,
+  error,
+  ErrorCodes,
+  parseJsonBody,
+} from "../utils/response";
 import {
   PROFILE_CARD_KEY,
   parseProfileCardJson,
@@ -62,7 +67,8 @@ export async function handleUpdateConfig(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   // 先整体校验、再统一写入：旧实现边校验边 UPDATE，任一后续键非法时
   // 前面的键已经落库，前端却只会看到一条失败提示（部分成功）。

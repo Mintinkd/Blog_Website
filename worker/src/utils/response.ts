@@ -60,6 +60,22 @@ export function error(code: number, message: string, status = 400): Response {
 export function successResponse<T>(data: T, message = "ok"): Response {
   return Response.json(success(data, message));
 }
+/**
+ * 安全解析 JSON 请求体。解析失败时返回 400 错误响应，而非让异常冒泡到 router 层变成 500。
+ *
+ * 用法：
+ *   const body = await parseJsonBody(request);
+ *   if (body instanceof Response) return body;
+ */
+export async function parseJsonBody<T = Record<string, unknown>>(
+  request: Request
+): Promise<T | Response> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    return error(ErrorCodes.VALIDATION_FAILED, "请求体不是合法的 JSON", 400);
+  }
+}
 
 export function paginatedResponse<T>(
   items: T[],

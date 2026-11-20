@@ -5,6 +5,7 @@ import {
   ErrorCodes,
   unauthorized,
   rateLimited,
+  parseJsonBody,
 } from "../utils/response";
 import {
   verifyToken,
@@ -86,8 +87,7 @@ export async function getJwtSecret(env: Env): Promise<string> {
       .bind(secret)
       .run();
     console.error(
-      "JWT secret not configured in site_config; auto-generated and persisted:",
-      secret
+      "JWT secret not configured in site_config; auto-generated and persisted (value not logged for security)."
     );
     return secret;
   }
@@ -220,7 +220,8 @@ export async function handleLogin(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
   const { username, password } = body;
 
   if (!username || !password) {
@@ -438,7 +439,8 @@ export async function handleChangePassword(
 ): Promise<Response> {
   if (!authResult) return unauthorized("Authentication required");
 
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
   const { old_password, new_password } = body;
 
   if (!old_password || !new_password) {
@@ -516,7 +518,8 @@ export async function handleCreateUser(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
   const { username, password, display_name, role } = body;
 
   if (!username || !password) {
@@ -575,7 +578,8 @@ export async function handleUpdateUser(
   params: Record<string, string>
 ): Promise<Response> {
   const { id } = params;
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   // #44：与登录同口径，超长口令在查库与哈希前拒绝
   if (body.password && passwordTooLong(String(body.password))) {

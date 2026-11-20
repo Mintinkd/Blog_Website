@@ -5,6 +5,7 @@ import {
   error,
   forbidden,
   ErrorCodes,
+  parseJsonBody,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
 import type { AuthResult } from "../middleware/auth";
@@ -95,7 +96,8 @@ export async function handleCreateTag(
   authResult?: AuthResult
 ): Promise<Response> {
   // #78 / T2：请求体按 CreateTagRequest 接（可选 category_id 由 T3 消费）；旧 {name, slug} 兼容。
-  const body = (await request.json()) as CreateTagRequest;
+  const body = await parseJsonBody<CreateTagRequest>(request);
+  if (body instanceof Response) return body;
 
   const result = validate(body as unknown as Record<string, unknown>, [
     {
@@ -207,7 +209,8 @@ export async function handleUpdateTag(
   authResult?: AuthResult
 ): Promise<Response> {
   const { id } = params;
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const cid = Number(body.category_id);
   if (!Number.isInteger(cid) || cid <= 0) {

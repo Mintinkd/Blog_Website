@@ -7,8 +7,9 @@ import {
   forbidden,
   unauthorized,
   ErrorCodes,
+  parseJsonBody,
 } from "../utils/response";
-import { validate, isValidSlug } from "../utils/validator";
+import { validate, isValidSlug, isValidUrl } from "../utils/validator";
 import { slugExists } from "../services/article_service";
 import { getUserIdByUsername } from "../services/user_service";
 import type { AuthResult } from "../middleware/auth";
@@ -183,7 +184,8 @@ export async function handleCreateArticle(
   params: Record<string, string>,
   authResult?: AuthResult
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const result = validate(body, [
     {
@@ -215,6 +217,14 @@ export async function handleCreateArticle(
     if (await slugExists(env, slug)) {
       return error(ErrorCodes.CONFLICT, "链接标识已被占用，请更换");
     }
+  }
+
+  if (body.cover_image && String(body.cover_image).trim() !== "") {
+    if (!isValidUrl(String(body.cover_image)))
+      return error(
+        ErrorCodes.VALIDATION_FAILED,
+        "Invalid cover image URL format"
+      );
   }
 
   const { createArticle, TagCategoryConflictError } =
@@ -264,7 +274,8 @@ export async function handleUpdateArticle(
     }
   }
 
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   let slug: string | undefined;
   if (body.slug !== undefined && String(body.slug).trim() !== "") {
@@ -278,6 +289,17 @@ export async function handleUpdateArticle(
     if (await slugExists(env, slug, Number(id))) {
       return error(ErrorCodes.CONFLICT, "链接标识已被占用，请更换");
     }
+  }
+
+  if (
+    body.cover_image !== undefined &&
+    String(body.cover_image).trim() !== ""
+  ) {
+    if (!isValidUrl(String(body.cover_image)))
+      return error(
+        ErrorCodes.VALIDATION_FAILED,
+        "Invalid cover image URL format"
+      );
   }
 
   const { updateArticle, TagCategoryConflictError } =
@@ -294,7 +316,12 @@ export async function handleUpdateArticle(
           ? null
           : undefined,
       tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
-      status: body.status ? (body.status as "draft" | "published") : undefined,
+      status:
+        body.status === "published"
+          ? "published"
+          : body.status === "draft"
+            ? "draft"
+            : undefined,
       summary: optionalTextField(body.summary),
       cover_image: optionalTextField(body.cover_image),
     });

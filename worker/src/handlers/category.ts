@@ -5,6 +5,7 @@ import {
   error,
   forbidden,
   ErrorCodes,
+  parseJsonBody,
 } from "../utils/response";
 import { validate, isValidSlug } from "../utils/validator";
 import { getUserIdByUsername } from "../services/user_service";
@@ -63,7 +64,8 @@ export async function handleCreateCategory(
   params: Record<string, string>,
   authResult?: AuthResult
 ): Promise<Response> {
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const result = validate(body, [
     {
@@ -150,7 +152,8 @@ export async function handleUpdateCategory(
     }
   }
 
-  const body = (await request.json()) as Record<string, unknown>;
+  const body = await parseJsonBody(request);
+  if (body instanceof Response) return body;
 
   const sets: string[] = [];
   const values: unknown[] = [];

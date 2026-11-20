@@ -201,8 +201,7 @@ async function getJwtSecretFromDb(env: Env): Promise<string> {
       .bind(secret)
       .run();
     console.error(
-      "JWT secret not configured; auto-generated and persisted:",
-      secret
+      "JWT secret not configured; auto-generated and persisted (value not logged for security)."
     );
     return secret;
   }
