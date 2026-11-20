@@ -141,14 +141,23 @@ describe("applySettings（#103 settings 应用）", () => {
     expect(root.getAttribute("data-parallax")).toBe("off");
     expect(root.style.getPropertyValue("--parallax-speed")).toBe("0.08");
 
-    const style = document.getElementById(
-      "site-settings-style"
+    // #111 item 2：断言具体节点 id（与 utils/settings.ts 的 STYLE_ID 一致）
+    // 和关键 CSS 变量内容，不再用 `style ?? querySelector("style")` 兜底。
+    // 旧测试查 "site-settings-style"（不存在）→ getElementById 返回 null
+    // → fallback 到任意 <style> → toContain("--") 恒绿（假绿）。
+    const styleEl = document.getElementById(
+      "dynamic-settings"
     ) as HTMLStyleElement | null;
-    // 样式节点由实现创建（id 见 utils/settings.ts 的 STYLE_ID）
-    const injected =
-      style ?? (document.querySelector("style") as HTMLStyleElement);
-    expect(injected).not.toBeNull();
-    expect(injected.textContent).toContain("--");
+    expect(
+      styleEl,
+      "applySettings 应创建 id=dynamic-settings 的 <style> 节点"
+    ).not.toBeNull();
+    expect(styleEl!.id).toBe("dynamic-settings");
+    // CSS 变量注入：textContent 必须含 -- 前缀的自定义属性
+    expect(styleEl!.textContent).toContain("--");
+    // 具体变量：parallax-speed 已在 root.style 上设值，
+    // style 节点应包含其他 CSS 变量（如配色 / 布局）
+    expect(styleEl!.textContent).toMatch(/--[a-z]/);
   });
 });
 

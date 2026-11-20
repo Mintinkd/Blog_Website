@@ -138,6 +138,19 @@ CI 门禁在 `.github/workflows/deploy.yml` 的同一 Playwright 步骤新增 `s
 
 `scripts/verify-ssr-consistency.mjs`（issue #113 / L4）在 `npm run build` 后运行，纯本地文件检查构建产物结构（关键页面存在、外部 module script 带 hash 指纹、CSP 已收紧不含 unsafe-inline 且含 sha256 hash、_worker.js / _routes.json / _assets/ 存在、ClientRouter 运行时在场），故意改一个字节应红；排除远端噪声（不发起任何网络请求），接入 `deploy.yml` 构建后步骤。
 
+### 测试质量整改（issue #111 / L4）
+
+push 审查发现 8 项「假绿风险」——测试通过的理由与被测代码无关，改被测代码不会让测试变红。整改后每项都有「改前红 / 改后绿」的判别性断言：
+
+1. **reading-time-migration.test.ts**：去掉跨包 import `workerCalculateReadingTime` 的互证；script 侧与 worker 侧各写独立手写字面量，改一侧不得另一侧自动变绿。
+2. **base-layout-modules.test.ts**：删除 `style ?? querySelector('style')` 兜底（会匹配任意 `<style>` 使 `toContain('--')` 恒过）；改为断言 `id='dynamic-settings'` 具体节点与关键 CSS 变量内容。
+3. **lint-config.test.ts**：`no-undef` 按块分别断言（JS 块 `error`，TS / Vue 块 `off`），与 `eslint.config.mjs` 事实一致；旧断言只查全局 `error`，TS/Vue 块实为 `off` 时不红。
+4. **api-proxy-guard.test.ts**：路径逃逸改走真实 `ALL` handler 验证 `%2e%2e` / `../` 不转发到上游 Worker；旧断言只读 URL 归一化，handler 逻辑改了不红。
+5. **layout 模块**：`tests/layout-img-proxy-fallback.test.ts`（新增）钉住 `initImgProxyFallback()` 的 URL 构造与 error listener 行为；纯 DOM 模块（back-to-top / dynamic-title / favicon-light / hitokoto / mobile-nav / motion-boot）在 `tests/layout-modules.test.ts` 注释中明确标注由 Playwright `verify-all-pages-nav.mjs` / `verify-visual-friendliness.mjs` 承担，不重复造 DOM 断言。
+6. **workflow-yaml-guard.test.ts**（新增）：用 `js-yaml`（astro / eslint 传递依赖，已声明为 devDependency）解析 `deploy.yml`，断言语法合法、无 tab 缩进、关键结构（on / jobs / steps）存在；旧状态无任何 YAML 语法门禁，workflow 语法错误只在 GitHub Actions 运行时才暴露。
+7. **deploy-base-url-drift.test.ts**（新增）：锁定 `DEPLOY_BASE_URL` 三份来源的关系——脚本默认（`wait-for-deploy.mjs` 的 `DEFAULT_BASE_URL`）与测试断言一致、CI 默认（`deploy.yml` fallback）刻意不同（CI 打 Pages 别名避免 WAF 拦截、脚本默认打自定义域供本地用）、两值均为 https URL；改任一份都会红。
+8. **d1-migration-verify.test.ts**：`EXPECTED_D1_COLUMNS`（新增导出）登记迁移脚本添加的列（`articles.reading_time`），`schema-verify.sql` 用 `UNION ALL` 合并 `pragma_table_info` 查询；新增「脚本加的列必须在核对清单里」断言——从 `migrate-reading-time.mjs` 源码提取 `ADD COLUMN` 语句，逐列校验在 `EXPECTED_D1_COLUMNS` 中登记。
+
 ### 后台移动端（CI + 手动）
 
 后台数据表在 `< 768px` 改为卡片布局，字段名依赖 `data-label`。回归脚本用本地 fixture

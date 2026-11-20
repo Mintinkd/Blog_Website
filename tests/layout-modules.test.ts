@@ -15,9 +15,11 @@ import {
  * - `site-config`：整会话只 fetch 一次配置，每次 `astro:page-load` 重应用（写错会在
  *   ClientRouter 导航后丢站点名 / 副标题，或者每次导航都打一次 `/config`）。
  *
- * 其余 9 个模块是纯 DOM 装饰（回到顶部 / 移动导航 / favicon / 标题），
- * 由 Playwright 的 `verify-all-pages-nav.mjs` 与 `visual-friendliness` 脚本覆盖，
- * 这里不重复造 DOM 断言。
+ * 其余 9 个模块：
+ * - `img-proxy-fallback`：有 URL 构造逻辑，行为断言在 `layout-img-proxy-fallback.test.ts`（#111 item 5）。
+ * - 纯 DOM 装饰（back-to-top / dynamic-title / favicon-light / hitokoto / mobile-nav / motion-boot）：
+ *   由 Playwright 的 `verify-all-pages-nav.mjs` 与 `visual-friendliness` 脚本覆盖，
+ *   在 `docs/agents/testing.md` 明确标注（#111 item 5）。
  */
 
 const PROXY_KEY = "fetch-proxy-domains";

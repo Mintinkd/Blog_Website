@@ -68,15 +68,50 @@ describe("代理路径与超时（issue #98）", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("/api/v1/articles");
   });
 
-  it("入口 URL 解析即折叠点段（%2e%2e / ../ 不以原样进入 handler，平台层防线）", () => {
-    // 票面点名的攻击载荷：WHATWG URL 在解析阶段就规范化，规范化后的路径
-    // 不再命中 /api/v1/[...path] 路由——攻击面在入口即被关闭，无需 handler 前缀校验。
-    expect(
-      new URL("https://site.example/api/v1/%2e%2e/admin/import").pathname
-    ).toBe("/api/admin/import");
-    expect(
-      new URL("https://site.example/api/v1/../../admin/import").pathname
-    ).toBe("/admin/import");
+  it("路径逃逸：%2e%2e 经 URL 归一化后不命中 /api/v1 路由，handler 不转发逃逸路径（#111 item 4）", async () => {
+    // #111 item 4：旧测试只断言 URL 归一化结果（源码文本级），
+    // 不验证 handler 行为。改为用真实 request 打 handler，验证上游 fetch URL
+    // 不含逃逸后的 /admin/import 直达路径。
+
+    // ① WHATWG URL 在解析阶段折叠点段（平台层防线）
+    const normalized = new URL(
+      "https://site.example/api/v1/%2e%2e/admin/import"
+    );
+    expect(normalized.pathname).toBe("/api/admin/import");
+    expect(normalized.pathname).not.toMatch(/^\/api\/v1\//);
+
+    // ② 即便归一化后的 URL 被传给 handler（绕过平台路由），
+    // handler 构造的上游 URL 也不会让逃逸路径直达 /admin/import——
+    // 它只会被拼到 /api/v1/ 下，不会逃逸到 /api/v1 之外
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new Request(normalized.toString());
+    await ALL({ request, url: normalized });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const upstreamUrl = String((fetchMock.mock.calls as unknown[][])[0][0]);
+    // 上游 URL 必须以 /api/v1/ 开头（handler 始终在 /api/v1 下拼接）
+    expect(upstreamUrl).toMatch(/\/api\/v1\//);
+    // 逃逸后的 /admin/import 不得作为上游路径的直接段（不在 /api/v1 之外）
+    expect(upstreamUrl).not.toMatch(/\.\./);
+  });
+
+  it("路径逃逸：../ 同样被 URL 归一化折叠，handler 不转发逃逸路径", async () => {
+    const normalized = new URL(
+      "https://site.example/api/v1/../../admin/import"
+    );
+    expect(normalized.pathname).toBe("/admin/import");
+    expect(normalized.pathname).not.toMatch(/^\/api\/v1\//);
+
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new Request(normalized.toString());
+    await ALL({ request, url: normalized });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const upstreamUrl = String((fetchMock.mock.calls as unknown[][])[0][0]);
+    expect(upstreamUrl).toMatch(/\/api\/v1\//);
+    expect(upstreamUrl).not.toMatch(/\.\./);
   });
 
   it("上游 fetch 拒绝 → 502 JSON（真实行为，2026-11-17 审查替换源码文本断言）", async () => {

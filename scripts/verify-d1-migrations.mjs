@@ -38,6 +38,17 @@ export const EXPECTED_D1_OBJECTS = [
 ];
 
 /**
+ * 迁移脚本添加的列（#111 item 8）。
+ * migrate-reading-time.mjs 给 articles 表加 reading_time 列；
+ * 此列不在 sqlite_master 中（它是表内列，不是独立对象），
+ * 需通过 PRAGMA table_info 检查。schema-verify.sql 用 UNION 合并查询。
+ * 新增迁移脚本加列时须同步此清单（tests/d1-migration-verify.test.ts 锁定）。
+ */
+export const EXPECTED_D1_COLUMNS = [
+  { table: "articles", column: "reading_time" },
+];
+
+/**
  * wrangler d1 execute --json 输出解析：取第一组 results，坏输入抛错（fail-closed）。
  *
  * CI 实测（2026-11-16）：wrangler 会把进度行（「├ Checking if file needs uploading」

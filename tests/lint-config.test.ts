@@ -35,14 +35,46 @@ describe("ESLint 门禁契约（#102）", () => {
     expect(worker.scripts.lint).toContain("--max-warnings=0");
   });
 
-  it("关键规则为 error 级：未使用变量（TS 版）/ 重复声明 / 未定义标识符", () => {
+  it("关键规则为 error 级：未使用变量（TS 版）/ 重复声明", () => {
     // 未使用变量交给 @typescript-eslint（核心实现不认类型引用，会对 import type 误报）
     expect(config).toMatch(/"no-unused-vars":\s*"off"/);
     expect(config).toMatch(
       /"@typescript-eslint\/no-unused-vars":\s*\[\s*"error"/
     );
     expect(config).toMatch(/"no-redeclare":\s*"error"/);
-    expect(config).toMatch(/"no-undef":\s*"error"/);
+  });
+
+  it("no-undef 按块分别设置：JS 块 error，TS / Vue 块 off（#111 item 3）", () => {
+    // #111 item 3 假绿风险：旧测试只断言 `"no-undef": "error"` 存在于配置中，
+    // 但 TS 块（②）和 Vue 块（③）实际为 `"no-undef": "off"`——
+    // 旧断言通过不代表 TS/Vue 也有 no-undef 保护，事实上它们刻意关掉
+    // （TS 由编译器负责未声明标识符，no-undef 在 TS 上是反模式）。
+    // 改为按块分别断言，与 eslint.config.mjs 事实一致。
+
+    // 用块标记切分：① 到 ② 之间是 JS 块，② 到 ③ 之间是 TS 块，③ 到结尾是 Vue 块。
+    // 旧正则 `rules:\s*\{[\s\S]*?\n\s*\},` 因嵌套对象提前收尾而误匹配。
+    const block1 = config.indexOf("// ①");
+    const block2 = config.indexOf("// ②");
+    const block3 = config.indexOf("// ③");
+    expect(block1, "应存在 ① 标记").toBeGreaterThan(-1);
+    expect(block2, "应存在 ② 标记").toBeGreaterThan(block1);
+    expect(block3, "应存在 ③ 标记").toBeGreaterThan(block2);
+
+    const jsText = config.slice(block1, block2);
+    const tsText = config.slice(block2, block3);
+    const vueText = config.slice(block3);
+
+    // ① JS / MJS 块：no-undef 为 error
+    expect(jsText).toMatch(/"no-undef":\s*"error"/);
+    expect(jsText).not.toMatch(/"no-undef":\s*"off"/);
+
+    // ② TypeScript 块：no-undef 为 off（TS 编译器负责）
+    expect(tsText).toMatch(/"no-undef":\s*"off"/);
+    expect(tsText).not.toMatch(/"no-undef":\s*"error"/);
+
+    // ③ Vue 块：no-undef 为 off
+    expect(vueText).toMatch(/"no-undef":\s*"off"/);
+    expect(vueText).not.toMatch(/"no-undef":\s*"error"/);
   });
 
   it("忽略生成物与本地 agent 目录（不把生成/临时文件当源码审）", () => {

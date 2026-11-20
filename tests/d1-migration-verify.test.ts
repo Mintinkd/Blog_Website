@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  EXPECTED_D1_COLUMNS,
   EXPECTED_D1_OBJECTS,
   findMissingObjects,
   parseD1ApiResponse,
@@ -34,6 +35,47 @@ describe("D1 迁移核对", () => {
     );
   });
 
+  it("EXPECTED_D1_COLUMNS 覆盖迁移脚本添加的列（#111 item 8）", () => {
+    // migrate-reading-time.mjs 给 articles 表加 reading_time 列
+    expect(EXPECTED_D1_COLUMNS).toEqual([
+      { table: "articles", column: "reading_time" },
+    ]);
+  });
+
+  it("schema-verify.sql 包含 EXPECTED_D1_COLUMNS 的列核对（#111 item 8）", () => {
+    const sql = readFileSync(
+      path.join(ROOT, "worker", "schema-verify.sql"),
+      "utf8"
+    );
+    // 每个预期列都应在 schema-verify.sql 中出现
+    for (const { table, column } of EXPECTED_D1_COLUMNS) {
+      expect(sql, `${table}.${column} 应在核对 SQL 中`).toContain(column);
+      expect(sql).toContain(`pragma_table_info('${table}')`);
+    }
+  });
+
+  it("迁移脚本加的列必须在核对清单里（#111 item 8 守卫）", () => {
+    // 从 migrate-reading-time.mjs 源码提取 ALTER TABLE ADD COLUMN 语句
+    const migrateScript = readFileSync(
+      path.join(ROOT, "scripts", "migrate-reading-time.mjs"),
+      "utf8"
+    );
+    // 提取所有 ADD COLUMN <name> 的列名
+    const addedColumns = [
+      ...migrateScript.matchAll(/ADD\s+COLUMN\s+(\w+)\s+/gi),
+    ].map((m) => m[1]);
+
+    // 每个脚本加的列都必须在 EXPECTED_D1_COLUMNS 中
+    for (const col of addedColumns) {
+      const inCheckList = EXPECTED_D1_COLUMNS.some((c) => c.column === col);
+      expect(
+        inCheckList,
+        `迁移脚本加了列 ${col}，但不在 EXPECTED_D1_COLUMNS 核对清单里——` +
+          `新增列必须在核对清单中登记（#111 item 8）`
+      ).toBe(true);
+    }
+  });
+
   it("schema-verify.sql 的对象清单与 EXPECTED_D1_OBJECTS 一致（单一来源守卫）", () => {
     const sql = readFileSync(
       path.join(ROOT, "worker", "schema-verify.sql"),
@@ -42,8 +84,15 @@ describe("D1 迁移核对", () => {
     for (const name of EXPECTED_D1_OBJECTS) {
       expect(sql, `${name} 应在核对 SQL 中`).toContain(`'${name}'`);
     }
+    // #111 item 8：SQL 现在还含 EXPECTED_D1_COLUMNS 的列名 + 表名，
+    // 所以 quoted 包含对象名 + 列名 + 表名，需合并比对
+    const allExpected = [
+      ...EXPECTED_D1_OBJECTS,
+      ...EXPECTED_D1_COLUMNS.map((c) => c.column),
+      ...EXPECTED_D1_COLUMNS.map((c) => c.table),
+    ];
     const quoted = [...sql.matchAll(/'([a-zA-Z0-9_]+)'/g)].map((m) => m[1]);
-    expect(quoted.sort()).toEqual([...EXPECTED_D1_OBJECTS].sort());
+    expect(quoted.sort()).toEqual([...allExpected].sort());
   });
 
   it("parseWranglerJson 解析 wrangler --json 的输出并取第一组 results", () => {
