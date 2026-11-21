@@ -65,6 +65,7 @@ const ssrHtml = loaded.status === 'ok'
   }
   /* #81 §4：卡片改 <article>，分类名与标签 chip 各自独立可点（无嵌套 <a>） */
   .categories-page .category-item {
+    position: relative;
     display: flex;
     flex: 1 1 220px;
     flex-direction: column;
@@ -80,6 +81,19 @@ const ssrHtml = loaded.status === 'ok'
   .categories-page .category-item:hover {
     border-color: var(--color-accent);
     transform: translateY(-1px);
+  }
+  /* 整卡可点（stretched link）：分类名链接的伪元素铺满卡片，点方框内任意
+     空白处（计数 / 描述 / 内边距）都跳到该分类；不用整卡 <a>，避免与标签
+     chip 形成嵌套链接。 */
+  .categories-page .category-name::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  /* 键盘聚焦分类名时高亮整卡，焦点提示与点击热区一致 */
+  .categories-page .category-item:focus-within {
+    border-color: var(--color-accent);
   }
   .categories-page .category-head {
     display: flex;
@@ -111,6 +125,9 @@ const ssrHtml = loaded.status === 'ok'
     min-width: 0;
   }
   .categories-page .category-tag-chip {
+    /* 抬到整卡覆盖层之上，chip 仍点到自己的筛选页而不是分类页 */
+    position: relative;
+    z-index: 1;
     padding: 0.1rem 0.5rem;
     background-color: var(--color-tag-bg);
     color: var(--color-tag-text);

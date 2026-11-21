@@ -119,7 +119,9 @@ export interface CategoryCardRenderLabels {
 /**
  * /categories 目录页卡片渲染（#81 §4）：
  * `<article>` 卡片 + 独立链接（分类名可点、标签 chip 可点），**禁止**整卡
- * `<a>` 内再嵌标签链接的嵌套交互元素；卡片显示 article_count / tag_count
+ * `<a>` 内再嵌标签链接的嵌套交互元素；整卡点击由 `.category-name` 的拉伸
+ * 伪元素铺满卡片实现（纯 CSS，见 /categories 页样式，标签 chip 抬到覆盖层
+ * 之上保持独立可点）；卡片显示 article_count / tag_count
  * （tag_count 缺省用分组数兜底）与前 3 个标签 chip；未分类固定最后，其余按文章数降序。
  * 标签 chip 直接指本分类筛选页（`tagChipHref`，#116），不再绕 `/tags/:slug`。
  */
