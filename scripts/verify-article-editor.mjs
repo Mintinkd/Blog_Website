@@ -249,6 +249,17 @@ async function withScenario(name, browser, run, { allow = [] } = {}) {
       body: PLACEHOLDER_PNG,
     });
   });
+  // #125：线上预览弹窗（场景 9）会把 mock 语料里的 data-embed 链接渲染成
+  // iframe 并请求目标站。CI 无外网，example.com 返回 404 会被控制台断言
+  // 当成页面报错。这里把外部内嵌目标 stub 成本地 200 页面：回归只验证
+  // 弹窗层级 / 交互 / 内容更新，不依赖外网，也不放宽控制台干净断言。
+  await page.route("https://example.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      body: "<!doctype html><title>embed fixture</title><p>embed fixture</p>",
+    });
+  });
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({
@@ -1002,87 +1013,95 @@ async function scenarioLockConflicts(browser) {
   await resetMock();
 }
 
-
 /* ------------------------------------------------------------------ *
  * 检查单 9（#125）：线上预览弹窗 z-index 高于编辑器全屏遮罩。
  * ------------------------------------------------------------------ */
 async function scenarioPreviewDialog(browser) {
   await resetMock();
-  await withScenario("9. 线上预览弹窗可见且 z-index 高于编辑器壳", browser, async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await openEditor(page);
-    await waitForWysiwyg(page);
+  await withScenario(
+    "9. 线上预览弹窗可见且 z-index 高于编辑器壳",
+    browser,
+    async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await openEditor(page);
+      await waitForWysiwyg(page);
 
-    // 点击「线上预览」按钮
-    const previewBtn = page.locator(".preview-toggle").getByRole("button", { name: "线上预览", exact: true });
-    await previewBtn.click();
+      // 点击「线上预览」按钮
+      const previewBtn = page
+        .locator(".preview-toggle")
+        .getByRole("button", { name: "线上预览", exact: true });
+      await previewBtn.click();
 
-    // 弹窗 overlay 应可见
-    const overlay = page.locator(".editor-preview-overlay");
-    await overlay.waitFor({ state: "visible", timeout: 10000 });
+      // 弹窗 overlay 应可见
+      const overlay = page.locator(".editor-preview-overlay");
+      await overlay.waitFor({ state: "visible", timeout: 10000 });
 
-    // 断言 z-index 高于编辑器全屏壳（300）
-    const zIndexInfo = await page.evaluate(() => {
-      const ov = document.querySelector(".editor-preview-overlay");
-      const shell = document.querySelector(".article-editor-overlay");
-      return {
-        overlayZ: ov ? parseInt(getComputedStyle(ov).zIndex, 10) : null,
-        shellZ: shell ? parseInt(getComputedStyle(shell).zIndex, 10) : null,
-      };
-    });
-    assert.ok(
-      zIndexInfo.overlayZ !== null && zIndexInfo.overlayZ > zIndexInfo.shellZ,
-      `预览弹窗 z-index（${zIndexInfo.overlayZ}）应高于编辑器壳（${zIndexInfo.shellZ}）`
-    );
+      // 断言 z-index 高于编辑器全屏壳（300）
+      const zIndexInfo = await page.evaluate(() => {
+        const ov = document.querySelector(".editor-preview-overlay");
+        const shell = document.querySelector(".article-editor-overlay");
+        return {
+          overlayZ: ov ? parseInt(getComputedStyle(ov).zIndex, 10) : null,
+          shellZ: shell ? parseInt(getComputedStyle(shell).zIndex, 10) : null,
+        };
+      });
+      assert.ok(
+        zIndexInfo.overlayZ !== null && zIndexInfo.overlayZ > zIndexInfo.shellZ,
+        `预览弹窗 z-index（${zIndexInfo.overlayZ}）应高于编辑器壳（${zIndexInfo.shellZ}）`
+      );
 
-    // 用 elementFromPoint 断言弹窗中心点确实在最上层
-    const onTop = await page.evaluate(() => {
-      const ov = document.querySelector(".editor-preview-overlay");
-      if (!ov) return false;
-      const rect = ov.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const top = document.elementFromPoint(cx, cy);
-      return top ? (top === ov || ov.contains(top)) : false;
-    });
-    assert.ok(onTop, "预览弹窗中心点应位于最上层（elementFromPoint 命中弹窗）");
+      // 用 elementFromPoint 断言弹窗中心点确实在最上层
+      const onTop = await page.evaluate(() => {
+        const ov = document.querySelector(".editor-preview-overlay");
+        if (!ov) return false;
+        const rect = ov.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const top = document.elementFromPoint(cx, cy);
+        return top ? top === ov || ov.contains(top) : false;
+      });
+      assert.ok(
+        onTop,
+        "预览弹窗中心点应位于最上层（elementFromPoint 命中弹窗）"
+      );
 
-    // 断言预览正文非空且为渲染后的 HTML
-    const previewContent = await page.evaluate(() => {
-      const body = document.querySelector(".editor-preview-dialog .editor-preview");
-      return body ? body.innerHTML.trim() : "";
-    });
-    assert.ok(
-      previewContent.length > 0,
-      "预览正文应非空且为渲染后的 HTML"
-    );
+      // 断言预览正文非空且为渲染后的 HTML
+      const previewContent = await page.evaluate(() => {
+        const body = document.querySelector(
+          ".editor-preview-dialog .editor-preview"
+        );
+        return body ? body.innerHTML.trim() : "";
+      });
+      assert.ok(previewContent.length > 0, "预览正文应非空且为渲染后的 HTML");
 
-    // 按 Esc 只关闭预览弹窗，编辑器仍打开
-    await page.keyboard.press("Escape");
-    await overlay.waitFor({ state: "hidden", timeout: 5000 });
-    const editorStillOpen = await page.locator(".article-editor-overlay").count();
-    assert.equal(editorStillOpen, 1, "Esc 后编辑器应仍打开");
+      // 按 Esc 只关闭预览弹窗，编辑器仍打开
+      await page.keyboard.press("Escape");
+      await overlay.waitFor({ state: "hidden", timeout: 5000 });
+      const editorStillOpen = await page
+        .locator(".article-editor-overlay")
+        .count();
+      assert.equal(editorStillOpen, 1, "Esc 后编辑器应仍打开");
 
-    // 编辑正文后重新打开预览，断言内容已更新
-    await page.evaluate(() => {
-      const pm = document.querySelector(".milkdown-host .ProseMirror");
-      if (pm) {
-        pm.innerHTML = "<p>#125-z-index-regression-test-marker</p>";
-        pm.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    });
-    await previewBtn.click();
-    await overlay.waitFor({ state: "visible", timeout: 10000 });
-    await page.waitForTimeout(300); // 等防抖渲染
-    const updatedContent = await page.evaluate(() => {
-      const body = document.querySelector(".editor-preview-dialog .editor-preview");
-      return body ? body.innerHTML.trim() : "";
-    });
-    assert.ok(
-      updatedContent.length > 0,
-      "编辑后重新打开预览，正文应已更新"
-    );
-  });
+      // 编辑正文后重新打开预览，断言内容已更新
+      await page.evaluate(() => {
+        const pm = document.querySelector(".milkdown-host .ProseMirror");
+        if (pm) {
+          pm.innerHTML = "<p>#125-z-index-regression-test-marker</p>";
+          pm.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      });
+      await previewBtn.click();
+      await overlay.waitFor({ state: "visible", timeout: 10000 });
+      await page.waitForTimeout(300); // 等防抖渲染
+      const updatedContent = await page.evaluate(() => {
+        const body = document.querySelector(
+          ".editor-preview-dialog .editor-preview"
+        );
+        return body ? body.innerHTML.trim() : "";
+      });
+      assert.ok(updatedContent.length > 0, "编辑后重新打开预览，正文应已更新");
+    }
+  );
   await resetMock();
 }
 
