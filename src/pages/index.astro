@@ -22,7 +22,6 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   <section class="article-section">
     <div class="section-header">
       <h2 class="section-title" data-i18n="section.latest_articles">最新文章</h2>
-      <a href="/articles" class="section-link" data-i18n="section.view_all">查看全部 →</a>
     </div>
     <div id="article-list" data-page="1" data-page-size="6">
       <div class="article-grid" id="article-grid"></div>
@@ -278,12 +277,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
         return;
       }
 
-      // 前 6 个分类（文章数降序）；分类色 badge 复用 categoryColors 单源
+      // 前 20 个分类按文章数降序（最火的排最前），单行横向滚动展示；
+      // 分类色 badge 复用 categoryColors 单源
       const { getCategoryColor, categoryBadgeVars } = await import('../utils/categoryColors');
-      const topCats = [...categories]
+      const sortedCats = [...categories]
         .sort((a: any, b: any) => (b.article_count || 0) - (a.article_count || 0))
-        .slice(0, 6);
-      catBox.innerHTML = topCats.map((cat: any) => {
+        .slice(0, 20);
+      catBox.innerHTML = sortedCats.map((cat: any) => {
         const color = getCategoryColor(cat.slug, cat.name);
         const vars = categoryBadgeVars(color);
         return `<a href="/categories/${safePathSegment(cat.slug)}" class="discovery-cat" style="${vars}">
@@ -474,14 +474,34 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
   .taxonomy-discovery {
     margin-top: clamp(1.5rem, 4vw, 2.5rem);
   }
+  /* 单行横向滚动：固定一行不换行，最火的排最前，超出部分在区块内滑动。
+     padding + 负 margin 给 :focus-visible 焦点环留出空间（滚动容器会裁剪
+     溢出内容），视觉上仍与区块标题左对齐。 */
   .discovery-items {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.5rem;
     min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+    padding: 4px 4px 0.5rem;
+    margin: -4px -4px 0;
+  }
+  /* Safari 不支持 scrollbar-color，回落到 webkit 伪元素；横向高度与全站 6px 对齐
+     （全局只设了 width，横向仍是默认值）。 */
+  .discovery-items::-webkit-scrollbar {
+    height: 6px;
+  }
+  .discovery-items::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
   }
   .discovery-cat {
     display: inline-flex;
+    flex: 0 0 auto;
     flex-direction: column;
     gap: 0.15rem;
     min-height: 44px;

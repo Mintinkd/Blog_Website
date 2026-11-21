@@ -456,7 +456,9 @@ async function run() {
       () => document.querySelectorAll('.nav-links a[href="/categories"]').length
     );
     if (navCategoriesLinks !== 0) {
-      failures.push(`${target} 导航仍含「分类」入口：${navCategoriesLinks} 个（#126）`);
+      failures.push(
+        `${target} 导航仍含「分类」入口：${navCategoriesLinks} 个（#126）`
+      );
     }
     const navLinkCount = await page.evaluate(
       () => document.querySelectorAll(".nav-links a").length
@@ -670,7 +672,7 @@ async function run() {
     const mpage = await mobile.newPage({
       viewport: { width: 375, height: 667 },
     });
-    const mobileTargets = ["/tags", "/categories", "/search"];
+    const mobileTargets = ["/", "/tags", "/categories", "/search"];
     if (slugs.cat)
       mobileTargets.push("/categories/" + encodeURIComponent(slugs.cat));
     if (slugs.tag) mobileTargets.push("/tags/" + encodeURIComponent(slugs.tag));
@@ -681,8 +683,30 @@ async function run() {
       );
     }
     const overflowFails = [];
+    const singleRowFails = [];
     for (const target of mobileTargets) {
       await mpage.goto(BASE + target, { waitUntil: "networkidle" });
+      // 首页分类区块固定单行、超出部分区块内横向滚动（最火在前），
+      // 窄屏不得折行；同时下面的横向溢出断言覆盖新区块的滚动容器不撑破页面。
+      if (target === "/") {
+        await mpage.waitForSelector(
+          "#taxonomy-discovery:not([hidden]) #discovery-categories .discovery-cat",
+          { timeout: 15000 }
+        );
+        const rows = await mpage.evaluate(() => {
+          const tops = [
+            ...document.querySelectorAll(
+              "#discovery-categories .discovery-cat"
+            ),
+          ].map((el) => Math.round(el.getBoundingClientRect().top));
+          return new Set(tops).size;
+        });
+        if (rows !== 1) {
+          singleRowFails.push(
+            `/ 分类区块在 375px 折成 ${rows} 行（应单行横向滚动）`
+          );
+        }
+      }
       await mpage.waitForTimeout(600);
       const overflow = await mpage.evaluate(
         () =>
@@ -697,6 +721,11 @@ async function run() {
     if (overflowFails.length) {
       failures.push(
         "375px 无横向滚动（#81 §8）：\n    " + overflowFails.join("\n    ")
+      );
+    }
+    if (singleRowFails.length) {
+      failures.push(
+        "首页分类区块单行检查：\n    " + singleRowFails.join("\n    ")
       );
     }
   } catch (e) {
