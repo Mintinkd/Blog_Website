@@ -176,8 +176,17 @@ function formatDate(dateStr: string): string {
 }
 
 .search-result-item {
+  position: relative;
   padding: 1rem 0;
   border-bottom: 1px solid var(--color-border-light);
+}
+
+/* 整条可点（stretched link）：标题链接的伪元素铺满结果条，点摘要 / 日期 / 空白处
+   同样进入文章页；分类 badge 抬到覆盖层之上，仍点自己的分类页。 */
+.result-title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 
 .search-result-item:last-child {
@@ -231,6 +240,9 @@ function formatDate(dateStr: string): string {
 }
 
 .result-category {
+  /* 抬到整条覆盖层之上，badge 仍点到分类页而不是文章页 */
+  position: relative;
+  z-index: 1;
   padding: 0.1rem 0.5rem;
   background: var(--color-accent-subtle);
   color: var(--color-accent);

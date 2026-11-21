@@ -19,6 +19,12 @@ import {
  * - 分类 badge 一律 `<a href="/categories/:slug">`（可点）；
  * - 标签 title 带所属分类（belongsLabel 前缀）；
  * - 标签归属与文章分类不同时输出 `data-cross-category="1"`（CSS 虚线标记）。
+ *
+ * 整卡可点（stretched link）：卡片外层是 `<article>`，**不是** `<a>`——整卡 `<a>`
+ * 套分类 badge / 标签 chip 会形成嵌套链接，浏览器解析时会把外层 `<a>` 拆成若干个
+ * 空锚点，卡片上除封面外的地方点了不跳转。文章链接只留标题一处（`.card-title-link` /
+ * `.list-card-title-link`），由 CSS 伪元素铺满卡片；badge 与 chip 用
+ * `position: relative; z-index: 1` 抬到覆盖层之上，仍各跳自己的目标。
  */
 
 export interface CardArticle {
@@ -104,6 +110,7 @@ export function renderArticleCard(
 ): string {
   const read = options.readLabel ?? "阅读";
   const date = formatCardDate(article, options);
+  const href = `/articles/${safePathSegment(article.slug)}`;
   const tags = `<div class="${options.variant === "cover" ? "card-tags" : "list-card-tags"}">${renderCardTags(article, options)}</div>`;
 
   const coverHtml =
@@ -133,41 +140,39 @@ export function renderArticleCard(
     const badgeVars = cat ? categoryBadgeVars(catColor) : "";
     return `
       <article class="article-card" data-reveal="fade-up">
-        <a href="/articles/${safePathSegment(article.slug)}" class="card-link">
-          ${coverHtml}
-          <div class="card-body">
-            <div class="card-meta">
-              ${renderCardCategory(article, options, "card-category", badgeVars)}
-              <span class="card-date">${date}</span>
-            </div>
-            <h3 class="card-title">${escapeHtml(article.title)}</h3>
-            <p class="card-summary">${escapeHtml(article.summary || "")}</p>
-            <div class="card-footer">
-              ${tags}
-              <span class="card-read">${article.view_count || 0} ${escapeHtml(read)}</span>
-            </div>
+        ${coverHtml}
+        <div class="card-body">
+          <div class="card-meta">
+            ${renderCardCategory(article, options, "card-category", badgeVars)}
+            <span class="card-date">${date}</span>
           </div>
-        </a>
+          <h3 class="card-title"><a href="${href}" class="card-title-link"><span class="card-title-text">${escapeHtml(article.title)}</span></a></h3>
+          <p class="card-summary">${escapeHtml(article.summary || "")}</p>
+          <div class="card-footer">
+            ${tags}
+            <span class="card-read">${article.view_count || 0} ${escapeHtml(read)}</span>
+          </div>
+        </div>
       </article>`;
   }
 
   return `
       <article class="list-card"${options.coverInList ? ' data-reveal="fade-up"' : ""}>
-        <a href="/articles/${safePathSegment(article.slug)}" class="list-card-link">
+        <div class="list-card-inner">
           ${coverHtml}
           <div class="list-card-body">
             <div class="list-card-meta">
               ${renderCardCategory(article, options, "list-card-category")}
               <span class="list-card-date">${date}</span>
             </div>
-            <h3 class="list-card-title">${escapeHtml(article.title)}</h3>
+            <h3 class="list-card-title"><a href="${href}" class="list-card-title-link">${escapeHtml(article.title)}</a></h3>
             ${article.summary ? `<p class="list-card-summary">${escapeHtml(article.summary)}</p>` : ""}
             <div class="list-card-footer">
               ${tags}
               <span class="list-card-stats">${article.view_count || 0} ${escapeHtml(read)}</span>
             </div>
           </div>
-        </a>
+        </div>
       </article>
     `;
 }

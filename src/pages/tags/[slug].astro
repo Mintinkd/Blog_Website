@@ -325,6 +325,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 
 <style is:global>
   .list-card {
+    position: relative;
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-light);
     border-radius: var(--radius-lg);
@@ -337,10 +338,21 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     box-shadow: var(--shadow-card-hover);
     transform: translateY(-1px);
   }
-  .list-card-link {
-    display: block;
-    text-decoration: none;
+  /* 整卡可点（stretched link）：标题链接的伪元素铺满卡片，点摘要 / 日期 / 阅读数
+     等任意空白处都进入文章页；分类 badge 与标签 chip 抬到覆盖层之上，仍各跳
+     自己的目标。卡片外层不用整卡 <a>——与 chip 嵌套会被浏览器拆成空锚点。 */
+  .list-card-title-link {
     color: inherit;
+  }
+  .list-card-title-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  /* 键盘聚焦标题时高亮整卡，焦点提示与点击热区一致 */
+  .list-card:focus-within {
+    border-color: var(--color-accent);
   }
   .list-card-body {
     padding: clamp(1rem, 2.4vw, 1.25rem) clamp(1rem, 3vw, 1.5rem);
@@ -355,6 +367,9 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     min-width: 0;
   }
   .list-card-category {
+    /* 抬到整卡覆盖层之上，badge 仍点到分类页而不是文章页 */
+    position: relative;
+    z-index: 1;
     color: var(--color-accent);
     font-weight: 500;
     text-decoration: none;
@@ -398,6 +413,9 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     min-width: 0;
   }
   .list-card-tag {
+    /* 抬到整卡覆盖层之上，chip 仍点到自己的筛选页而不是文章页 */
+    position: relative;
+    z-index: 1;
     padding: 0.1rem 0.5rem;
     background-color: var(--color-tag-bg);
     color: var(--color-tag-text);

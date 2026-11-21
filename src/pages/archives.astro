@@ -203,6 +203,14 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
     color: var(--color-accent);
   }
 
+  /* 整行可点（stretched link）：标题链接的伪元素铺满整行，点左侧日期或行内空白
+     同样进入文章页；行内没有其他链接，不需要抬层级。 */
+  .archive-list a::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
   .archive-date {
     color: var(--color-text-tertiary);
     font-size: 0.8rem;

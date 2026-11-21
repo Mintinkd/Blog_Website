@@ -34,6 +34,22 @@ const baseArticle = {
 };
 
 describe("renderArticleCard — list 变体（列表页契约）", () => {
+  it("整卡可点：文章链接只挂在标题上，卡片外层不再是 <a>（整卡 <a> 会与 badge/chip 形成嵌套链接）", () => {
+    const html = renderArticleCard(baseArticle, {
+      variant: "list",
+      readLabel: "阅读",
+    });
+    expect(html).toContain(
+      '<a href="/articles/hello-world" class="list-card-title-link">'
+    );
+    // 外层包装是普通容器：整卡点击交给标题链接的 ::after 覆盖层
+    expect(html).toContain('<div class="list-card-inner">');
+    expect(html).not.toContain('class="list-card-link"');
+    expect(html).not.toContain(
+      'href="/articles/hello-world" class="list-card-link"'
+    );
+  });
+
   it("标签恒为分类筛选页链接（无分类回退 /tags/:slug）；分类 badge 恒为 <a href='/categories/:slug'>", () => {
     const html = renderArticleCard(baseArticle, {
       variant: "list",
@@ -111,6 +127,14 @@ describe("renderArticleCard — list 变体（列表页契约）", () => {
 });
 
 describe("renderArticleCard — cover 变体（首页大卡契约）", () => {
+  it("整卡可点：标题链接带 card-title-link，标题裁切移到内层 span（链接本身不能 overflow）", () => {
+    const html = renderArticleCard(baseArticle, { variant: "cover" });
+    expect(html).toContain(
+      '<a href="/articles/hello-world" class="card-title-link"><span class="card-title-text">'
+    );
+    expect(html).not.toContain('class="card-link"');
+  });
+
   it("有封面时输出 <img>；无封面时输出渐变横幅 + 分类名；标题/摘要转义", () => {
     const withCover = renderArticleCard(
       { ...baseArticle, cover_image: "https://img.example/a.png?x=1&y=2" },
