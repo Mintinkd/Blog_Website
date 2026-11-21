@@ -137,8 +137,8 @@ describe("renderFilterChips — 服务端与客户端共用的筛选 chip（#117
   it("「全部」回无参 basePath，选中态用 aria-current=page（不用 aria-pressed）", () => {
     expect(renderFilterChips("/categories/tech", tags, null, "全部")).toBe(
       '<a class="filter-chip" href="/categories/tech" data-tag="" aria-current="page">全部</a>' +
-        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue">Vue<span class="tag-count">3</span></a>' +
-        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React<span class="tag-count">0</span></a>'
+        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue">Vue</a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React</a>'
     );
   });
 
@@ -146,8 +146,8 @@ describe("renderFilterChips — 服务端与客户端共用的筛选 chip（#117
     const html = renderFilterChips("/categories/tech", tags, "vue", "全部");
     expect(html).toBe(
       '<a class="filter-chip" href="/categories/tech" data-tag="">全部</a>' +
-        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue" aria-current="page">Vue<span class="tag-count">3</span></a>' +
-        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React<span class="tag-count">0</span></a>'
+        '<a class="filter-chip" href="/categories/tech?tag=vue" data-tag="vue" aria-current="page">Vue</a>' +
+        '<a class="filter-chip" href="/categories/tech?tag=react" data-tag="react">React</a>'
     );
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
   });
@@ -162,7 +162,7 @@ describe("renderFilterChips — 服务端与客户端共用的筛选 chip（#117
       )
     ).toBe(
       '<a class="filter-chip" href="/categories/tech" data-tag="">全部</a>' +
-        '<a class="filter-chip" href="/categories/tech?tag=%E5%89%8D%E7%AB%AF" data-tag="前端" aria-current="page">&lt;b&gt;&quot;前端&quot;&lt;/b&gt;<span class="tag-count">1</span></a>'
+        '<a class="filter-chip" href="/categories/tech?tag=%E5%89%8D%E7%AB%AF" data-tag="前端" aria-current="page">&lt;b&gt;&quot;前端&quot;&lt;/b&gt;</a>'
     );
   });
 
@@ -183,7 +183,7 @@ describe("renderFilterChips — 服务端与客户端共用的筛选 chip（#117
         "全部"
       )
     ).toContain(
-      '<a class="filter-chip" href="/categories/tech" data-tag="a&quot;b">坏标签<span class="tag-count">0</span></a>'
+      '<a class="filter-chip" href="/categories/tech" data-tag="a&quot;b">坏标签</a>'
     );
   });
 });

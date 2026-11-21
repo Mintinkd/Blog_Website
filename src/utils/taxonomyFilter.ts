@@ -90,16 +90,13 @@ export function renderFilterChips(
   const allChip =
     `<a class="filter-chip" href="${escapeAttr(buildTagFilterUrl(basePath, null))}" data-tag=""` +
     `${selected === null ? ' aria-current="page"' : ""}>${escapeHtml(allLabel)}</a>`;
+  // chip 只显示标签名：文章数由列表 / 标签页承担，筛选条保持简洁。
   const tagChips = tags
     .map((tag) => {
-      const count = Number.isFinite(tag.article_count)
-        ? Number(tag.article_count)
-        : 0;
       const current = tag.slug === selected ? ' aria-current="page"' : "";
       return (
         `<a class="filter-chip" href="${escapeAttr(buildTagFilterUrl(basePath, tag.slug))}"` +
-        ` data-tag="${escapeAttr(tag.slug)}"${current}>${escapeHtml(tag.name)}` +
-        `<span class="tag-count">${count}</span></a>`
+        ` data-tag="${escapeAttr(tag.slug)}"${current}>${escapeHtml(tag.name)}</a>`
       );
     })
     .join("");
