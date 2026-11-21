@@ -1600,8 +1600,12 @@
 
 /* ===== 文章编辑器状态区（T3 #64） =====
    编辑器组件化后仍复用上面同一套全局类名；这里只补状态机新增节点。 */
+
+/* 文章编辑器内的模态弹窗都必须高于 .article-editor-overlay（z-index 300），
+   否则弹窗被编辑器全屏遮罩盖住不可见（#125）。 */
 .unsaved-dialog-overlay,
-.lock-conflict-overlay {
+.lock-conflict-overlay,
+.editor-preview-overlay {
   z-index: 400;
 }
 .editor-state-panel {

@@ -117,7 +117,6 @@ const initialCss = buildCss(initialSettings);
         </a>
         <div class="nav-links" id="site-nav">
           <a href="/" data-i18n="nav.home">首页</a>
-          <a href="/categories" data-i18n="nav.categories">分类</a>
           <a href="/about" data-i18n="nav.about">关于</a>
         </div>
         <div class="nav-actions">
@@ -277,7 +276,7 @@ const initialCss = buildCss(initialSettings);
     color: #ffffff;
     background: var(--color-accent);
   }
-  /* #118：五项导航（首页 / 文章 / 分类 / 归档 / 关于）在 768–1024px 收窄间距 */
+  /* #118：两项导航（首页 / 关于）在 768–1024px 收窄间距 */
   @media (min-width: 768px) and (max-width: 1024px) {
     .nav-links a {
       padding: 0.4rem 0.6rem;

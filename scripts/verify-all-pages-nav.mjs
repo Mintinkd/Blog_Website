@@ -436,7 +436,7 @@ async function run() {
     if (check && !check(first)) {
       failures.push(`${target} 首次进入未完成加载：${JSON.stringify(first)}`);
     }
-    // 断言 A1（#118/#123）：导航恰好 3 项（首页 / 分类 / 关于），无「标签」「文章」「归档」入口
+    // 断言 A1（#118/#123/#126）：导航恰好 2 项（首页 / 关于），无「标签」「文章」「归档」「分类」入口
     if (navTagLinks !== 0) {
       failures.push(`${target} 导航仍含「标签」入口：${navTagLinks} 个`);
     }
@@ -452,12 +452,18 @@ async function run() {
     if (navArchivesLinks !== 0) {
       failures.push(`${target} 导航仍含「归档」入口：${navArchivesLinks} 个`);
     }
+    const navCategoriesLinks = await page.evaluate(
+      () => document.querySelectorAll('.nav-links a[href="/categories"]').length
+    );
+    if (navCategoriesLinks !== 0) {
+      failures.push(`${target} 导航仍含「分类」入口：${navCategoriesLinks} 个（#126）`);
+    }
     const navLinkCount = await page.evaluate(
       () => document.querySelectorAll(".nav-links a").length
     );
-    if (navLinkCount !== 3) {
+    if (navLinkCount !== 2) {
       failures.push(
-        `${target} 导航项数不为 3（实际 ${navLinkCount}，期望 3：首页 / 分类 / 关于）`
+        `${target} 导航项数不为 2（实际 ${navLinkCount}，期望 2：首页 / 关于）（#126）`
       );
     }
     // 断言 A1b（#121）：首页 taxonomy 区块只剩分类，不再有热门标签入口
