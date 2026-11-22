@@ -8,17 +8,25 @@
  */
 
 const prefersReduce = (): boolean =>
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const isMobile = (): boolean =>
-  window.matchMedia('(max-width: 768px)').matches;
+const isMobile = (): boolean => window.matchMedia("(max-width: 768px)").matches;
+
+/**
+ * 触屏 / 平板（主指针为粗指针）：不做视差、磁吸。
+ * 仅用 `max-width: 768px` 判断会漏掉平板（竖屏 800px、横屏 1024px 以上）。
+ * 平板上「全屏模糊背景层每帧位移 + 大面积毛玻璃」会持续占用合成器预算，
+ * 放大快速滑动时主线程掉帧、入场观测漏帧的概率（见 pendingReveal 注释）。
+ */
+const isCoarsePointer = (): boolean =>
+  window.matchMedia("(pointer: coarse)").matches;
 
 /** 动效强度等级：0=off, 1=reduced, 2=normal（综合系统偏好与配置中心强度） */
 function motionLevel(): number {
   if (prefersReduce()) return 0;
-  const attr = document.documentElement.getAttribute('data-motion-intensity');
-  if (attr === 'off') return 0;
-  if (attr === 'reduced') return 1;
+  const attr = document.documentElement.getAttribute("data-motion-intensity");
+  if (attr === "off") return 0;
+  if (attr === "reduced") return 1;
   return 2;
 }
 
@@ -26,67 +34,111 @@ function motionLevel(): number {
 
 let revealObserver: IntersectionObserver | null = null;
 
+/**
+ * 尚未入场的元素。平板 fling 时元素可能在一帧内整段跨过视口：IO 前后两次观测
+ * 都是「不相交」，收不到 isIntersecting，元素就永远停在 opacity: 0——表现为
+ * 「卡片 / 区块整片空白，继续滑动又恢复」。因此除 IO 外再加一层 scroll 兜底，
+ * 把已到达 / 已越过视口的元素补上。
+ */
+const pendingReveal = new Set<HTMLElement>();
+let revealSweepHandler: (() => void) | null = null;
+
+function markRevealed(el: HTMLElement): void {
+  el.classList.add("is-revealed");
+  pendingReveal.delete(el);
+  revealObserver?.unobserve(el);
+}
+
+function sweepReveal(): void {
+  if (pendingReveal.size === 0) return;
+  const vh = window.innerHeight;
+  pendingReveal.forEach((el) => {
+    const rect = el.getBoundingClientRect();
+    // 顶部已进入视口（与 IO 的 -40px rootMargin 同口径），或已被整段滚过
+    if (rect.top < vh - 40 || rect.bottom <= 0) markRevealed(el);
+  });
+}
+
+function bindRevealSweep(): void {
+  if (revealSweepHandler) return;
+  let raf = 0;
+  revealSweepHandler = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(sweepReveal);
+  };
+  window.addEventListener("scroll", revealSweepHandler, { passive: true });
+  window.addEventListener("resize", revealSweepHandler, { passive: true });
+}
+
 function ensureRevealObserver(): IntersectionObserver {
   if (revealObserver) return revealObserver;
   revealObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-revealed');
-          revealObserver!.unobserve(entry.target);
-        }
+        if (entry.isIntersecting) markRevealed(entry.target as HTMLElement);
       }
     },
-    { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
   );
   return revealObserver;
 }
 
 function injectStagger(root: ParentNode): void {
-  root.querySelectorAll<HTMLElement>('[data-reveal-stagger]').forEach((parent) => {
-    Array.from(parent.children).forEach((child, i) => {
-      const el = child as HTMLElement;
-      if (el.matches('[data-reveal]')) {
-        el.style.setProperty('--i', String(i));
-      }
+  root
+    .querySelectorAll<HTMLElement>("[data-reveal-stagger]")
+    .forEach((parent) => {
+      Array.from(parent.children).forEach((child, i) => {
+        const el = child as HTMLElement;
+        if (el.matches("[data-reveal]")) {
+          el.style.setProperty("--i", String(i));
+        }
+      });
     });
-  });
 }
 
 export function initReveal(root: ParentNode = document): void {
-  const targets = root.querySelectorAll<HTMLElement>('[data-reveal]');
+  const targets = root.querySelectorAll<HTMLElement>("[data-reveal]");
   if (motionLevel() === 0) {
     // 动效全关 / 减弱偏好：直接显示，不做入场
-    targets.forEach((el) => el.classList.add('is-revealed'));
+    targets.forEach((el) => el.classList.add("is-revealed"));
     return;
   }
   injectStagger(root);
   const io = ensureRevealObserver();
-  targets.forEach((el) => io.observe(el));
+  bindRevealSweep();
+  targets.forEach((el) => {
+    if (el.classList.contains("is-revealed")) return;
+    pendingReveal.add(el);
+    io.observe(el);
+  });
+  // 首屏 / 跨页导航后立即补一次：已经越过视口的元素不该再等滚动事件
+  sweepReveal();
 }
 
 // 动态渲染（文章卡片 / 列表 / 归档 / 搜索结果）后通知重新扫描新节点
-if (typeof window !== 'undefined') {
-  window.addEventListener('motion:refresh', () => initReveal());
+if (typeof window !== "undefined") {
+  window.addEventListener("motion:refresh", () => initReveal());
 }
 
 /* ---------- 2. 磁吸按钮 ---------- */
 
 export function initMagnetic(): void {
-  if (motionLevel() < 2 || isMobile()) return;
-  document.querySelectorAll<HTMLElement>('[data-hover="magnetic"]').forEach((el) => {
-    const onMove = (e: MouseEvent) => {
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left - rect.width / 2;
-      const y = e.clientY - rect.top - rect.height / 2;
-      el.style.transform = `translate(${x * 0.18}px, ${y * 0.18}px)`;
-    };
-    const onLeave = () => {
-      el.style.transform = '';
-    };
-    el.addEventListener('mousemove', onMove);
-    el.addEventListener('mouseleave', onLeave);
-  });
+  if (motionLevel() < 2 || isMobile() || isCoarsePointer()) return;
+  document
+    .querySelectorAll<HTMLElement>('[data-hover="magnetic"]')
+    .forEach((el) => {
+      const onMove = (e: MouseEvent) => {
+        const rect = el.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        el.style.transform = `translate(${x * 0.18}px, ${y * 0.18}px)`;
+      };
+      const onLeave = () => {
+        el.style.transform = "";
+      };
+      el.addEventListener("mousemove", onMove);
+      el.addEventListener("mouseleave", onLeave);
+    });
 }
 
 /* ---------- 3. 阅读进度条 ---------- */
@@ -94,13 +146,13 @@ export function initMagnetic(): void {
 // scroll 监听只挂一次（每次 page-load 会重复调用本函数，重复绑定会累积监听器）
 let scrollProgressBound = false;
 
-export function initScrollProgress(selector = '.scroll-progress'): void {
+export function initScrollProgress(selector = ".scroll-progress"): void {
   if (motionLevel() === 0) return;
 
   let raf = 0;
   const onScroll = () => {
     cancelAnimationFrame(raf);
-    raf =requestAnimationFrame(() => {
+    raf = requestAnimationFrame(() => {
       // 实时查询：导航后进度条是新 DOM 元素，不能缓存引用
       const bar = document.querySelector<HTMLElement>(selector);
       if (!bar) return;
@@ -108,7 +160,7 @@ export function initScrollProgress(selector = '.scroll-progress'): void {
       const max = h.scrollHeight - h.clientHeight;
       const scrolled = max > 0 ? h.scrollTop / max : 0;
       bar.style.width = `${Math.min(100, Math.max(0, scrolled * 100))}%`;
-      bar.classList.toggle('is-visible', h.scrollTop > 80);
+      bar.classList.toggle("is-visible", h.scrollTop > 80);
     });
   };
 
@@ -117,7 +169,7 @@ export function initScrollProgress(selector = '.scroll-progress'): void {
     return;
   }
   scrollProgressBound = true;
-  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();
 }
 
@@ -127,10 +179,13 @@ let parallaxBound = false;
 // 可变元素集合：scroll 监听只挂一次，但每次 page-load 重新收集导航后的新装饰层/背景层
 let parallaxEls: HTMLElement[] = [];
 
-export function initParallax(selector = '[data-parallax]'): void {
-  if (motionLevel() < 2 || isMobile()) return; // off/reduced/移动端 不启用视差
+export function initParallax(selector = "[data-parallax]"): void {
+  // off/reduced/手机/平板触屏 不启用视差：平板是「滚动时 UI 丢失」的主要现场
+  if (motionLevel() < 2 || isMobile() || isCoarsePointer()) return;
   // 每次调用都重新收集：ClientRouter 导航后 [data-parallax] / [data-parallax-fixed] 是新 DOM
-  parallaxEls = Array.from(document.querySelectorAll<HTMLElement>(selector + ', [data-parallax-fixed]'));
+  parallaxEls = Array.from(
+    document.querySelectorAll<HTMLElement>(selector + ", [data-parallax-fixed]")
+  );
 
   let raf = 0;
   const onScroll = () => {
@@ -138,24 +193,28 @@ export function initParallax(selector = '[data-parallax]'): void {
     raf = requestAnimationFrame(() => {
       const root = document.documentElement;
       // 配置中心视差开关关闭：清除任何残留位移
-      if (root.getAttribute('data-parallax') === 'off') {
-        parallaxEls.forEach((el) => (el.style.transform = ''));
+      if (root.getAttribute("data-parallax") === "off") {
+        parallaxEls.forEach((el) => (el.style.transform = ""));
         return;
       }
       const scrollY = window.scrollY || (window as any).pageYOffset || 0;
-      const speedVar = getComputedStyle(root).getPropertyValue('--parallax-speed').trim();
+      const speedVar = getComputedStyle(root)
+        .getPropertyValue("--parallax-speed")
+        .trim();
       const baseSpeed = parseFloat(speedVar) || 0.04;
       parallaxEls.forEach((el) => {
         let offset: number;
-        if (el.hasAttribute('data-parallax-fixed')) {
+        if (el.hasAttribute("data-parallax-fixed")) {
           // 固定背景层：位移 = 滚动进度(0~1) × 视口高 × speed，上限受 .site-bg 的 inset 余量约束，绝不露边
-          const sp = parseFloat(el.dataset.parallaxFixed || '') || baseSpeed;
-          const docMax = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+          const sp = parseFloat(el.dataset.parallaxFixed || "") || baseSpeed;
+          const docMax =
+            document.documentElement.scrollHeight -
+            document.documentElement.clientHeight;
           const prog = docMax > 0 ? Math.min(1, scrollY / docMax) : 0;
           offset = prog * window.innerHeight * sp;
         } else {
           // 文档流装饰层：随滚动位置反向位移
-          const sp = parseFloat(el.dataset.parallax || '') || 0.1;
+          const sp = parseFloat(el.dataset.parallax || "") || 0.1;
           const rect = el.getBoundingClientRect();
           offset = -rect.top * sp;
         }
@@ -167,16 +226,18 @@ export function initParallax(selector = '[data-parallax]'): void {
   if (!parallaxBound) {
     // 防止 ClientRouter 跨页重复绑定 scroll 监听
     parallaxBound = true;
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
   }
   if (parallaxEls.length) onScroll();
 }
 
 /* ---------- 5. View Transitions 包装（供主题/语言切换调用） ---------- */
 
-export function withViewTransition(fn: () => void | Promise<void>): void | Promise<void> {
-  if (prefersReduce() || !('startViewTransition' in document)) {
+export function withViewTransition(
+  fn: () => void | Promise<void>
+): void | Promise<void> {
+  if (prefersReduce() || !("startViewTransition" in document)) {
     return fn();
   }
   return (document as any).startViewTransition(fn);

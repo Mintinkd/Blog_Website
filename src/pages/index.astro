@@ -60,7 +60,13 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       radial-gradient(ellipse at 80% 70%, var(--color-accent-subtle), transparent 50%);
     z-index: -1;
     pointer-events: none;
-    will-change: transform;
+  }
+
+  /* 视差只在鼠标设备启用（motion.ts 同口径）：触屏上不提升常驻图层 */
+  @media (hover: hover) and (pointer: fine) {
+    .hero-blade {
+      will-change: transform;
+    }
   }
 
   .hero-title {
