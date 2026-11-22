@@ -12,7 +12,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
       <p class="hero-subtitle" id="hero-site-subtitle" data-reveal="fade-up">关于技术、生活与思考的个人空间</p>
       <p class="hero-desc" id="hero-site-desc" data-reveal="fade-up"></p>
       <div class="hero-actions">
-        <a href="/articles" class="hero-btn primary" data-i18n="hero.browse" data-hover="magnetic">浏览文章</a>
+        {/* 主按钮进入全部分类页（分类是浏览入口），而不是 /articles 列表 */}
+        <a href="/categories" class="hero-btn primary" data-i18n="hero.browse" data-hover="magnetic">浏览文章</a>
         <a href="/about" class="hero-btn secondary" data-i18n="hero.learn_more" data-hover="magnetic">了解更多</a>
       </div>
     </div>

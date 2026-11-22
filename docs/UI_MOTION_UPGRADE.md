@@ -494,7 +494,7 @@ import ScrollProgress from '../common/ScrollProgress.astro';
        data-reveal="fade-up" style="--i:1">关于技术、生活与思考的个人空间</p>
     <p class="hero-desc" id="hero-site-desc" data-reveal="fade-up" style="--i:2"></p>
     <div class="hero-actions" data-reveal-stagger>
-      <a href="/articles" class="hero-btn primary" data-i18n="hero.browse"
+      <a href="/categories" class="hero-btn primary" data-i18n="hero.browse"
          data-reveal="fade-up" data-hover="magnetic">浏览文章</a>
       <a href="/about" class="hero-btn secondary" data-i18n="hero.learn_more"
          data-reveal="fade-up" data-hover="magnetic">了解更多</a>
