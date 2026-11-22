@@ -45,6 +45,17 @@ describe("ssrLocaleIsZh / bindPagination 单源守卫（#112 item 12）", () => 
         "taxonomy-helpers"
       );
     });
+
+    it(`${page} 不在模块作用域缓存 #article-list（ClientRouter 换页会串数据）`, () => {
+      const src = readFileSync(resolve(ROOT, page), "utf8");
+      // 模块脚本跨导航只执行一次；顶层 const 缓存的节点属于上一个页面。
+      expect(src, `${page} 应通过 currentArticleList() 按需取根节点`).toContain(
+        "currentArticleList"
+      );
+      expect(src, `${page} 不应在顶层缓存 #article-list`).not.toMatch(
+        /^ {2}const\s+\w+\s*=\s*document\.getElementById\(\s*['"]article-list['"]\s*\)/m
+      );
+    });
   }
 
   it("全仓 src/pages 下只有 taxonomy-helpers.ts 定义这两个函数", () => {

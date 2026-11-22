@@ -228,7 +228,12 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 <script>
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
-  import { ssrLocaleIsZh, bindPagination } from '@/scripts/layout/taxonomy-helpers';
+  import {
+    ssrLocaleIsZh,
+    bindPagination,
+    currentArticleList,
+    setTaxonomyHeading,
+  } from '@/scripts/layout/taxonomy-helpers';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
   import {
     parseTagParam,
@@ -240,19 +245,22 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
     type FilterChipTag,
   } from '../../utils/taxonomyFilter.ts';
 
-  const wrapper = document.getElementById('article-list');
-  const basePath = '/categories/' + safePathSegment(wrapper?.dataset.categorySlug ?? '');
+  /** 当前分类页的 basePath；每次从当前 DOM 取（ClientRouter 导航后 slug 会变）。 */
+  function basePath(): string {
+    return '/categories/' + safePathSegment(currentArticleList()?.dataset.categorySlug ?? '');
+  }
 
-  /** 当前标签筛选（null = 「全部」）；首屏取服务端已校验的 SSR 值。 */
-  let activeTagSlug: string | null = wrapper?.dataset.activeTag || null;
+  /** 当前标签筛选（null = 「全部」）；astro:page-load 时按当前页面重置。 */
+  let activeTagSlug: string | null = null;
   /** 本分类名下的标签（slug → name/article_count），用于校验 ?tag= 合法性。 */
   let knownTags: FilterChipTag[] = [];
 
   async function loadArticles(page = 1, tagSlug: string | null = activeTagSlug) {
+    const root = currentArticleList();
     const container = document.querySelector('.article-list-inner');
-    if (!container || !wrapper) return;
+    if (!container || !root) return;
 
-    const categorySlug = wrapper.dataset.categorySlug;
+    const categorySlug = root.dataset.categorySlug;
     const locale = getLocale();
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
@@ -265,13 +273,16 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       const response = await fetch(`/api/v1/articles?${query}`);
       const data = await response.json();
 
+      // ClientRouter 下请求返回时可能已经切到别的分类页：旧响应不得写进新 DOM。
+      if (currentArticleList() !== root) return;
+
       if (data.code === 0 && data.data) {
         const { items, total_pages } = data.data;
 
         if (items.length === 0 && tagSlug) {
           // #81 §5 / #117：筛选后空结果 → 提示 + 清除筛选链接（无 JS 也能回「全部」）
           container.innerHTML = renderFilteredEmpty(
-            basePath,
+            basePath(),
             t('page.no_articles_tag'),
             t('taxonomy.clear_filter')
           );
@@ -297,6 +308,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         }
       }
     } catch (e) {
+      if (currentArticleList() !== root) return;
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
     }
   }
@@ -306,13 +318,13 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   function renderFilterChipsUi() {
     const chips = document.getElementById('category-filter-chips');
     if (!chips) return;
-    chips.innerHTML = renderFilterChips(basePath, knownTags, activeTagSlug, t('taxonomy.all'));
+    chips.innerHTML = renderFilterChips(basePath(), knownTags, activeTagSlug, t('taxonomy.all'));
   }
 
   /** 点击 chip / popstate 统一入口：更新 URL（pushState / replaceState）并重新取数。 */
   function selectTag(tagSlug: string | null, mode: 'push' | 'replace' = 'push') {
     activeTagSlug = tagSlug;
-    const url = buildTagFilterUrl(basePath, tagSlug);
+    const url = buildTagFilterUrl(basePath(), tagSlug);
     if (mode === 'push') {
       history.pushState({ tag: tagSlug }, '', url);
     } else {
@@ -349,8 +361,9 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   }
 
   async function loadCategoryMeta() {
-    if (!wrapper) return;
-    const categorySlug = wrapper.dataset.categorySlug;
+    const root = currentArticleList();
+    if (!root) return;
+    const categorySlug = root.dataset.categorySlug;
     const titleEl = document.getElementById('category-title');
     const currentEl = document.getElementById('category-breadcrumb-current');
     const descEl = document.getElementById('category-desc');
@@ -359,6 +372,8 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 
     try {
       const res = await fetch(`/api/v1/categories/${safePathSegment(categorySlug)}`);
+      // 响应回来时可能已切到别的分类页；旧响应不得写进新 DOM。
+      if (currentArticleList() !== root) return;
       if (res.status === 404) {
         // 区分两种 404（同 /tags/:slug 的口径）：code 10005 = 资源真不存在 →
         // 渲染未找到；code 404 = worker 未部署新端点（部署窗口期）→ 跳过回填，
@@ -373,7 +388,8 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       if (data.code !== 0 || !data.data) return;
       const cat = data.data;
       const catName = cat.name || categorySlug;
-      titleEl.textContent = catName;
+      // 名称是数据不是文案：摘掉 i18n 标记，避免 refreshDomTranslations 用 slug 覆盖。
+      setTaxonomyHeading(titleEl, catName);
       document.title = catName;
       currentEl.textContent = catName;
       if (cat.description && descEl) {
@@ -383,6 +399,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       // 标签筛选条：GET /tags?category_slug=<slug>
       const tagRes = await fetch(`/api/v1/tags?category_slug=${safePathSegment(categorySlug)}`);
       const tagData = tagRes.ok ? await tagRes.json() : { code: -1 };
+      if (currentArticleList() !== root) return;
       if (tagData.code === 0 && Array.isArray(tagData.data)) {
         knownTags = tagData.data.map((tg: any) => ({
           slug: tg.slug,
@@ -396,38 +413,41 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         const requested = parseTagParam(window.location.search);
         const hasTagParam = new URLSearchParams(window.location.search).has('tag');
         const legal = resolveActiveTagSlug(knownTags, requested);
-        const serverTag = wrapper.dataset.activeTag || null;
+        const serverTag = root.dataset.activeTag || null;
         activeTagSlug = legal;
         if (hasTagParam && !legal) {
-          history.replaceState({ tag: null }, '', buildTagFilterUrl(basePath, null));
+          history.replaceState({ tag: null }, '', buildTagFilterUrl(basePath(), null));
         }
         // SSR 已按同一筛选渲染过就不重复取数；SSR 失败或状态不同才由客户端接管。
-        if (wrapper.dataset.ssr !== '1' || serverTag !== legal) {
+        if (root.dataset.ssr !== '1' || serverTag !== legal) {
           loadArticles(1, legal);
         }
 
         renderFilterChipsUi();
         bindFilterChips();
         bindClearFilter();
-        window.addEventListener('popstate', () => {
-          const restored = parseTagParam(window.location.search);
-          // 仅接受本分类名下的 tag；否则回「全部」
-          const restoredLegal = resolveActiveTagSlug(knownTags, restored);
-          activeTagSlug = restoredLegal;
-          renderFilterChipsUi();
-          loadArticles(1, restoredLegal);
-        });
       }
     } catch (e) {
       // 元信息回填失败不影响文章列表
     }
   }
 
+  // ClientRouter 下 document 常驻：popstate 只注册一次，避免每次进入分类页重复叠加。
+  window.addEventListener('popstate', () => {
+    if (!location.pathname.startsWith('/categories/')) return;
+    // 仅接受本分类名下的 tag；否则回「全部」
+    const restoredLegal = resolveActiveTagSlug(knownTags, parseTagParam(window.location.search));
+    activeTagSlug = restoredLegal;
+    renderFilterChipsUi();
+    loadArticles(1, restoredLegal);
+  });
+
   function renderNotFound() {
-    if (!wrapper) return;
-    const section = wrapper.closest('.category-page') as HTMLElement | null;
+    const root = currentArticleList();
+    if (!root) return;
+    const section = root.closest('.category-page') as HTMLElement | null;
     if (section) {
-      wrapper.hidden = true;
+      root.hidden = true;
       const filterBox = document.getElementById('category-tag-filter');
       if (filterBox) filterBox.hidden = true;
       const notFound = document.createElement('div');
@@ -435,7 +455,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       notFound.innerHTML = `
         <h2>${escapeHtml(t('page.category_not_found'))}</h2>
         <a href="/categories">${escapeHtml(t('nav.categories'))}</a>`;
-      wrapper.after(notFound);
+      root.after(notFound);
     }
   }
 
@@ -444,8 +464,13 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   // （/tags/:slug 与本页共用 #article-list 结构）。
   document.addEventListener('astro:page-load', () => {
     if (!location.pathname.startsWith('/categories/')) return;
+    const root = currentArticleList();
+    if (!root) return;
+    // 模块脚本跨导航常驻：筛选状态按当前页面重置，不能沿用上一个分类的值。
+    activeTagSlug = root.dataset.activeTag || null;
+    knownTags = [];
     loadCategoryMeta();
-    if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
+    if (root.dataset.ssr === '1' && ssrLocaleIsZh()) {
       bindPagination(loadArticles);
       return;
     }

@@ -184,23 +184,30 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 <script>
   import { t, getLocale, initLocale } from '../../utils/i18n.ts';
   import { renderArticleCards, renderPagination } from '../../utils/taxonomyRender.ts';
-  import { ssrLocaleIsZh, bindPagination } from '@/scripts/layout/taxonomy-helpers';
+  import {
+    ssrLocaleIsZh,
+    bindPagination,
+    currentArticleList,
+    setTaxonomyHeading,
+  } from '@/scripts/layout/taxonomy-helpers';
   import { escapeHtml, safePathSegment } from '../../utils/escape.ts';
   import { tagChipHref } from '../../utils/tagLinks.ts';
 
-  const wrapper = document.getElementById('article-list');
-
   async function loadArticles(page = 1) {
+    const root = currentArticleList();
     const container = document.querySelector('.article-list-inner');
-    if (!container || !wrapper) return;
+    if (!container || !root) return;
 
-    const tagSlug = wrapper.dataset.tagSlug;
+    const tagSlug = root.dataset.tagSlug;
     const locale = getLocale();
     const dateLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
 
     try {
       const response = await fetch(`/api/v1/articles?page=${page}&status=published&tag_slug=${tagSlug}`);
       const data = await response.json();
+
+      // ClientRouter 下请求返回时可能已经切到别的标签页：旧响应不得写进新 DOM。
+      if (currentArticleList() !== root) return;
 
       if (data.code === 0 && data.data) {
         const { items, total_pages } = data.data;
@@ -221,6 +228,7 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
         }
       }
     } catch (e) {
+      if (currentArticleList() !== root) return;
       container.innerHTML = `<p style="text-align:center;color:var(--color-text-tertiary);padding:3rem 0;">${t('common.load_failed')}</p>`;
     }
   }
@@ -228,8 +236,9 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   // taxonomy v2（#81 §3）：客户端回填真实标签名、分类面包屑与 document.title；
   // 404 显示「标签不存在」空态并停止取文章列表。
   async function loadTagMeta() {
-    if (!wrapper) return;
-    const tagSlug = wrapper.dataset.tagSlug;
+    const root = currentArticleList();
+    if (!root) return;
+    const tagSlug = root.dataset.tagSlug;
     const titleEl = document.getElementById('tag-title');
     const breadcrumb = document.getElementById('tag-breadcrumb');
     const currentEl = document.getElementById('tag-breadcrumb-current');
@@ -237,6 +246,8 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
 
     try {
       const res = await fetch(`/api/v1/tags/${safePathSegment(tagSlug)}`);
+      // 响应回来时可能已切到别的标签页；旧响应不得写进新 DOM。
+      if (currentArticleList() !== root) return;
       if (res.status === 404) {
         // 区分两种 404：worker 的 notFound 是 code 10005（资源真不存在 → 渲染未找到）；
         // code 404 是「路由不存在」（worker 尚未部署新端点，部署窗口期）→ 静默跳过
@@ -251,7 +262,8 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
       if (data.code !== 0 || !data.data) return;
       const tag = data.data;
       const tagName = tag.name || tagSlug;
-      titleEl.textContent = tagName;
+      // 名称是数据不是文案：摘掉 i18n 标记，避免 refreshDomTranslations 用 slug 覆盖。
+      setTaxonomyHeading(titleEl, tagName);
       document.title = tagName;
       currentEl.textContent = tagName;
       // 面包屑：首页 › 分类名 › 标签名；迁移期无分类 → 首页 › 标签名
@@ -289,17 +301,17 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   }
 
   function renderNotFound() {
-    if (!wrapper) return;
-    const section = wrapper.closest('.tag-page') as HTMLElement | null;
+    const root = currentArticleList();
+    if (!root) return;
+    const section = root.closest('.tag-page') as HTMLElement | null;
     if (section) {
-      const list = document.getElementById('article-list');
-      if (list) list.hidden = true;
+      root.hidden = true;
       const notFound = document.createElement('div');
       notFound.className = 'tag-not-found';
       notFound.innerHTML = `
         <h2>${escapeHtml(t('page.tag_not_found'))}</h2>
         <a href="/tags">${escapeHtml(t('nav.tags'))}</a>`;
-      list!.after(notFound);
+      root.after(notFound);
     }
   }
 
@@ -308,8 +320,10 @@ const firstPagination = renderPagination(1, totalPages, { prev: '上一页', nex
   // 避免覆盖 /categories/:slug 等其它同样使用 #article-list 的页面。
   document.addEventListener('astro:page-load', () => {
     if (!location.pathname.startsWith('/tags/')) return;
+    const root = currentArticleList();
+    if (!root) return;
     loadTagMeta();
-    if (wrapper?.dataset.ssr === '1' && ssrLocaleIsZh()) {
+    if (root.dataset.ssr === '1' && ssrLocaleIsZh()) {
       bindPagination(loadArticles);
       return;
     }
